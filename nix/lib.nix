@@ -66,12 +66,25 @@ let
     cargoExtraArgs = "--features python" + lib.optionalString (pkgs.config.cudaSupport) ",parallelism";
   };
 
-  rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
-    buildInputs = rustWorkspaceArgs.buildInputs ++ [
-      psychePythonVenvWithExtension
-    ];
-    NIX_LDFLAGS = "-L${psychePythonVenvWithExtension}/lib -lpython3.12";
-  };
+  psychePythonExtension = pkgs.callPackage ../python { };
+
+  mkPythonVenv =
+    {
+      extraPackages ? { }, # actual packages from pkgs.callPackage
+      additionalNixPackages ? [ ], # like "vllm", etc
+    }:
+    pkgs.callPackage ./python.nix {
+      inherit (inputs) uv2nix pyproject-nix pyproject-build-systems;
+      inherit extraPackages additionalNixPackages;
+    };
+
+  mkRustWorkspaceArgsWithPython =
+    venv:
+    rustWorkspaceArgs
+    // {
+      buildInputs = rustWorkspaceArgs.buildInputs ++ [ venv ];
+      NIX_LDFLAGS = "-L${venv}/lib -lpython3.12";
+    };
 
   rustWorkspaceArgsNoPython = rustWorkspaceDeps // {
     inherit env src;
@@ -82,35 +95,6 @@ let
 
   cargoArtifacts = craneLib.buildDepsOnly rustWorkspaceArgs;
   cargoArtifactsNoPython = craneLib.buildDepsOnly rustWorkspaceArgsNoPython;
-
-  psychePythonExtension = pkgs.callPackage ../python { };
-
-  # python venv without the psyche extension (vllm, etc)
-
-  pythonDeps = { inherit (inputs) uv2nix pyproject-nix pyproject-build-systems; };
-
-  # function to create a python venv with specific python packages
-  mkPythonVenvForPackages =
-    pythonPkgs:
-    pkgs.callPackage ./python.nix (
-      {
-        extraPackages = {
-          psyche = psychePythonExtension;
-        };
-        additionalNixPackages = pythonPkgs;
-      }
-      // pythonDeps
-    );
-
-  psychePythonVenv = pkgs.callPackage ./python.nix (
-    {
-      extraPackages = { };
-    }
-    // pythonDeps
-  );
-
-  # python venv with the psyche extension (legacy, kept for compatibility)
-  psychePythonVenvWithExtension = mkPythonVenvForPackages [ ];
   # builds a rust package
   # Returns an attrset of packages: { packageName = ...; packageName-nopython = ...; }
   # Automatically discovers and builds examples from the crate's examples/ directory
@@ -181,7 +165,16 @@ let
           pythonRuntimeDeps =
             getRuntimeDepsForArtifact pythonBuildInputs "pythonBuildInputs" type
               originalName;
-          customPythonVenv = if withPython then mkPythonVenvForPackages pythonRuntimeDeps else null;
+          customPythonVenv =
+            if withPython then
+              mkPythonVenv {
+                extraPackages = {
+                  psyche = psychePythonExtension;
+                };
+                additionalNixPackages = pythonRuntimeDeps;
+              }
+            else
+              null;
 
           workspaceArgs =
             if withPython then
@@ -721,7 +714,6 @@ let
   );
 
   allPythonDeps = lib.pipe rustPackageSets [
-    lib.attrValues
     (map (pkg: pkg.flatPythonDeps or [ ]))
     lib.flatten
     lib.unique
@@ -734,7 +726,7 @@ in
     craneLib
     buildSolanaIdl
     rustWorkspaceArgs
-    rustWorkspaceArgsWithPython
+    mkRustWorkspaceArgsWithPython
     cargoArtifacts
     buildRustPackage
     buildRustWasmTsPackage
@@ -742,8 +734,8 @@ in
     env
     src
     gitcommit
-    psychePythonVenv
-    psychePythonVenvWithExtension
+    mkPythonVenv
+    psychePythonExtension
     allPythonDeps
     rustPackages
     ;
