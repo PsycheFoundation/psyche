@@ -11,8 +11,6 @@ on:
 jobs:
   deploy-website-backend:
     runs-on: ubuntu-latest
-    permissions:
-      packages: write
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
@@ -38,12 +36,11 @@ jobs:
         run: |
           nix build .#docker-psyche-website-backend --no-link --print-out-paths > image-path.txt
 
-      - name: Login to GitHub Container Registry
+      - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKER_DEPLOY_KEY }}
 
       - name: Load, tag, and push image
         run: |
@@ -51,8 +48,7 @@ jobs:
           IMAGE_PATH=$(cat image-path.txt)
           "$IMAGE_PATH" | docker load
           IMAGE_ID=$(docker images -q | head -n1)
-          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          IMAGE_NAME="ghcr.io/${OWNER}/psyche-website-backend"
+          IMAGE_NAME="nousresearch/psyche-website-backend"
           docker tag "$IMAGE_ID" "$IMAGE_NAME:latest"
           docker tag "$IMAGE_ID" "$IMAGE_NAME:${{ github.sha }}"
           docker push "$IMAGE_NAME:latest"
