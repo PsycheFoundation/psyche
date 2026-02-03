@@ -5,8 +5,9 @@
 // 1. Set the USE_GPU environment variable: `export USE_GPU=1`
 // 2. Or ensure nvidia-smi is available (GPU will be auto-detected)
 // The test infrastructure will automatically use docker-compose.gpu.yml when GPU is available.
-use std::{sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
+use anchor_client::solana_sdk::signature::{Keypair, Signer};
 use bollard::container::StartContainerOptions;
 use bollard::{Docker, container::KillContainerOptions};
 use psyche_coordinator::{RunState, model::Checkpoint};
@@ -16,10 +17,11 @@ use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
     docker_setup::{
-        e2e_testing_setup, kill_all_clients, spawn_new_client, spawn_new_client_with_monitoring,
+        e2e_testing_setup, e2e_testing_setup_with_min, kill_all_clients, spawn_new_client,
+        spawn_new_client_with_monitoring,
     },
     docker_watcher::{DockerWatcher, Response},
-    utils::SolanaTestClient,
+    utils::{SolanaTestClient, write_keypair_to_file},
 };
 use rstest::*;
 use serial_test::serial;
@@ -58,7 +60,7 @@ async fn test_one_clients_three_epochs_run() {
         .unwrap();
 
     // Initialize solana client to query the coordinator state
-    let solana_client = SolanaTestClient::new(run_id).await;
+    let solana_client = SolanaTestClient::new(run_id, None).await;
     let mut live_interval = time::interval(Duration::from_secs(10));
 
     loop {
@@ -146,7 +148,7 @@ async fn test_two_clients_three_epochs_run() {
         .unwrap();
 
     // Initialize solana client to query the coordinator state
-    let solana_client = SolanaTestClient::new(run_id).await;
+    let solana_client = SolanaTestClient::new(run_id, None).await;
     let mut live_interval = time::interval(Duration::from_secs(10));
 
     loop {
@@ -208,12 +210,13 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
 
     println!("Adding new clients");
     for i in 1..=n_new_clients {
-        spawn_new_client(docker.clone()).await.unwrap();
+        spawn_new_client(docker.clone(), None).await.unwrap();
         let _monitor_client = watcher
             .monitor_container(
                 &format!("{CLIENT_CONTAINER_PREFIX}-{}", i + 1),
                 vec![
                     IntegrationTestLogMarker::LoadedModel,
+                    IntegrationTestLogMarker::Error,
                     IntegrationTestLogMarker::Loss,
                 ],
             )
@@ -265,12 +268,12 @@ async fn test_rejoining_client_delay() {
     // initialize a Solana run with 1 client
     let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
 
-    let solana_client = Arc::new(SolanaTestClient::new("test".to_string()).await);
+    let solana_client = Arc::new(SolanaTestClient::new("test".to_string(), None).await);
 
     tokio::time::sleep(Duration::from_secs(30)).await;
 
     // Spawn client
-    spawn_new_client(docker.clone()).await.unwrap();
+    spawn_new_client(docker.clone(), None).await.unwrap();
 
     let _monitor_client = watcher
         .monitor_container(
@@ -371,7 +374,7 @@ async fn disconnect_client() {
         .unwrap();
 
     // initialize solana client to query the coordinator state
-    let solana_client = SolanaTestClient::new(run_id).await;
+    let solana_client = SolanaTestClient::new(run_id, None).await;
 
     let mut seen_health_checks: Vec<u64> = Vec::new();
     let mut untrained_batches: Vec<Vec<u64>> = Vec::new();
@@ -483,7 +486,7 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
 
     let _cleanup = e2e_testing_setup(docker.clone(), 2).await;
 
-    let solana_client = SolanaTestClient::new(run_id).await;
+    let solana_client = SolanaTestClient::new(run_id, None).await;
     // Monitor clients
     for i in 1..=n_clients {
         let _monitor_client = watcher
@@ -493,6 +496,7 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
                     IntegrationTestLogMarker::Loss,
                     IntegrationTestLogMarker::StateChange,
                     IntegrationTestLogMarker::LoadedModel,
+                    IntegrationTestLogMarker::Error,
                 ],
             )
             .unwrap();
@@ -551,7 +555,7 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
 
     // Test reconnection
     println!("Starting new client...");
-    spawn_new_client(docker.clone()).await.unwrap();
+    spawn_new_client(docker.clone(), None).await.unwrap();
 
     // Wait for state to change back to Warmup
     assert!(
@@ -573,7 +577,7 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
 
     let _cleanup = e2e_testing_setup(docker.clone(), 2).await;
 
-    let solana_client = SolanaTestClient::new(run_id).await;
+    let solana_client = SolanaTestClient::new(run_id, None).await;
     let mut has_spawned_new_client_yet = false;
     let mut has_checked_p2p_checkpoint = false;
     let mut liveness_check_interval = time::interval(Duration::from_secs(10));
@@ -841,7 +845,7 @@ async fn test_everybody_leaves_in_warmup() {
     }
 
     println!("Starting new client...");
-    spawn_new_client(docker.clone()).await.unwrap();
+    spawn_new_client(docker.clone(), None).await.unwrap();
     println!("New client started");
 
     let client_2_name = format!("{CLIENT_CONTAINER_PREFIX}-2");
@@ -908,13 +912,14 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
 
                         if new_state == RunState::RoundTrain.to_string() && !spawned_second_client {
                             println!("Joining a second client to the run");
-                            let second_client_id = spawn_new_client(docker.clone()).await.unwrap();
+                            let second_client_id = spawn_new_client(docker.clone(), None).await.unwrap();
                             let _monitor_client_2 = watcher
                             .monitor_container(
                                 &second_client_id,
                                 vec![
                                     IntegrationTestLogMarker::StateChange,
                                     IntegrationTestLogMarker::LoadedModel,
+                    IntegrationTestLogMarker::Error,
                                     IntegrationTestLogMarker::Loss,
                                 ],
                             )
@@ -946,6 +951,171 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
                     _ => {}
                 }
             }
+        }
+    }
+}
+
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+#[serial]
+async fn test_pause_and_resume_run() {
+    let run_id = "test".to_string();
+    let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
+    let mut watcher = DockerWatcher::new(docker.clone());
+
+    // Generate keypairs at runtime
+    let owner_keypair = Arc::new(Keypair::new());
+    let client_keypair = Arc::new(Keypair::new());
+
+    // Write keypairs to temp files
+    let owner_path = PathBuf::from(format!(
+        "/tmp/test-owner-keypair-{}.json",
+        std::process::id()
+    ));
+    let client_path = PathBuf::from(format!(
+        "/tmp/test-client-keypair-{}.json",
+        std::process::id()
+    ));
+    write_keypair_to_file(&owner_keypair, &owner_path).expect("Failed to write owner keypair");
+    write_keypair_to_file(&client_keypair, &client_path).expect("Failed to write client keypair");
+
+    println!("Generated owner keypair: {}", owner_keypair.pubkey());
+    println!("Generated client keypair: {}", client_keypair.pubkey());
+
+    // Setup with min_clients=1 but init_num_clients=0 (we spawn manually)
+    // Pass owner keypair to setup script
+    let _cleanup =
+        e2e_testing_setup_with_min(docker.clone(), 0, 1, Some(owner_path.as_path())).await;
+
+    // Create SolanaTestClient with owner keypair for set_paused
+    let solana_client = SolanaTestClient::new(run_id.clone(), Some(owner_keypair.clone())).await;
+
+    // Spawn client with generated keypair
+    let container = spawn_new_client(docker.clone(), Some(client_path.as_path()))
+        .await
+        .unwrap();
+    println!("Spawned client: {}", container);
+
+    // Monitor the client container
+    let _monitor_client = watcher
+        .monitor_container(
+            &container,
+            vec![
+                IntegrationTestLogMarker::StateChange,
+                IntegrationTestLogMarker::Loss,
+                IntegrationTestLogMarker::LoadedModel,
+            ],
+        )
+        .unwrap();
+
+    let mut paused = false;
+    let mut client_killed = false;
+    let mut rejoined_client = false;
+    let mut current_epoch = -1;
+    let mut last_epoch_loss = f64::MAX;
+    let num_epochs_after_rejoin = 2;
+
+    println!("Waiting for training to start...");
+    loop {
+        let response = watcher.log_rx.recv().await;
+        match response {
+            Some(Response::StateChange(_timestamp, _client, old_state, new_state, epoch, step)) => {
+                println!("epoch: {epoch} step: {step} state change: {old_state} => {new_state}");
+
+                // Wait until step 5 before pausing
+                if !paused && step >= 5 && new_state == RunState::RoundTrain.to_string() {
+                    println!("Pausing the run...");
+                    solana_client
+                        .set_paused(true)
+                        .await
+                        .expect("Failed to pause run");
+                    paused = true;
+                    println!("Run paused! Waiting for Paused state...");
+                }
+
+                // When coordinator enters Paused state, kill client and resume
+                if paused && !client_killed && new_state == RunState::Paused.to_string() {
+                    println!("Coordinator is in Paused state. Killing client and resuming...");
+
+                    // Kill the old container
+                    watcher.kill_container(&container).await.unwrap();
+                    client_killed = true;
+
+                    // Wait a moment for cleanup
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+
+                    // Resume the run
+                    println!("Resuming the run...");
+                    solana_client
+                        .set_paused(false)
+                        .await
+                        .expect("Failed to resume run");
+
+                    // Wait a moment before rejoining
+                    tokio::time::sleep(Duration::from_secs(3)).await;
+
+                    // Spawn new client with SAME keypair
+                    println!("Rejoining with same client keypair...");
+                    let new_container =
+                        spawn_new_client(docker.clone(), Some(client_path.as_path()))
+                            .await
+                            .unwrap();
+                    println!("Rejoined client: {}", new_container);
+
+                    // Monitor the new client
+                    watcher
+                        .monitor_container(
+                            &new_container,
+                            vec![
+                                IntegrationTestLogMarker::StateChange,
+                                IntegrationTestLogMarker::LoadedModel,
+                                IntegrationTestLogMarker::Loss,
+                            ],
+                        )
+                        .expect("Failed to monitor rejoined client");
+
+                    rejoined_client = true;
+                }
+            }
+            Some(Response::Loss(client, epoch, step, loss)) => {
+                println!("client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss:?}");
+
+                if rejoined_client && epoch as i64 > current_epoch {
+                    current_epoch = epoch as i64;
+
+                    let Some(loss) = loss else {
+                        println!("Reached new epoch but loss was NaN");
+                        continue;
+                    };
+
+                    assert!(
+                        loss < last_epoch_loss * 1.25,
+                        "Loss should not increase significantly"
+                    );
+                    assert!(loss > 0.0);
+                    last_epoch_loss = loss;
+
+                    // After rejoining, train for a few more epochs to verify training continues
+                    if epoch >= num_epochs_after_rejoin {
+                        println!(
+                            "Trained for {num_epochs_after_rejoin} epochs after rejoin. Loss continued to decrease. Test successful!"
+                        );
+                        return;
+                    }
+                }
+            }
+            Some(Response::LoadedModel(checkpoint)) => {
+                println!("LoadedModel checkpoint: {checkpoint}");
+
+                if rejoined_client {
+                    // After rejoin, verify client loads from Hub (not P2P)
+                    assert!(
+                        !checkpoint.starts_with("P2P"),
+                        "After pause/resume with all clients disconnected, checkpoint should be Hub, got: {checkpoint}"
+                    );
+                    println!("Hub checkpoint verified after rejoin!");
+                }
+            }
+            _ => {}
         }
     }
 }
