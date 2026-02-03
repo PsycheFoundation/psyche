@@ -1,5 +1,4 @@
 use crate::commands::Command;
-use anchor_client::anchor_lang::system_program;
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anyhow::Result;
 use anyhow::bail;
@@ -34,30 +33,40 @@ impl Command for CommandCanJoin {
             .get_coordinator_instance(&coordinator_instance)
             .await?;
 
-        // First try permissionless authorization (system_program::ID)
-        let permissionless_authorization = SolanaBackend::find_join_authorization(
-            &coordinator_instance_state.join_authority,
-            None,
-            system_program::ID,
-        );
-
-        // Check if permissionless authorization exists, otherwise use the provided
-        // authorizer or fall back to the address
-        let authorization = if backend.get_balance(&permissionless_authorization).await? > 0 {
-            permissionless_authorization
-        } else {
-            let fallback_authorization = SolanaBackend::find_join_authorization(
+        // If an authorizer is explicitly provided, use it directly.
+        // Otherwise, try permissionless first, then fall back to the user's address.
+        let authorization = if let Some(auth) = authorizer {
+            let authorization = SolanaBackend::find_join_authorization(
                 &coordinator_instance_state.join_authority,
-                authorizer,
-                address,
+                Some(auth),
             );
-            if backend.get_balance(&fallback_authorization).await? == 0 {
+            if backend.get_balance(&authorization).await? == 0 {
                 bail!(
-                    "Authorization does not exist for authorizer: {authorizer:?} (authorization address: {fallback_authorization:?}, join authority: {0:?}). Authorizer must be set to grantee pubkey for permissioned runs",
+                    "Authorization does not exist for authorizer: {auth} (authorization address: {authorization}, join authority: {}). Authorizer must be set to grantee pubkey for permissioned runs",
                     coordinator_instance_state.join_authority
                 );
             }
-            fallback_authorization
+            authorization
+        } else {
+            let permissionless_authorization = SolanaBackend::find_join_authorization(
+                &coordinator_instance_state.join_authority,
+                None,
+            );
+            if backend.get_balance(&permissionless_authorization).await? > 0 {
+                permissionless_authorization
+            } else {
+                let fallback_authorization = SolanaBackend::find_join_authorization(
+                    &coordinator_instance_state.join_authority,
+                    Some(address),
+                );
+                if backend.get_balance(&fallback_authorization).await? == 0 {
+                    bail!(
+                        "No valid authorization found for {address}. The run is permissioned and you must have a valid authorization. (join authority: {})",
+                        coordinator_instance_state.join_authority
+                    );
+                }
+                fallback_authorization
+            }
         };
         if !backend
             .get_authorization(&authorization)
