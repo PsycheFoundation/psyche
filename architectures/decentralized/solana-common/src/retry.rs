@@ -82,7 +82,9 @@ impl From<ClientError> for RetryError<ClientError> {
                             } else if msg.contains("InvalidWitness") {
                                 error!("InvalidWitness. Fatal Error.");
                                 RetryError::Fatal(ClientError::SolanaClientError(e))
-                            } else if msg.contains("AccountNotInitialized") {
+                            } else if msg.contains("AccountNotInitialized")
+                                && msg.contains("authorization")
+                            {
                                 error!(
                                     "Your authorization account has not been created. Please ensure you have been authorized to join this run. Fatal Error."
                                 );
