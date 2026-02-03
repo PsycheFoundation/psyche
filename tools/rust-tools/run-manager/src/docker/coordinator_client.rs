@@ -2,7 +2,7 @@ use anchor_client::solana_sdk::{
     commitment_config::CommitmentConfig, pubkey::Pubkey, system_program,
 };
 use anchor_lang::AccountDeserialize;
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use psyche_coordinator::RunState;
 use psyche_solana_authorizer::state::Authorization;
 use psyche_solana_coordinator::{
@@ -173,14 +173,15 @@ impl CoordinatorClient {
     /// Check if a user is authorized to join a specific run.
     ///
     /// This checks both permissionless authorization (grantee = system_program::ID)
-    /// and user-specific authorization (grantee = user_pubkey).
+    /// and user-specific authorization (grantee = user_pubkey),
+    /// as well as delegate-key authorization..
     /// Returns the matched grantee pubkey if authorized, or None if not.
     pub fn can_user_join_run(&self, run_id: &str, user_pubkey: &Pubkey) -> Result<Option<Pubkey>> {
         // Fetch the CoordinatorInstance to get join_authority
         let instance = self.fetch_coordinator_data(run_id)?;
         let join_authority = instance.join_authority;
 
-        // Try permissionless authorization first (grantee = system_program::ID)
+        // Try permissionless authorization (grantee = system_program::ID)
         if self.check_authorization_for_grantee(&join_authority, &system_program::ID, user_pubkey) {
             return Ok(Some(system_program::ID));
         }
@@ -188,6 +189,18 @@ impl CoordinatorClient {
         // Try user-specific authorization (grantee = user_pubkey)
         if self.check_authorization_for_grantee(&join_authority, user_pubkey, user_pubkey) {
             return Ok(Some(*user_pubkey));
+        }
+
+        // If we reached here attempt to join as a delegate key via AUTHORIZER env var
+        info!("Attempting authorization via delegate key...");
+        let Ok(authorizer_str) = std::env::var("AUTHORIZER") else {
+            return Err(anyhow!("AUTHORIZER not set"));
+        };
+        let Ok(authorizer) = authorizer_str.parse::<Pubkey>() else {
+            return Err(anyhow!("Failed to parse AUTHORIZER as pubkey"));
+        };
+        if self.check_authorization_for_grantee(&join_authority, &authorizer, user_pubkey) {
+            return Ok(Some(authorizer));
         }
 
         Ok(None)
