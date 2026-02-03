@@ -30,7 +30,7 @@ jobs:
 
       - name: Download image from Garnix cache
         run: |
-          nix build .#docker-psyche-solana-client --no-link --print-out-paths --max-jobs 0 > image-path.txt
+          nix build .#docker-psyche-solana-client --no-link --print-out-paths > image-path.txt
 
       - name: Push image to Docker Hub
         run: scripts/push-client-image.sh
