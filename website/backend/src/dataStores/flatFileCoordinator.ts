@@ -621,14 +621,14 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		if (run.lastState) {
 			const c = run.lastState
 
-			const clients = c.coordinator.epoch_state.clients
+			const currentRoundClients = c.coordinator.epoch_state.clients
 			const currentRound =
 				c.coordinator.epoch_state.rounds[c.coordinator.epoch_state.rounds_head]
-			const witnessStates = clients.map((client, index) => {
+			const witnessStates = currentRoundClients.map((client, index) => {
 				const isWitness = isClientWitness(
 					index,
 					currentRound.random_seed,
-					clients.length,
+					currentRoundClients.length,
 					c.coordinator.config.witness_nodes
 				)
 				const witnessStatus = isWitness
@@ -651,6 +651,14 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				null
 
 			const config = c.coordinator.config
+
+			const clients =
+				c.coordinator.run_state === 'WaitingForMembers'
+					? c.clients_state.clients.map((c) => ({
+							pubkey: new PublicKey(c.id.signer).toString(),
+							witness: false as const,
+						}))
+					: witnessStates
 			state = {
 				phase: c.coordinator.run_state,
 				phaseStartTime: new Date(
@@ -661,7 +669,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				),
 				round: currentRound.height,
 
-				clients: witnessStates,
+				clients,
 				checkpoint,
 
 				config: {
