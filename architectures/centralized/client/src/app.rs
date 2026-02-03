@@ -95,7 +95,10 @@ pub async fn build_app(
     NC,
     RunInitConfig<ClientId, ClientId>,
 )> {
-    let metrics = Arc::new(ClientMetrics::new(p.metrics_local_port));
+    let metrics = Arc::new(ClientMetrics::new(
+        p.metrics_local_port,
+        Some(Duration::from_secs(30)),
+    ));
     let identity_secret_key = read_identity_secret_key(p.identity_secret_key_path.as_ref())?
         .unwrap_or_else(|| SecretKey::generate(&mut rand::rng()));
     let server_conn = TcpClient::<ClientId, ClientToServerMessage, ServerToClientMessage>::connect(
