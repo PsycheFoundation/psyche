@@ -401,6 +401,14 @@ async fn disconnect_client() {
                     );
                 }
 
+                if killed_client
+                    && epoch > 0
+                    && new_state == RunState::WaitingForMembers.to_string()
+                {
+                    println!("Epoch ended after killing client, breaking to verify assertions");
+                    break;
+                }
+
                 if epoch == 0
                     && step == 10
                     && old_state == RunState::RoundTrain.to_string()
@@ -746,7 +754,7 @@ async fn test_solana_subscriptions() {
 
                         }
                         // resume subscription 2
-                        if step == 45 && new_state == RunState::RoundWitness.to_string(){
+                        if step == 30 && new_state == RunState::RoundWitness.to_string(){
                             println!("resume container {NGINX_PROXY_PREFIX}-2");
 
                             docker
