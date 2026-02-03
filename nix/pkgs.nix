@@ -92,12 +92,15 @@ lib.makeScope pkgs.newScope (
       )
     );
 
+    psyche-website-backend = self.callPackage ../website/backend { };
+
     dockerPackages = import ./docker.nix {
       inherit
         pkgs
         inputs
         rustPackages
         externalRustPackages
+        psyche-website-backend
         ;
     };
 
@@ -127,6 +130,8 @@ lib.makeScope pkgs.newScope (
           solana-mining-pool-idl = self.callPackage ../architectures/decentralized/solana-mining-pool { };
 
           psyche-book = self.callPackage ../psyche-book { inherit rustPackages; };
+
+          inherit psyche-website-backend;
         }
         rustPackages
         externalRustPackages

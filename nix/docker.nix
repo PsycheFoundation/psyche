@@ -3,6 +3,7 @@
   rustPackages,
   inputs,
   externalRustPackages,
+  psyche-website-backend,
 }:
 let
   # We need this because the solana validator require the compiled .so files of the Solana programs,
@@ -200,6 +201,34 @@ let
           "TRITON_=/usr/lib64"
           "PYTHONUNBUFFERED=1"
         ];
+      };
+    };
+
+    docker-psyche-website-backend = pkgs.dockerTools.streamLayeredImage {
+      name = "psyche-website-backend";
+      tag = "latest";
+
+      contents = [
+        pkgs.bashInteractive
+        pkgs.cacert
+        pkgs.coreutils
+        psyche-website-backend
+        (pkgs.runCommand "system-dirs" { } ''
+          mkdir -p $out/tmp $out/data
+          chmod 1777 $out/tmp
+          chmod 755 $out/data
+        '')
+      ];
+
+      config = {
+        Env = [
+          "NODE_ENV=production"
+          "STATE_DIRECTORY=/data"
+        ];
+        Cmd = [ "/bin/backend" ];
+        ExposedPorts = {
+          "3000/tcp" = { };
+        };
       };
     };
   };
