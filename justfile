@@ -196,14 +196,14 @@ stop_test_infra:
 
 # Run inference node with a local model (requires Python venv with vLLM)
 inference-node model="gpt2":
-    LIBTORCH_BYPASS_VERSION_CHECK=1 RUST_LOG=info,psyche_network=debug cargo run --bin psyche-inference-node -- \
+    RUST_LOG=info,psyche_network=debug nix run .#psyche-inference-node -- \
         --model-name {{ model }} \
         --discovery-mode n0 \
         --relay-kind n0
 
 # Run gateway node (HTTP API for inference requests)
 gateway-node:
-    RUST_LOG=info,psyche_network=debug cargo run --bin gateway-node -- \
+    RUST_LOG=info,psyche_network=debug nix run .#bin-psyche-inference-node-gateway-node -- \
         --discovery-mode n0 \
         --relay-kind n0
 
@@ -227,11 +227,14 @@ inference-stack model="gpt2":
     # Kill existing session if it exists
     tmux kill-session -t $SESSION 2>/dev/null || true
 
+    echo "building gateway and inference node..."
+    nix build .#bin-psyche-inference-node-gateway-node .#psyche-inference-node
+
     echo "Starting gateway node (bootstrap node)..."
 
     # Create new session with gateway (starts first to be bootstrap node)
     tmux new-session -d -s $SESSION -n gateway
-    tmux send-keys -t $SESSION:gateway "PSYCHE_GATEWAY_ENDPOINT_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug cargo run --bin gateway-node -- --discovery-mode n0 --relay-kind n0" C-m
+    tmux send-keys -t $SESSION:gateway "PSYCHE_GATEWAY_ENDPOINT_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#bin-psyche-inference-node-gateway-node -- --discovery-mode n0 --relay-kind n0" C-m
 
     # Wait for gateway to start and write peer file
     echo "Waiting for gateway to initialize and write endpoint..."
@@ -256,7 +259,7 @@ inference-stack model="gpt2":
 
     # Create window for inference node (bootstraps from gateway)
     tmux new-window -t $SESSION -n inference
-    tmux send-keys -t $SESSION:inference "PSYCHE_GATEWAY_BOOTSTRAP_FILE=$GATEWAY_PEER_FILE LIBTORCH_BYPASS_VERSION_CHECK=1 RUST_LOG=info,psyche_network=debug cargo run --bin psyche-inference-node -- --model-name {{ model }} --discovery-mode n0 --relay-kind n0" C-m
+    tmux send-keys -t $SESSION:inference "PSYCHE_GATEWAY_BOOTSTRAP_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#psyche-inference-node -- --model-name {{ model }} --discovery-mode n0 --relay-kind n0" C-m
 
     # Wait for inference node to start
     sleep 3
