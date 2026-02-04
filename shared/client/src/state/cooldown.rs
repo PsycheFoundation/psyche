@@ -226,7 +226,7 @@ impl CooldownStepMetadata {
                         }) => {
                             if let Some(token) = hub_token {
                                 Some(UploadInfo::Hub(HubUploadInfo {
-                                    hub_repo: (&repo_id).into(),
+                                    hub_repo: repo_id.to_string(),
                                     hub_token: token,
                                 }))
                             } else {
@@ -237,8 +237,8 @@ impl CooldownStepMetadata {
                         model::Checkpoint::Gcs(model::GcsRepo { bucket, prefix })
                         | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, prefix }) => {
                             Some(UploadInfo::Gcs(GcsUploadInfo {
-                                gcs_bucket: (&bucket).into(),
-                                gcs_prefix: prefix.as_ref().map(|p| p.into()),
+                                gcs_bucket: bucket.to_string(),
+                                gcs_prefix: prefix.as_ref().map(|p| p.to_string()),
                             }))
                         }
                         _ => None,

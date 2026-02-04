@@ -241,7 +241,7 @@ impl App {
                 .map(|token| UploadCredentials::HubToken(token.clone())),
             model::Checkpoint::Gcs(GcsRepo { bucket, .. })
             | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, .. }) => {
-                Some(UploadCredentials::GcsBucket((&bucket).into()))
+                Some(UploadCredentials::GcsBucket(bucket.to_string()))
             }
             _ => None,
         };
