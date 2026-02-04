@@ -7057,6 +7057,7 @@ dependencies = [
  "psyche-core",
  "psyche-python-extension-impl",
  "psyche-solana-coordinator",
+ "psyche-solana-rpc",
  "rstest",
  "serde_json",
  "serial_test",

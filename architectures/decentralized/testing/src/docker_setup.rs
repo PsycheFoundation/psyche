@@ -8,6 +8,7 @@ use bollard::{
     secret::{ContainerSummary, HostConfig},
 };
 use psyche_core::IntegrationTestLogMarker;
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
@@ -60,9 +61,21 @@ pub async fn e2e_testing_setup(
     docker_client: Arc<Docker>,
     init_num_clients: usize,
 ) -> DockerTestCleanup {
+    e2e_testing_setup_with_min(docker_client, init_num_clients, init_num_clients, None).await
+}
+
+/// Setup with explicit min_clients value and optional owner keypair path.
+/// Use this when you need different values (e.g., init_num_clients=0, min_clients=1)
+/// or when you need to provide a specific owner keypair for pause/resume operations.
+pub async fn e2e_testing_setup_with_min(
+    docker_client: Arc<Docker>,
+    init_num_clients: usize,
+    min_clients: usize,
+    owner_keypair_path: Option<&Path>,
+) -> DockerTestCleanup {
     remove_old_client_containers(docker_client).await;
 
-    spawn_psyche_network(init_num_clients).unwrap();
+    spawn_psyche_network_with_min(init_num_clients, min_clients, owner_keypair_path).unwrap();
 
     spawn_ctrl_c_task();
 
@@ -110,7 +123,13 @@ pub async fn e2e_testing_setup_subscription(
     DockerTestCleanup {}
 }
 
-pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, DockerWatcherError> {
+/// Spawn a new client container.
+/// If keypair_path is provided, the keypair file will be mounted into the container
+/// and used as the client's wallet.
+pub async fn spawn_new_client(
+    docker_client: Arc<Docker>,
+    keypair_path: Option<&Path>,
+) -> Result<String, DockerWatcherError> {
     // Set the container name based on the ones that are already running.
     let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
 
@@ -119,6 +138,18 @@ pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, Dock
 
     // Setting extra hosts and optionally nvidia request
     let network_name = "test_psyche-test-network";
+
+    // Build volume binds and extra env vars for keypair
+    let (binds, extra_env) = if let Some(path) = keypair_path {
+        let abs_path = std::fs::canonicalize(path).expect("Failed to canonicalize keypair path");
+        (
+            Some(vec![format!("{}:/tmp/wallet.json:ro", abs_path.display())]),
+            vec!["WALLET_PRIVATE_KEY_PATH=/tmp/wallet.json".to_string()],
+        )
+    } else {
+        (None, vec![])
+    };
+
     let host_config = if has_gpu {
         // Setting nvidia usage parameters
         let device_request = DeviceRequest {
@@ -132,18 +163,20 @@ pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, Dock
             device_requests: Some(vec![device_request]),
             extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
             network_mode: Some(network_name.to_string()),
+            binds,
             ..Default::default()
         }
     } else {
         HostConfig {
             extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
             network_mode: Some(network_name.to_string()),
+            binds,
             ..Default::default()
         }
     };
 
     // Get env vars from config file
-    let env_vars: Vec<String> = std::fs::read_to_string("../../../config/client/.env.local")
+    let mut env_vars: Vec<String> = std::fs::read_to_string("../../../config/client/.env.local")
         .expect("Failed to read env file")
         .lines()
         .filter_map(|line| {
@@ -155,6 +188,9 @@ pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, Dock
             }
         })
         .collect();
+
+    // Add extra env vars for keypair if provided
+    env_vars.extend(extra_env);
 
     let options = Some(CreateContainerOptions {
         name: new_container_name.clone(),
@@ -217,7 +253,7 @@ pub async fn spawn_new_client_with_monitoring(
     docker: Arc<Docker>,
     watcher: &DockerWatcher,
 ) -> Result<String, DockerWatcherError> {
-    let container_id = spawn_new_client(docker.clone()).await.unwrap();
+    let container_id = spawn_new_client(docker.clone(), None).await.unwrap();
     let _monitor_client_2 = watcher
         .monitor_container(
             &container_id,
@@ -234,24 +270,44 @@ pub async fn spawn_new_client_with_monitoring(
 
 // Updated spawn function
 pub fn spawn_psyche_network(init_num_clients: usize) -> Result<(), DockerWatcherError> {
+    spawn_psyche_network_with_min(init_num_clients, init_num_clients, None)
+}
+
+/// Spawn the psyche network with explicit min_clients and optional owner keypair.
+pub fn spawn_psyche_network_with_min(
+    init_num_clients: usize,
+    min_clients: usize,
+    owner_keypair_path: Option<&Path>,
+) -> Result<(), DockerWatcherError> {
     #[cfg(not(feature = "python"))]
     let config_file_path = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
+        .with_min_clients(min_clients)
         .build();
     #[cfg(feature = "python")]
     let config_file_path = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
+        .with_min_clients(min_clients)
         .with_architecture("HfAuto")
-        .with_batch_size(8 * init_num_clients as u32)
+        .with_batch_size(8 * std::cmp::max(init_num_clients, 1) as u32)
         .build();
 
     println!("[+] Config file written to: {}", config_file_path.display());
 
     let mut command = Command::new("just");
-    let output = command
+    let mut cmd = command
         .args(["run_test_infra", &format!("{init_num_clients}")])
         .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::inherit());
+
+    // If owner keypair path is provided, pass it to the setup script
+    if let Some(path) = owner_keypair_path {
+        let abs_path =
+            std::fs::canonicalize(path).expect("Failed to canonicalize owner keypair path");
+        cmd = cmd.env("OWNER_KEYPAIR_PATH", abs_path);
+    }
+
+    let output = cmd
         .output()
         .expect("Failed to spawn docker compose instances");
 
