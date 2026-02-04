@@ -270,8 +270,12 @@ impl TrainArgs {
 }
 
 fn default_checkpoint_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let final_dir = PathBuf::from(home).join(".cache/psyche/local_checkpoints");
+    let final_dir = if std::path::Path::new("/scratch").exists() {
+        PathBuf::from("/scratch/checkpoints")
+    } else {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        PathBuf::from(home).join(".cache/psyche/local_checkpoints")
+    };
     info!("Default checkpoint directory set to {:?}", final_dir);
     final_dir
 }
