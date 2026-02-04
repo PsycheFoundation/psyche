@@ -18,26 +18,19 @@ pub struct ReadyRetry {
 }
 
 /// Messages for the download scheduler actor.
-///
-/// The scheduler manages:
-/// 1. Rate limiting for Parameter downloads (concurrency control)
-/// 2. Retry tracking for all download types (Parameter and DistroResult)
 #[derive(Debug)]
 pub enum SchedulerMessage {
     /// Wait for capacity to start a new Parameter download.
-    /// When granted, the active count is incremented automatically.
-    /// Only used for Parameter downloads, not DistroResult.
     WaitForCapacity { response: oneshot::Sender<()> },
 
     /// Release a download slot. Called when a Parameter download completes or fails.
-    /// This decrements the active count and notifies any waiters.
     ReleaseCapacity,
 
     /// Queue a failed download for retry with backoff.
     /// Works for both Parameter and DistroResult downloads.
     QueueRetry { info: DownloadRetryInfo },
 
-    /// Remove a download from the retry queue (e.g., on successful completion).
+    /// Remove a download from the retry queue.
     RemoveRetry {
         hash: Hash,
         response: oneshot::Sender<Option<DownloadRetryInfo>>,
@@ -50,8 +43,6 @@ pub enum SchedulerMessage {
     },
 
     /// Try to start a due Parameter retry if capacity is available.
-    /// If successful, returns the retry info and reserves the slot.
-    /// If no capacity or no due retries, returns None.
     TryStartParameterRetry {
         response: oneshot::Sender<Option<ReadyRetry>>,
     },
@@ -63,14 +54,12 @@ pub enum SchedulerMessage {
     },
 }
 
-/// Handle to communicate with the download scheduler actor.
 #[derive(Clone)]
 pub struct DownloadSchedulerHandle {
     tx: mpsc::UnboundedSender<SchedulerMessage>,
 }
 
 impl DownloadSchedulerHandle {
-    /// Create a new download scheduler with the specified concurrency limit.
     pub fn new(max_concurrent_downloads: usize) -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
 
@@ -80,8 +69,6 @@ impl DownloadSchedulerHandle {
     }
 
     /// Wait for capacity to start a new download.
-    /// This will block until a slot is available.
-    /// When this returns, the slot has been reserved (active count incremented).
     pub async fn wait_for_capacity(&self) {
         let (response_tx, response_rx) = oneshot::channel();
 
@@ -145,8 +132,6 @@ impl DownloadSchedulerHandle {
     }
 
     /// Try to start a due Parameter retry if capacity is available.
-    /// If successful, the slot is reserved and the retry info is returned.
-    /// The retry is removed from the pending queue.
     pub async fn try_start_parameter_retry(&self) -> Option<ReadyRetry> {
         let (response_tx, response_rx) = oneshot::channel();
 
@@ -163,8 +148,7 @@ impl DownloadSchedulerHandle {
         response_rx.await.unwrap_or(None)
     }
 
-    /// Get all due DistroResult retries (no capacity check).
-    /// These are removed from the retry queue.
+    /// Get all due DistroResult retries.
     pub async fn get_due_distro_retries(&self) -> Vec<ReadyRetry> {
         let (response_tx, response_rx) = oneshot::channel();
 
@@ -261,9 +245,7 @@ impl DownloadSchedulerActor {
                     .map(|(hash, info)| (*hash, info.clone()));
 
                 if let Some((hash, info)) = due_retry {
-                    // Reserve the slot
                     self.active_downloads += 1;
-                    // Remove from pending retries
                     self.pending_retries.remove(&hash);
 
                     let ready = ReadyRetry {
@@ -282,7 +264,6 @@ impl DownloadSchedulerActor {
             SchedulerMessage::GetDueDistroRetries { response } => {
                 let now = Instant::now();
 
-                // Find all due DistroResult retries
                 let due_hashes: Vec<Hash> = self
                     .pending_retries
                     .iter()
@@ -296,7 +277,6 @@ impl DownloadSchedulerActor {
                     .map(|(hash, _)| *hash)
                     .collect();
 
-                // Remove and collect them
                 let ready_retries: Vec<ReadyRetry> = due_hashes
                     .into_iter()
                     .filter_map(|hash| {
@@ -317,10 +297,8 @@ impl DownloadSchedulerActor {
 
     /// Notify the next waiter in queue that capacity is available.
     fn notify_next_waiter(&mut self) {
-        // Try to find a waiter whose channel is still open
         while let Some(waiter) = self.waiting_for_capacity.pop() {
             if waiter.send(()).is_ok() {
-                // Successfully notified, reserve the slot
                 self.active_downloads += 1;
                 info!(
                     "Granted capacity to waiting requester ({}/{} active)",
@@ -328,7 +306,6 @@ impl DownloadSchedulerActor {
                 );
                 return;
             }
-            // Channel closed, try next waiter
         }
     }
 }
