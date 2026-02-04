@@ -490,7 +490,11 @@ where
         });
     }
 
-    pub async fn add_downloadable(&mut self, data: Download, tag: Tag) -> Result<BlobTicket> {
+    pub async fn add_downloadable(
+        &mut self,
+        data: Download,
+        tag: Tag,
+    ) -> Result<(BlobTicket, usize)> {
         let blob_data = postcard::to_allocvec(&data)?;
         let blob_res = self
             .blobs_store
@@ -509,7 +513,7 @@ where
             blob_data.len()
         );
 
-        Ok(blob_ticket)
+        Ok((blob_ticket, blob_data.len()))
     }
 
     /// Removes all the tags from the store that are lower than the target tag.
