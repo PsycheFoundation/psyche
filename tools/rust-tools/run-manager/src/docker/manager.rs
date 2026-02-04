@@ -1,5 +1,6 @@
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anyhow::{Context, Result, anyhow, bail};
+use psyche_coordinator::model::Checkpoint;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -163,17 +164,15 @@ impl RunManager {
             .arg(&self.env_file);
 
         if let Some(dir) = &self.scratch_dir {
-            let scratch_credentials_path = format!("{dir}/application_default_credentials.json");
-            if !Path::new(&scratch_credentials_path).exists() {
-                bail!("GCS credentials were not found in scratch dir");
-            }
-
             cmd.arg("--mount")
-                .arg(format!("type=bind,src={dir},dst=/scratch"))
-                .arg("--env")
-                .arg(
+                .arg(format!("type=bind,src={dir},dst=/scratch"));
+
+            let scratch_credentials_path = format!("{dir}/application_default_credentials.json");
+            if Path::new(&scratch_credentials_path).exists() {
+                cmd.arg("--env").arg(
                     "GOOGLE_APPLICATION_CREDENTIALS=/scratch/application_default_credentials.json",
                 );
+            }
         }
 
         if let Some(Entrypoint { entrypoint, .. }) = entrypoint {
@@ -285,7 +284,48 @@ impl RunManager {
         Ok(())
     }
 
+    /// Validate that required credentials are available based on checkpoint type
+    fn validate_credentials(&self) -> Result<()> {
+        let checkpoint = self.coordinator_client.get_checkpoint_type(&self.run_id)?;
+
+        match checkpoint {
+            Checkpoint::Gcs(_) | Checkpoint::P2PGcs(_) => {
+                // Check if GCS credentials are available
+                let has_gcs_creds = self.scratch_dir.as_ref().map_or(false, |dir| {
+                    Path::new(&format!("{dir}/application_default_credentials.json")).exists()
+                }) || std::env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok();
+
+                if !has_gcs_creds {
+                    bail!(
+                        "This run uses GCS checkpointing but no GCS credentials found. \
+                        Either set GOOGLE_APPLICATION_CREDENTIALS or place \
+                        application_default_credentials.json in SCRATCH_DIR."
+                    );
+                }
+                info!("GCS credentials validated for checkpoint upload");
+            }
+            Checkpoint::Hub(_) | Checkpoint::P2P(_) => {
+                // HF_TOKEN should be in the env file
+                if std::env::var("HF_TOKEN").is_err() {
+                    bail!(
+                        "This run uses HuggingFace checkpointing but HF_TOKEN is not set. \
+                        Please set HF_TOKEN in your environment or env file."
+                    );
+                }
+                info!("HuggingFace token validated for checkpoint upload");
+            }
+            Checkpoint::Ephemeral | Checkpoint::Dummy(_) => {
+                // No credentials needed for ephemeral or dummy checkpoints
+                info!("No checkpoint credentials required for this run");
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn run(&self, entrypoint: Option<Entrypoint>) -> Result<()> {
+        self.validate_credentials()?;
+
         loop {
             let docker_tag = self.prepare_image().await?;
             info!("Starting container...");
