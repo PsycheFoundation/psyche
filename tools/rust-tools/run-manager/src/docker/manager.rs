@@ -291,7 +291,7 @@ impl RunManager {
         match checkpoint {
             Checkpoint::Gcs(_) | Checkpoint::P2PGcs(_) => {
                 // Check if GCS credentials are available
-                let has_gcs_creds = self.scratch_dir.as_ref().map_or(false, |dir| {
+                let has_gcs_creds = self.scratch_dir.as_ref().is_some_and(|dir| {
                     Path::new(&format!("{dir}/application_default_credentials.json")).exists()
                 }) || std::env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok();
 
