@@ -37,11 +37,13 @@ struct Args {
     #[arg(long, default_value = "127.0.0.1:8000")]
     listen_addr: String,
 
-    #[arg(long, default_value = "local")]
-    discovery_mode: String,
+    /// what discovery to use - public n0 or local
+    #[arg(long, env = "IROH_DISCOVERY", default_value = "n0")]
+    discovery_mode: DiscoveryMode,
 
-    #[arg(long, default_value = "disabled")]
-    relay_kind: String,
+    /// what relays to use - public n0 or the private Psyche ones
+    #[arg(long, env = "IROH_RELAY", default_value = "psyche")]
+    relay_kind: RelayKind,
 
     #[arg(long)]
     bootstrap_peer_file: Option<PathBuf>,
@@ -286,16 +288,8 @@ async fn run_gateway() -> Result<()> {
 
     info!("Starting gateway node");
     info!("  HTTP API: http://{}", args.listen_addr);
-
-    let discovery_mode: DiscoveryMode = args
-        .discovery_mode
-        .parse()
-        .map_err(|e| anyhow::anyhow!("Invalid discovery mode: {}", e))?;
-
-    let relay_kind: RelayKind = args
-        .relay_kind
-        .parse()
-        .map_err(|e| anyhow::anyhow!("Invalid relay kind: {}", e))?;
+    info!("  Discovery mode: {:?}", args.discovery_mode);
+    info!("  Relay kind: {:?}", args.relay_kind);
 
     let bootstrap_peers = psyche_inference_node::load_bootstrap_peers(
         args.bootstrap_peer_file.as_ref(),
@@ -314,8 +308,8 @@ async fn run_gateway() -> Result<()> {
         run_id,
         None,
         None,
-        discovery_mode,
-        relay_kind,
+        args.discovery_mode,
+        args.relay_kind,
         bootstrap_peers,
         None,
         allowlist::AllowAll,
