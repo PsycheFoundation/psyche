@@ -57,11 +57,13 @@ struct RunArgs {
     #[arg(long)]
     checkpoint_path: Option<PathBuf>,
 
-    #[arg(long, default_value = "n0")]
-    discovery_mode: String,
+    /// what discovery to use - public n0 or local
+    #[arg(long, env = "IROH_DISCOVERY", default_value = "n0")]
+    discovery_mode: DiscoveryMode,
 
-    #[arg(long, default_value = "n0")]
-    relay_kind: String,
+    /// what relays to use - public n0 or the private Psyche ones
+    #[arg(long, env = "IROH_RELAY", default_value = "psyche")]
+    relay_kind: RelayKind,
 
     #[arg(long)]
     relay_url: Option<String>,
@@ -111,16 +113,6 @@ async fn main() -> Result<()> {
         run_args.gpu_memory_utilization
     );
 
-    let discovery_mode: DiscoveryMode = run_args
-        .discovery_mode
-        .parse()
-        .map_err(|e| anyhow::anyhow!("Invalid discovery mode: {}", e))?;
-
-    let relay_kind: RelayKind = run_args
-        .relay_kind
-        .parse()
-        .map_err(|e| anyhow::anyhow!("Invalid relay kind: {}", e))?;
-
     let capabilities: Vec<String> = if run_args.capabilities.is_empty() {
         vec![]
     } else {
@@ -131,8 +123,8 @@ async fn main() -> Result<()> {
             .collect()
     };
 
-    info!("Discovery mode: {:?}", discovery_mode);
-    info!("Relay kind: {:?}", relay_kind);
+    info!("Discovery mode: {:?}", run_args.discovery_mode);
+    info!("Relay kind: {:?}", run_args.relay_kind);
     info!("Capabilities: {:?}", capabilities);
 
     let bootstrap_peers = psyche_inference_node::load_bootstrap_peers(
@@ -178,8 +170,8 @@ async fn main() -> Result<()> {
         run_id,
         None, // port (let OS choose)
         None, // interface
-        discovery_mode,
-        relay_kind,
+        run_args.discovery_mode,
+        run_args.relay_kind,
         bootstrap_peers,
         None,                // secret key (generate new)
         allowlist::AllowAll, // No allowlist for inference network
