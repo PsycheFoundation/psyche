@@ -224,6 +224,7 @@ let
         Env = [
           "NODE_ENV=production"
           "STATE_DIRECTORY=/data"
+          "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
         ];
         Cmd = [ "/bin/backend" ];
         ExposedPorts = {
