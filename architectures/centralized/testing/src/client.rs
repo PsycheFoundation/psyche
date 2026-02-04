@@ -33,7 +33,6 @@ impl Client {
             client_app_params.server_addr,
             None,
             client_app_params.train_args,
-            true,
         )
         .await
         .unwrap();
@@ -58,7 +57,6 @@ impl Client {
             client_app_params.server_addr,
             None,
             client_app_params.train_args,
-            true,
         )
         .await
         .unwrap();

@@ -98,7 +98,10 @@ pub async fn build_app(
     let solana_pubkey = wallet_keypair.pubkey();
     let wandb_info = p.wandb_info(format!("{}-{solana_pubkey}", p.run_id))?;
 
-    let metrics = Arc::new(ClientMetrics::new(p.metrics_local_port));
+    let metrics = Arc::new(ClientMetrics::new(
+        p.metrics_local_port,
+        Some(Duration::from_secs(30)),
+    ));
 
     let allowlist = allowlist::AllowDynamic::new();
 
