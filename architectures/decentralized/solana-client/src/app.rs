@@ -11,12 +11,12 @@ use anchor_client::{
 };
 use anyhow::{Result, anyhow};
 use psyche_client::{
-    Client, ClientTUI, ClientTUIState, GcsUploadInfo, HubUploadInfo, NC, RunInitConfig, TrainArgs,
-    UploadInfo, read_identity_secret_key,
+    Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, UploadCredentials,
+    read_identity_secret_key,
 };
 use psyche_coordinator::{
     ClientState, Coordinator, CoordinatorError, RunState,
-    model::{self, GcsRepo, HubRepo, LLM, Model},
+    model::{self, GcsRepo, LLM, Model},
 };
 use psyche_core::sha256;
 use psyche_metrics::ClientMetrics;
@@ -232,28 +232,24 @@ impl App {
 
         // sanity checks
         let Model::LLM(LLM { checkpoint, .. }) = start_coordinator_state.model;
-        let upload_info = match checkpoint {
-            model::Checkpoint::Hub(HubRepo { repo_id, revision })
-            | model::Checkpoint::P2P(HubRepo { repo_id, revision }) => {
-                Some(UploadInfo::Hub(HubUploadInfo {
-                    hub_repo: (&repo_id).into(),
-                    hub_token: (&revision.unwrap_or_default()).into(),
-                }))
-            }
-            model::Checkpoint::Gcs(GcsRepo { bucket, prefix })
-            | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, prefix }) => {
-                Some(UploadInfo::Gcs(GcsUploadInfo {
-                    gcs_bucket: (&bucket).into(),
-                    gcs_prefix: Some((&prefix.unwrap_or_default()).into()),
-                }))
+        let credentials = match checkpoint {
+            model::Checkpoint::Hub(_) | model::Checkpoint::P2P(_) => self
+                .state_options
+                .checkpoint_config
+                .hub_token
+                .as_ref()
+                .map(|token| UploadCredentials::HubToken(token.clone())),
+            model::Checkpoint::Gcs(GcsRepo { bucket, .. })
+            | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, .. }) => {
+                Some(UploadCredentials::GcsBucket((&bucket).into()))
             }
             _ => None,
         };
-        if let Some(ref info) = upload_info {
+        if let Some(ref creds) = credentials {
             // Validate basic credentials
-            info.validate_credentials().await?;
+            creds.validate().await?;
             // For GCS, also validate bucket permissions
-            info.validate_gcs_bucket_permissions().await?;
+            creds.validate_gcs_bucket_permissions().await?;
         }
 
         // if we're already in "WaitingForMembers" we won't get an update saying that

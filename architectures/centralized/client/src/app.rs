@@ -3,9 +3,9 @@ use bytemuck::Zeroable;
 use google_cloud_storage::client::Storage;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
 use psyche_client::{
-    Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
+    Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, UploadCredentials,
+    read_identity_secret_key,
 };
-use psyche_client::{GcsUploadInfo, HubUploadInfo, UploadInfo};
 use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::{Coordinator, HealthChecks};
 use psyche_metrics::ClientMetrics;
@@ -179,31 +179,25 @@ impl App {
         // Sanity checks using the checkpoint config from state_options, not the zeroed coordinator state.
         // The coordinator_state is only populated after receiving the first ServerToClientMessage::Coordinator.
         if !self.skip_upload_check {
-            let upload_info = match &state_options.checkpoint_config {
-                config if config.skip_upload => Some(UploadInfo::Dummy()),
+            let credentials = match &state_options.checkpoint_config {
+                config if config.skip_upload => Some(UploadCredentials::Skip),
                 config => {
                     // Use HF_TOKEN from checkpoint_config for Hub uploads
                     if let Some(ref hub_token) = config.hub_token {
-                        Some(UploadInfo::Hub(HubUploadInfo {
-                            hub_repo: String::new(), // Will be validated when actual checkpoint is received
-                            hub_token: hub_token.clone(),
-                        }))
+                        Some(UploadCredentials::HubToken(hub_token.clone()))
                     } else {
                         // Check if GCS credentials are available by attempting to create a client
                         match Storage::builder().build().await {
-                            Ok(_) => Some(UploadInfo::Gcs(GcsUploadInfo {
-                                gcs_bucket: String::new(), // Will be validated when actual checkpoint is received
-                                gcs_prefix: None,
-                            })),
+                            Ok(_) => Some(UploadCredentials::Gcs),
                             Err(_) => None,
                         }
                     }
                 }
             };
 
-            match upload_info {
-                Some(info) => {
-                    info.validate_credentials().await?;
+            match credentials {
+                Some(creds) => {
+                    creds.validate().await?;
                 }
                 None => {
                     anyhow::bail!(

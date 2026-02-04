@@ -10,6 +10,7 @@ use tch::TchError;
 use thiserror::Error;
 use tokio::task::JoinHandle;
 
+/// Upload info with full details needed for actual uploads.
 #[derive(Debug, Clone)]
 pub enum UploadInfo {
     Hub(HubUploadInfo),
@@ -17,17 +18,30 @@ pub enum UploadInfo {
     Dummy(),
 }
 
-impl UploadInfo {
-    /// Validates that the read and write credentials are valid.
-    pub async fn validate_credentials(&self) -> anyhow::Result<()> {
+/// Credentials for upload validation without requiring full upload details.
+#[derive(Debug, Clone)]
+pub enum UploadCredentials {
+    /// HuggingFace Hub token for validation
+    HubToken(String),
+    /// GCS credentials (validated via environment variable)
+    Gcs,
+    /// GCS credentials with bucket for full permission validation
+    GcsBucket(String),
+    /// Skip validation (for testing)
+    Skip,
+}
+
+impl UploadCredentials {
+    /// Validates that the upload credentials are valid.
+    pub async fn validate(&self) -> anyhow::Result<()> {
         match self {
-            UploadInfo::Hub(HubUploadInfo { hub_token, .. }) => {
+            UploadCredentials::HubToken(token) => {
                 let _api = hf_hub::api::tokio::ApiBuilder::new()
-                    .with_token(Some(hub_token.clone()))
+                    .with_token(Some(token.clone()))
                     .build()?;
                 Ok(())
             }
-            UploadInfo::Gcs(_) => {
+            UploadCredentials::Gcs | UploadCredentials::GcsBucket(_) => {
                 let _storage = Storage::builder()
                     .build()
                     .await
@@ -39,14 +53,14 @@ impl UploadInfo {
                     .map_err(|e| anyhow::anyhow!("Failed to create GCS control client: {}", e))?;
                 Ok(())
             }
-            UploadInfo::Dummy() => Ok(()),
+            UploadCredentials::Skip => Ok(()),
         }
     }
 
     /// Validates GCS bucket permissions by testing IAM permissions.
-    /// Only applicable for GCS uploads; returns Ok for other upload types.
+    /// Only applicable for GcsBucket variant; returns Ok for other variants.
     pub async fn validate_gcs_bucket_permissions(&self) -> anyhow::Result<()> {
-        if let UploadInfo::Gcs(GcsUploadInfo { gcs_bucket, .. }) = self {
+        if let UploadCredentials::GcsBucket(bucket) = self {
             let client = StorageControl::builder().build().await?;
 
             let permissions_to_test = vec![
@@ -56,7 +70,7 @@ impl UploadInfo {
                 "storage.objects.delete",
             ];
 
-            let resource = format!("projects/_/buckets/{}", gcs_bucket);
+            let resource = format!("projects/_/buckets/{}", bucket);
             let perms_vec: Vec<String> =
                 permissions_to_test.iter().map(|s| s.to_string()).collect();
             let response = client
@@ -72,11 +86,25 @@ impl UploadInfo {
             if !correct_permissions {
                 anyhow::bail!(
                     "GCS bucket {} does not have the required permissions for checkpoint upload. Make sure to set GOOGLE_APPLICATION_CREDENTIALS environment variable correctly and have the correct permissions to the bucket.",
-                    gcs_bucket
+                    bucket
                 )
             }
         }
         Ok(())
+    }
+}
+
+impl From<&UploadInfo> for UploadCredentials {
+    fn from(info: &UploadInfo) -> Self {
+        match info {
+            UploadInfo::Hub(HubUploadInfo { hub_token, .. }) => {
+                UploadCredentials::HubToken(hub_token.clone())
+            }
+            UploadInfo::Gcs(GcsUploadInfo { gcs_bucket, .. }) => {
+                UploadCredentials::GcsBucket(gcs_bucket.clone())
+            }
+            UploadInfo::Dummy() => UploadCredentials::Skip,
+        }
     }
 }
 
