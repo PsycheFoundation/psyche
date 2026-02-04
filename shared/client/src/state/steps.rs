@@ -168,234 +168,230 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
     }
 
     pub fn try_send_opportunistic_witness(&mut self) -> Result<(), OpportunisticWitnessError> {
-        if self.current_round.committee_info.is_some()
-            && !matches!(
-                self.coordinator_state.run_state,
-                RunState::Warmup | RunState::Cooldown
-            )
-        {
-            // trace!("Checking for opprotunistic witness with committee info");
-            let committee_info = self.current_round.committee_info.as_ref().unwrap();
-            if let ActiveStep::Training(step) = &self.active_step {
-                let all_prev_round_batches_are_trained = self
-                    .previous_round
-                    .batch_ids_not_yet_trained_on
-                    .lock()
-                    .unwrap()
-                    .is_none();
-
-                if step.finished() && all_prev_round_batches_are_trained {
-                    // Finished training and finished downloading the previous round's results
-                    // (or we're on the first or last which has nothing to download)
-
-                    // check that all batches from the previous round are done deserializing
-                    {
-                        let prev_round_downloads = self.previous_round.downloads.lock().unwrap();
-                        for batch in &*prev_round_downloads {
-                            match batch.1 {
-                                // this batch is done deserializing, we can witness on it now.
-                                PayloadState::Deserializing(thread) if thread.is_finished() => (),
-                                // we're still downloading or deserializing this batch, so we're not ready to send an opportunistic witness.
-                                // this function will get called again when a deserialize finishes.
-                                _ => return Ok(()),
-                            }
-                        }
-                    }
-
-                    if !self.current_round.sent_finished {
-                        // okay, we're all done. we've trained and downloaded everything.
-                        // send our early "finished message"
-
-                        let merkle = MerkleTree::new(&self.previous_round.broadcasts)
-                            .get_root()
-                            .cloned()
-                            .unwrap_or(MerkleRoot::default());
-
-                        self.tx_broadcast_finished
-                            .send(FinishedBroadcast {
-                                step: self.current_round.step,
-                                commitment_data_hash: sha256(&merkle.inner),
-                                merkle,
-                                proof: committee_info.0,
-                                warmup: false,
-                            })
-                            .map_err(|_| OpportunisticWitnessError::Finished)?;
-
-                        self.current_round.sent_finished = true;
-
-                        return Ok(());
-                    }
-
-                    // if we get here we've sent our own finished message.
-                    // now we just need to wait until we've received everyone else's finished
-                    let unfinished_clients: Vec<_> = self
-                        .coordinator_state
-                        .epoch_state
-                        .clients
-                        .iter()
-                        .filter_map(|client| {
-                            if self.current_round.clients_finished.contains_key(&client.id) {
-                                None
-                            } else {
-                                Some(client.id)
-                            }
-                        })
-                        .collect();
-                    if !unfinished_clients.is_empty() {
-                        return Ok(());
-                    }
-
-                    if let Some(witness) = WitnessStep::get_witness_to_send(
-                        &mut self.previous_round,
-                        &mut self.current_round,
-                    ) {
-                        info!(target: "witness", id = %self.identity, merkle=witness.broadcast_merkle.fmt_short(), "Sending opportunistic witness");
-
-                        let metadata = self
-                            .stats_logger
-                            .lock()
-                            .map_err(|_| OpportunisticWitnessError::StatsLoggerMutex)?
-                            .get_witness_metadata(&self.coordinator_state);
-                        self.tx_opportunistic_data
-                            .send(OpportunisticData::WitnessStep(witness, metadata))
-                            .map_err(|_| OpportunisticWitnessError::Send)?;
-                    }
-                }
-            }
-        } else if self.coordinator_state.run_state == RunState::Warmup {
-            if !self.sent_warmup_finished {
-                let merkle = MerkleTree::new(&self.current_round.broadcasts)
-                    .get_root()
-                    .cloned()
-                    .unwrap_or(MerkleRoot::default());
-
-                info!(name: "send_warmup_broadcast", epoch = self.coordinator_state.progress.epoch, "Sending warmup ready broadcast");
-                self.tx_broadcast_finished
-                    .send(FinishedBroadcast {
-                        step: 0,
-                        commitment_data_hash: sha256(&merkle.inner),
-                        merkle,
-                        proof: Default::default(),
-                        warmup: true,
-                    })
-                    .map_err(|_| OpportunisticWitnessError::Finished)?;
-
-                self.sent_warmup_finished = true;
-
-                return Ok(());
-            }
-
-            let unfinished_clients: Vec<_> = self
-                .coordinator_state
-                .epoch_state
-                .clients
-                .iter()
-                .filter_map(|client| {
-                    if self.current_round.clients_finished.contains_key(&client.id) {
-                        None
-                    } else {
-                        Some(client.id)
-                    }
-                })
-                .collect();
-            if !unfinished_clients.is_empty() {
-                trace!(
-                    unfinished_clients = ?unfinished_clients,
-                    "Still waiting on {} warmup finish broadcasts",
-                    unfinished_clients.len()
-                );
-                return Ok(());
-            }
-
-            if !self.sent_warmup_witness {
-                info!(name: "send_warmup_witness", epoch = self.coordinator_state.progress.epoch, "Sending warmup witness");
-
-                let merkle = MerkleTree::new(&self.current_round.broadcasts)
-                    .get_root()
-                    .cloned()
-                    .unwrap_or(MerkleRoot::default());
-
-                if let Some(index) = self
-                    .coordinator_state
-                    .epoch_state
-                    .clients
-                    .iter()
-                    .position(|x| x.id == self.identity)
-                {
-                    // coordinator needs to check the index for duplicate detection
-                    let index = index as u64;
-                    let witness = Witness {
-                        proof: WitnessProof {
-                            position: index,
-                            index,
-                            witness: Default::default(),
-                        },
-                        participant_bloom: Default::default(),
-                        broadcast_bloom: Default::default(),
-                        broadcast_merkle: merkle,
-                    };
-                    self.tx_opportunistic_data
-                        .send(OpportunisticData::WarmupStep(witness))
-                        .map_err(|_| OpportunisticWitnessError::Send)?;
-                };
-
-                self.sent_warmup_witness = true;
-            }
-        } else if self.coordinator_state.run_state == RunState::Cooldown {
-            if let ActiveStep::Cooldown(active_step) = &self.active_step {
-                if !active_step.checkpoint_complete() || self.sent_cooldown_witness {
-                    return Ok(());
-                }
-            }
-            let client_index = self
-                .coordinator_state
-                .epoch_state
-                .clients
-                .iter()
-                .position(|x| x.id == self.identity)
-                .unwrap();
-
-            let checkpointer_selection =
-                CheckpointerSelection::from_coordinator(&self.coordinator_state, 0)
-                    .map_err(|_| OpportunisticWitnessError::Send)?;
-
-            if !checkpointer_selection.is_checkpointer(
-                client_index as u64,
-                self.coordinator_state.epoch_state.clients.len() as u64,
-            ) {
-                return Ok(());
-            }
-
-            let merkle = MerkleTree::new(&self.current_round.broadcasts)
-                .get_root()
-                .cloned()
-                .unwrap_or(MerkleRoot::default());
-
-            if let Some(index) = self
-                .coordinator_state
-                .epoch_state
-                .clients
-                .iter()
-                .position(|x| x.id == self.identity)
-            {
-                // coordinator needs to check the index for duplicate detection
-                let index = index as u64;
-                let witness = Witness {
-                    proof: WitnessProof {
-                        position: index,
-                        index,
-                        witness: Default::default(),
-                    },
-                    participant_bloom: Default::default(),
-                    broadcast_bloom: Default::default(),
-                    broadcast_merkle: merkle,
-                };
-                self.tx_opportunistic_data
-                    .send(OpportunisticData::CooldownStep(witness))
-                    .map_err(|_| OpportunisticWitnessError::Send)?;
-                self.sent_cooldown_witness = true;
-            };
+        match self.coordinator_state.run_state {
+            RunState::Warmup => self.try_send_warmup_witness(),
+            RunState::Cooldown => self.try_send_cooldown_witness(),
+            _ => self.try_send_training_witness(),
         }
+    }
+
+    fn all_clients_finished(&self) -> bool {
+        self.coordinator_state
+            .epoch_state
+            .clients
+            .iter()
+            .all(|client| self.current_round.clients_finished.contains_key(&client.id))
+    }
+
+    fn get_unfinished_clients(&self) -> Vec<T> {
+        self.coordinator_state
+            .epoch_state
+            .clients
+            .iter()
+            .filter(|client| !self.current_round.clients_finished.contains_key(&client.id))
+            .map(|client| client.id)
+            .collect()
+    }
+
+    fn get_client_index(&self) -> Option<u64> {
+        self.coordinator_state
+            .epoch_state
+            .clients
+            .iter()
+            .position(|x| x.id == self.identity)
+            .map(|i| i as u64)
+    }
+
+    fn get_merkle_root(&self, broadcasts: &[[u8; 32]]) -> MerkleRoot {
+        MerkleTree::new(broadcasts)
+            .get_root()
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    fn try_send_training_witness(&mut self) -> Result<(), OpportunisticWitnessError> {
+        let Some(committee_info) = self.current_round.committee_info.as_ref() else {
+            return Ok(());
+        };
+        let committee_proof = committee_info.0;
+
+        let ActiveStep::Training(step) = &self.active_step else {
+            return Ok(());
+        };
+
+        if !step.finished() {
+            return Ok(());
+        }
+
+        let all_prev_round_batches_trained = self
+            .previous_round
+            .batch_ids_not_yet_trained_on
+            .lock()
+            .unwrap()
+            .is_none();
+
+        if !all_prev_round_batches_trained {
+            return Ok(());
+        }
+
+        // Check that all batches from the previous round are done deserializing
+        {
+            let prev_round_downloads = self.previous_round.downloads.lock().unwrap();
+            for batch in &*prev_round_downloads {
+                match batch.1 {
+                    PayloadState::Deserializing(thread) if thread.is_finished() => (),
+                    // Still downloading or deserializing - will be called again when done
+                    _ => return Ok(()),
+                }
+            }
+        }
+
+        // Send our early "finished message" if we haven't yet
+        if !self.current_round.sent_finished {
+            let merkle = self.get_merkle_root(&self.previous_round.broadcasts);
+
+            self.tx_broadcast_finished
+                .send(FinishedBroadcast {
+                    step: self.current_round.step,
+                    commitment_data_hash: sha256(&merkle.inner),
+                    merkle,
+                    proof: committee_proof,
+                    warmup: false,
+                })
+                .map_err(|_| OpportunisticWitnessError::Finished)?;
+
+            self.current_round.sent_finished = true;
+            return Ok(());
+        }
+
+        // Wait until we've received everyone else's finished message
+        if !self.all_clients_finished() {
+            return Ok(());
+        }
+
+        // Send witness if available
+        if let Some(witness) =
+            WitnessStep::get_witness_to_send(&mut self.previous_round, &mut self.current_round)
+        {
+            info!(target: "witness", id = %self.identity, merkle=witness.broadcast_merkle.fmt_short(), "Sending opportunistic witness");
+
+            let metadata = self
+                .stats_logger
+                .lock()
+                .map_err(|_| OpportunisticWitnessError::StatsLoggerMutex)?
+                .get_witness_metadata(&self.coordinator_state);
+
+            self.tx_opportunistic_data
+                .send(OpportunisticData::WitnessStep(witness, metadata))
+                .map_err(|_| OpportunisticWitnessError::Send)?;
+        }
+
+        Ok(())
+    }
+
+    fn try_send_warmup_witness(&mut self) -> Result<(), OpportunisticWitnessError> {
+        // Send warmup finished broadcast if we haven't yet
+        if !self.sent_warmup_finished {
+            let merkle = self.get_merkle_root(&self.current_round.broadcasts);
+
+            info!(name: "send_warmup_broadcast", epoch = self.coordinator_state.progress.epoch, "Sending warmup ready broadcast");
+            self.tx_broadcast_finished
+                .send(FinishedBroadcast {
+                    step: 0,
+                    commitment_data_hash: sha256(&merkle.inner),
+                    merkle,
+                    proof: Default::default(),
+                    warmup: true,
+                })
+                .map_err(|_| OpportunisticWitnessError::Finished)?;
+
+            self.sent_warmup_finished = true;
+            return Ok(());
+        }
+
+        // Wait for all clients to finish
+        let unfinished_clients = self.get_unfinished_clients();
+        if !unfinished_clients.is_empty() {
+            trace!(
+                unfinished_clients = ?unfinished_clients,
+                "Still waiting on {} warmup finish broadcasts",
+                unfinished_clients.len()
+            );
+            return Ok(());
+        }
+
+        // Send warmup witness if we haven't yet
+        if self.sent_warmup_witness {
+            return Ok(());
+        }
+
+        info!(name: "send_warmup_witness", epoch = self.coordinator_state.progress.epoch, "Sending warmup witness");
+
+        let merkle = self.get_merkle_root(&self.current_round.broadcasts);
+        let Some(index) = self.get_client_index() else {
+            return Ok(());
+        };
+
+        let witness = Witness {
+            proof: WitnessProof {
+                position: index,
+                index,
+                witness: Default::default(),
+            },
+            participant_bloom: Default::default(),
+            broadcast_bloom: Default::default(),
+            broadcast_merkle: merkle,
+        };
+
+        self.tx_opportunistic_data
+            .send(OpportunisticData::WarmupStep(witness))
+            .map_err(|_| OpportunisticWitnessError::Send)?;
+
+        self.sent_warmup_witness = true;
+        Ok(())
+    }
+
+    fn try_send_cooldown_witness(&mut self) -> Result<(), OpportunisticWitnessError> {
+        if let ActiveStep::Cooldown(active_step) = &self.active_step {
+            if !active_step.checkpoint_complete() || self.sent_cooldown_witness {
+                return Ok(());
+            }
+        }
+
+        // Original behavior: panic if client not found (should never happen)
+        let client_index = self
+            .get_client_index()
+            .expect("client should be in epoch_state.clients");
+
+        let checkpointer_selection =
+            CheckpointerSelection::from_coordinator(&self.coordinator_state, 0)
+                .map_err(|_| OpportunisticWitnessError::Send)?;
+
+        if !checkpointer_selection.is_checkpointer(
+            client_index,
+            self.coordinator_state.epoch_state.clients.len() as u64,
+        ) {
+            return Ok(());
+        }
+
+        let merkle = self.get_merkle_root(&self.current_round.broadcasts);
+
+        let witness = Witness {
+            proof: WitnessProof {
+                position: client_index,
+                index: client_index,
+                witness: Default::default(),
+            },
+            participant_bloom: Default::default(),
+            broadcast_bloom: Default::default(),
+            broadcast_merkle: merkle,
+        };
+
+        self.tx_opportunistic_data
+            .send(OpportunisticData::CooldownStep(witness))
+            .map_err(|_| OpportunisticWitnessError::Send)?;
+
+        self.sent_cooldown_witness = true;
         Ok(())
     }
 
