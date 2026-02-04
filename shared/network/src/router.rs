@@ -56,7 +56,7 @@ mod tests {
     use std::time::Duration;
 
     use futures_util::future::join_all;
-    use iroh::{Endpoint, SecretKey, discovery::static_provider::StaticProvider};
+    use iroh::{Endpoint, SecretKey, address_lookup::memory::MemoryLookup};
     use iroh_blobs::store::mem::MemStore;
     use iroh_gossip::{
         api::{Event, Message},
@@ -131,10 +131,10 @@ mod tests {
             keys.into_iter()
                 .map(|k| async {
                     let allowlist = AllowDynamic::with_nodes(pubkeys.clone());
-                    let static_discovery = StaticProvider::new();
+                    let static_discovery = MemoryLookup::new();
                     let endpoint = Endpoint::builder()
                         .secret_key(k)
-                        .discovery(static_discovery.clone())
+                        .address_lookup(static_discovery.clone())
                         .bind()
                         .await?;
                     let blobs = MemStore::new();

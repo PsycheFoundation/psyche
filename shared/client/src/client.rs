@@ -659,9 +659,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                             endpoint_id: info.id.to_string(),
                                             connection_type: match info.path {
                                                 psyche_network::ConnectionType::None => unreachable!(),
-                                                psyche_network::ConnectionType::Direct(..) => psyche_metrics::ConnectionType::Direct,
-                                                psyche_network::ConnectionType::Relay(..) => psyche_metrics::ConnectionType::Relay,
-                                                psyche_network::ConnectionType::Mixed(..) => psyche_metrics::ConnectionType::Mixed,
+                                                psyche_network::ConnectionType::Direct => psyche_metrics::ConnectionType::Direct,
+                                                psyche_network::ConnectionType::Relay => psyche_metrics::ConnectionType::Relay,
+                                                psyche_network::ConnectionType::Mixed => psyche_metrics::ConnectionType::Mixed,
                                             },
                                             latency: info.latency as f32
                                         }

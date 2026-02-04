@@ -1,7 +1,7 @@
-use crate::{NetworkConnection, Networkable, P2PEndpointInfo, util::fmt_bytes};
+use crate::{ConnectionType, NetworkConnection, Networkable, P2PEndpointInfo, util::fmt_bytes};
 
 use futures_util::StreamExt;
-use iroh::{EndpointId, endpoint::ConnectionType};
+use iroh::EndpointId;
 use psyche_tui::ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
