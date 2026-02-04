@@ -14,6 +14,7 @@
   - [General workflow](./explain/general-workflow.md)
   - [Data provider](./explain/data-provider.md)
   - [Model sharing](./explain/model-sharing.md)
+  - [GCS Checkpoints](./explain/gcs-checkpoints.md)
   - [Rewards](./explain/rewards.md)
   - [Glossary](./explain/glossary.md)
 
