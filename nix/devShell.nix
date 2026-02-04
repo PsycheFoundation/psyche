@@ -40,6 +40,9 @@
             packages =
               with pkgs;
               [
+                # to fix weird escapes
+                bashInteractive
+
                 # for local-testnet
                 tmux
                 nvtopPackages.full
@@ -82,6 +85,7 @@
               ++ rustWorkspaceArgs.nativeBuildInputs;
 
             shellHook = ''
+              export SHELL=${pkgs.bashInteractive}/bin/bash
               source ${lib.getExe config.agenix-shell.installationScript}
               ${config.pre-commit.installationScript}
             ''
