@@ -1,8 +1,10 @@
 # Script for pushing the client image to Docker Hub during the CI pipeline.
+# Uses skopeo to stream the image directly to the registry without loading
+# into Docker's local storage, avoiding double disk usage.
 set -eu
 
 IMAGE_PATH=$(cat image-path.txt)
-"$IMAGE_PATH" | docker load
-IMAGE_ID=$(docker images -q | head -n1)
-docker tag $IMAGE_ID $DOCKER_REPOSITORY:latest
-docker push $DOCKER_REPOSITORY
+"$IMAGE_PATH" | skopeo copy \
+    --dest-creds "${REGISTRY_USERNAME}:${REGISTRY_PASSWORD}" \
+    docker-archive:/dev/stdin \
+    "docker://${DOCKER_REPOSITORY}:latest"
