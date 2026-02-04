@@ -12,6 +12,17 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Install GitHub CLI
+      shell: bash
+      run: |
+        if ! command -v gh &> /dev/null; then
+          echo "Installing GitHub CLI..."
+          sudo apt update
+          sudo apt install gh -y
+        else
+          echo "GitHub CLI already installed"
+        fi
+
     - name: Wait for All Garnix checks
       shell: bash
       env:
@@ -26,13 +37,13 @@ runs:
         for i in $(seq 1 $TOTAL_ATTEMPTS); do
           if [ -z "$GARNIX_SUITE_ID" ]; then
             GARNIX_SUITE_ID=$(gh api repos/${{ github.repository }}/commits/$SHA/check-suites --jq '.check_suites[] | select(.app.name == "Garnix CI") | .id')
-            
+
             if [ -z "$GARNIX_SUITE_ID" ]; then
               echo "No Garnix CI check suite found yet, waiting... (attempt $i/$TOTAL_ATTEMPTS)"
               sleep 10
               continue
             fi
-            
+
             echo "Found Garnix CI check suite: $GARNIX_SUITE_ID"
           fi
           
