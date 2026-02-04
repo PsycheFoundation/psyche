@@ -967,7 +967,7 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
 /// 4. The P2P-received model is loaded into the backend
 #[cfg(feature = "python")]
 #[rstest]
-#[case("HfLlama")]
+#[case("HfAuto")]
 #[case("Torchtitan")]
 #[trace]
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
