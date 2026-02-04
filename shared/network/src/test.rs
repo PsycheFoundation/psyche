@@ -134,7 +134,7 @@ impl App {
             .add_downloadable(DistroResultBlob { step, data }, Tag::from(step.to_string()))
             .await
         {
-            Ok(bt) => {
+            Ok((bt, _)) => {
                 println!("Uploaded blob");
                 bt
             }
@@ -193,7 +193,7 @@ async fn spawn_new_node(
         peers,
         None,
         allowlist::AllowAll,
-        Arc::new(ClientMetrics::new(None)),
+        Arc::new(ClientMetrics::new(None, None)),
         None,
     )
     .await?;
