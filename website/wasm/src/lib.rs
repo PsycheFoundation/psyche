@@ -1,3 +1,4 @@
+use psyche_coordinator::model::LLMArchitecture;
 use psyche_core::LearningRateSchedule;
 use psyche_solana_coordinator::{ClientId, CoordinatorAccount, coordinator_account_from_bytes};
 use serde::ser::Serialize;
@@ -38,3 +39,14 @@ pub struct DummyCoordinatorAccount(CoordinatorAccount);
 #[derive(TS)]
 #[ts(export)]
 pub struct DummyClientId(ClientId);
+
+// Export types that are now in ModelExtraData but still needed by the website
+#[allow(dead_code)]
+#[derive(TS)]
+#[ts(export)]
+pub struct DummyLLMArchitecture(LLMArchitecture);
+
+#[allow(dead_code)]
+#[derive(TS)]
+#[ts(export)]
+pub struct DummyLearningRateSchedule(LearningRateSchedule);

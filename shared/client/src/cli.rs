@@ -1,8 +1,9 @@
 use crate::{CheckpointConfig, WandBInfo};
 
 use crate::UploadInfo;
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::Args;
+use psyche_coordinator::model_extra_data::ModelExtraData;
 use psyche_data_provider::{GcsUploadInfo, HubUploadInfo};
 use psyche_eval::tasktype_from_name;
 use psyche_modeling::Devices;
@@ -204,6 +205,11 @@ pub struct TrainArgs {
 
     #[clap(long, default_value_t = 3, env)]
     pub keep_steps: u32,
+
+    /// Path to a TOML config file. If provided, uses this config instead of fetching from the remote repo.
+    /// Only meant for testing/debugging.
+    #[clap(long, env, hide = true)]
+    pub model_extra_data_toml: Option<PathBuf>,
 }
 
 impl TrainArgs {
@@ -326,6 +332,32 @@ impl TrainArgs {
             })
             .collect();
         result
+    }
+
+    pub fn model_extra_data_override(&self) -> Result<Option<ModelExtraData>> {
+        let Some(path) = &self.model_extra_data_toml else {
+            return Ok(None);
+        };
+
+        let content = std::fs::read_to_string(path)
+            .with_context(|| format!("failed to read model extra data TOML file {:?}", path))?;
+
+        let toml_value: toml::Value = toml::from_str(&content)
+            .with_context(|| format!("failed to parse TOML file {:?}", path))?;
+
+        let model_extra_data_table = toml_value
+            .get("model_extra_data")
+            .ok_or_else(|| anyhow::anyhow!("missing [model_extra_data] section in {:?}", path))?;
+
+        let config: ModelExtraData =
+            model_extra_data_table.clone().try_into().with_context(|| {
+                format!(
+                    "failed to deserialize model_extra_data from TOML file {:?}",
+                    path
+                )
+            })?;
+
+        Ok(Some(config))
     }
 }
 

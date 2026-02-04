@@ -7,9 +7,12 @@ use clap::Args;
 use psyche_coordinator::{
     CoordinatorConfig, CoordinatorProgress, get_data_index_for_step,
     model::{Checkpoint, Model},
+    model_extra_data::{CONFIG_PREFIX, MODEL_CONFIG_FILENAME, ModelExtraData},
 };
+use psyche_data_provider::upload_json_to_gcs;
 use psyche_solana_treasurer::logic::RunUpdateParams;
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 use crate::{SolanaBackend, instructions};
 
@@ -40,6 +43,12 @@ pub struct CommandUpdateConfig {
     // end metadata
     #[clap(long, env)]
     pub client_version: Option<String>,
+    #[clap(long, default_value_t = false, hide = true)]
+    pub skip_upload_model_extra_data: bool,
+
+    /// HuggingFace token for uploading to Hub repos (can also use HF_TOKEN env var)
+    #[clap(long, env = "HF_TOKEN")]
+    pub hub_token: Option<String>,
 }
 
 #[async_trait]
@@ -56,6 +65,8 @@ impl Command for CommandUpdateConfig {
             num_parameters,
             vocab_size,
             client_version,
+            skip_upload_model_extra_data,
+            hub_token,
         } = self;
 
         let main_authority = backend.get_payer();
@@ -69,12 +80,13 @@ impl Command for CommandUpdateConfig {
             .get_coordinator_account(&coordinator_account)
             .await?;
 
-        let (config, mut model) = match config_path {
+        let (config, mut model, model_extra_data) = match config_path {
             Some(config_path) => {
                 #[derive(Serialize, Deserialize)]
                 struct State {
                     pub config: CoordinatorConfig,
                     pub model: Model,
+                    pub model_extra_data: ModelExtraData,
                 }
                 let state: State = toml::from_str(std::str::from_utf8(
                     &std::fs::read(&config_path).with_context(|| {
@@ -83,9 +95,13 @@ impl Command for CommandUpdateConfig {
                 )?)
                 .with_context(|| format!("failed to parse config toml file {config_path:?}"))?;
 
-                (Some(state.config), Some(state.model))
+                (
+                    Some(state.config),
+                    Some(state.model),
+                    Some(state.model_extra_data),
+                )
             }
-            None => (None, None),
+            None => (None, None, None),
         };
 
         model = if switch_to_hub {
@@ -133,6 +149,53 @@ impl Command for CommandUpdateConfig {
 
         if let Some(model) = model {
             coordinator_account_state.state.coordinator.model = model;
+        }
+
+        // Upload model extra data to GCS or hub repo depending of the model checkpoint
+        if !skip_upload_model_extra_data {
+            if let Some(model_extra_data) = model_extra_data {
+                let Model::LLM(llm) = &coordinator_account_state.state.coordinator.model;
+                match llm.checkpoint {
+                    Checkpoint::Gcs(ref gcs_repo) | Checkpoint::P2PGcs(ref gcs_repo) => {
+                        let bucket = gcs_repo.bucket.to_string();
+                        let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
+                        info!("Uploading model extra data to gs://{}/{}", bucket, path);
+                        upload_json_to_gcs(&bucket, &path, &model_extra_data)
+                            .await
+                            .with_context(|| {
+                                format!(
+                                    "failed to upload model extra data to gs://{}/{}",
+                                    bucket, path
+                                )
+                            })?;
+                        println!("Uploaded model extra data to gs://{}/{}", bucket, path);
+                    }
+                    Checkpoint::Hub(ref hub_repo) | Checkpoint::P2P(ref hub_repo) => {
+                        let repo_id = hub_repo.repo_id.to_string();
+                        let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
+                        psyche_data_provider::upload_model_extra_data_to_hub(
+                            &repo_id,
+                            &path,
+                            &model_extra_data,
+                            hub_token.clone(),
+                            None,
+                        )
+                        .await
+                        .with_context(|| {
+                            format!(
+                                "failed to upload model extra data to Hub repo {}/{}",
+                                repo_id, path
+                            )
+                        })?;
+                        println!("Uploaded model extra data to Hub repo {}/{}", repo_id, path);
+                    }
+                    _ => {
+                        println!(
+                            "Warning: model_extra_data provided but checkpoint is not GCS- or Hub-based, skipping upload"
+                        );
+                    }
+                }
+            }
         }
 
         let progress = restart_from_step.map(|step| CoordinatorProgress {

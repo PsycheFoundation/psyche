@@ -43,13 +43,10 @@ impl psyche_tui::CustomWidget for CoordinatorTui {
             let vsplit = Layout::vertical(Constraint::from_fills([1, 1])).split(coord_split[1]);
             {
                 Paragraph::new(
-                    [
-                        format!("Data Source: {}", state.data_source),
-                        format!("Model Checkpoint: {}", state.model_checkpoint),
-                    ]
-                    .into_iter()
-                    .map(Line::from)
-                    .collect::<Vec<_>>(),
+                    [format!("Model Checkpoint: {}", state.model_checkpoint)]
+                        .into_iter()
+                        .map(Line::from)
+                        .collect::<Vec<_>>(),
                 )
                 .block(Block::bordered().title("Config"))
                 .render(vsplit[0], buf);
@@ -169,7 +166,6 @@ pub struct CoordinatorTuiState {
     pub run_state: TuiRunState,
     pub height: u32,
     pub clients: Vec<String>,
-    pub data_source: String,
     pub model_checkpoint: String,
     pub exited_clients: usize,
     pub pending_pause: bool,
@@ -187,9 +183,6 @@ impl<T: NodeIdentity> From<&Coordinator<T>> for CoordinatorTuiState {
                 .iter()
                 .map(|c| format!("{:?}", c.id))
                 .collect(),
-            data_source: match &value.model {
-                Model::LLM(l) => format!("{:?}", l.data_type),
-            },
             model_checkpoint: match &value.model {
                 Model::LLM(l) => format!("{}", l.checkpoint),
             },

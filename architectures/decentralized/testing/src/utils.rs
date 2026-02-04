@@ -183,7 +183,7 @@ impl ConfigBuilder {
         // This means that every client is a witness
         self.set_value("config.witness_nodes", 0_u32);
 
-        self.set_value("model.LLM.architecture", self.architecture.clone());
+        self.set_value("model_extra_data.architecture", self.architecture.clone());
         self.set_value("config.global_batch_size_start", self.batch_size);
         self.set_value("config.global_batch_size_end", self.batch_size);
 

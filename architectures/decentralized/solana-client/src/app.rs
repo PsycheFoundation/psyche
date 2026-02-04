@@ -11,7 +11,8 @@ use anchor_client::{
 };
 use anyhow::{Result, anyhow};
 use psyche_client::{
-    Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
+    Client, ClientTUI, ClientTUIState, ModelExtraData, NC, RunInitConfig, TrainArgs,
+    read_identity_secret_key,
 };
 use psyche_coordinator::{ClientState, Coordinator, CoordinatorError, RunState};
 use psyche_core::sha256;
@@ -90,6 +91,7 @@ pub async fn build_app(
     let eval_tasks = p.eval_tasks()?;
     let hub_read_token = std::env::var("HF_TOKEN").ok();
     let checkpoint_config = p.checkpoint_config()?;
+    let model_extra_data_override: Option<ModelExtraData> = p.model_extra_data_override()?;
 
     let solana_pubkey = wallet_keypair.pubkey();
     let wandb_info = p.wandb_info(format!("{}-{solana_pubkey}", p.run_id))?;
@@ -137,6 +139,7 @@ pub async fn build_app(
             max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
             device: p.device,
             sidecar_port: p.sidecar_port,
+            model_extra_data_override,
         };
     let app = App {
         run_id: p.run_id.clone(),

@@ -1,7 +1,9 @@
 use crate::{WandBInfo, fetch_data::DataFetcher};
+pub use psyche_coordinator::model_extra_data::ModelExtraData;
 use psyche_coordinator::{
     Coordinator, HealthChecks,
     model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
+    model_extra_data::{CONFIG_PREFIX, MODEL_CONFIG_FILENAME},
 };
 use psyche_core::{
     Barrier, CancellableBarrier, IntegrationTestLogMarker, NodeIdentity, Shuffle, TokenSize,
@@ -9,7 +11,8 @@ use psyche_core::{
 use psyche_data_provider::{
     DataProvider, DataProviderTcpClient, DownloadError, DummyDataProvider,
     PreprocessedDataProvider, Split, WeightedDataProvider, download_dataset_repo_async,
-    download_model_from_gcs_async, download_model_repo_async,
+    download_model_from_gcs_async, download_model_repo_async, fetch_json_from_gcs,
+    fetch_json_from_hub,
     http::{FileURLs, HttpDataProvider},
 };
 use psyche_metrics::ClientMetrics;
@@ -75,6 +78,10 @@ pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub dummy_training_delay_secs: Option<u64>,
 
     pub sidecar_port: Option<u16>,
+
+    /// If provided, use this model extra data instead of fetching from GCS/Hub.
+    /// Only meant for testing/debugging.
+    pub model_extra_data_override: Option<ModelExtraData>,
 }
 
 #[derive(Debug, Error)]
@@ -199,11 +206,57 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
         let model::Model::LLM(llm) = state.model;
 
+        // Use model extra data override if provided (only meant for testing/debugging),
+        // otherwise fetch from GCS/Hub
+        let model_extra_data: ModelExtraData = if let Some(config) =
+            init_config.model_extra_data_override.clone()
+        {
+            info!("Using model extra data override from CLI");
+            config
+        } else {
+            match llm.checkpoint {
+                model::Checkpoint::Gcs(gcs_repo) | model::Checkpoint::P2PGcs(gcs_repo) => {
+                    let bucket = gcs_repo.bucket.to_string();
+                    let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
+                    debug!("Fetching model extra data from gs://{}/{}", bucket, path);
+                    fetch_json_from_gcs(&bucket, &path).await?
+                }
+                model::Checkpoint::Hub(repo) | model::Checkpoint::P2P(repo) => {
+                    let repo_id: String = (&repo.repo_id).into();
+                    let revision = repo.revision.map(|bytes| (&bytes).into());
+                    let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
+                    debug!("Fetching model extra data from Hub: {}/{}", repo_id, path);
+                    match fetch_json_from_hub(
+                        &repo_id,
+                        revision,
+                        &path,
+                        init_config.hub_read_token.clone(),
+                    )
+                    .await
+                    {
+                        Ok(config) => config,
+                        Err(e) => {
+                            error!(
+                                "Failed to fetch model extra data from Hub ({}), using default: {}",
+                                repo_id, e
+                            );
+                            return Err(InitRunError::GcsModelLoad(e));
+                        }
+                    }
+                }
+                // Dummy/Ephemeral checkpoints use default model extra data (for testing)
+                _ => ModelExtraData::default(),
+            }
+        };
+
         let hub_read_token = init_config.hub_read_token.clone();
         let hub_max_concurrent_downloads = init_config.hub_max_concurrent_downloads;
         let data_future = async {
-            debug!("Setting up data provider from {:?}", llm.data_location);
-            let data_provider = match llm.data_location {
+            debug!(
+                "Setting up data provider from {:?}",
+                model_extra_data.data_location
+            );
+            let data_provider = match model_extra_data.data_location {
                 LLMTrainingDataLocation::Server(data_server) => DataProvider::Server(
                     DataProviderTcpClient::connect(
                         (&data_server).into(),
@@ -268,7 +321,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             Ok(data_provider)
         };
 
-        let model_future: JoinHandle<Result<RawLoadedModel, InitRunError>> = match &llm.architecture
+        let model_future: JoinHandle<Result<RawLoadedModel, InitRunError>> = match &model_extra_data
+            .architecture
         {
             model::LLMArchitecture::HfLlama
             | model::LLMArchitecture::HfDeepseek
@@ -317,6 +371,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                 }),
                 model::Checkpoint::Hub(_)
                 | model::Checkpoint::P2P(_)
+                | model::Checkpoint::P2PDummy
                 | model::Checkpoint::P2PGcs(_)
                 | model::Checkpoint::Gcs(_) => {
                     let checkpoint = llm.checkpoint;
@@ -374,7 +429,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     checkpoint_extra_files,
                                 )
                             }
-                            model::Checkpoint::P2P(_) | model::Checkpoint::P2PGcs(_) => {
+                            model::Checkpoint::P2P(_)
+                            | model::Checkpoint::P2PDummy
+                            | model::Checkpoint::P2PGcs(_) => {
                                 let (tx_model_config_response, rx_model_config_response) =
                                     oneshot::channel();
                                 info!("Checkpoint is p2p, requesting model config over network");
@@ -387,7 +444,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     rx_model_config_response.await.unwrap();
                                 debug!("Got p2p info, model_config: {}", model_config);
 
-                                let model_config = match llm.architecture {
+                                let model_config = match model_extra_data.architecture {
                                     model::LLMArchitecture::HfLlama => {
                                         AutoConfig::Llama(serde_json::from_str(&model_config)?)
                                     }
@@ -408,7 +465,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                         #[cfg(not(feature = "python"))]
                                         {
                                             return Err(InitRunError::UnsupportedArchitecture(
-                                                llm.architecture.to_string(),
+                                                model_extra_data.architecture.to_string(),
                                             ));
                                         }
                                     }
@@ -479,7 +536,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             init_config.eval_task_max_docs,
                             // if doing python fsdp we only have one effective dp rank for inference
                             if init_config.data_parallelism > 1
-                                && llm.architecture == model::LLMArchitecture::HfAuto
+                                && model_extra_data.architecture == model::LLMArchitecture::HfAuto
                             {
                                 1
                             } else {
@@ -489,7 +546,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
                         let serialized_config = source.serialize_config()?;
                         let attn_implementation: Option<AttentionImplementation> =
-                            match llm.data_type {
+                            match model_extra_data.data_type {
                                 model::LLMTrainingDataType::Finetuning => {
                                     #[cfg(feature = "parallelism")]
                                     {
@@ -503,7 +560,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 model::LLMTrainingDataType::Pretraining => None,
                             };
 
-                        let raw_loaded_model_type: RawLoadedModelType = match llm.architecture {
+                        let raw_loaded_model_type: RawLoadedModelType = match model_extra_data
+                            .architecture
+                        {
                             model::LLMArchitecture::HfAuto | model::LLMArchitecture::Torchtitan => {
                                 #[cfg(feature = "python")]
                                 {
@@ -513,7 +572,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     tokio::task::spawn_blocking(move || {
                                         if tp != 1 || dp != 1 {
                                             psyche_modeling::PythonDistributedCausalLM::new(
-                                                llm.architecture.to_string(),
+                                                model_extra_data.architecture.to_string(),
                                                 source.try_into()?,
                                                 tch::Device::cuda_if_available(),
                                                 attn_implementation.unwrap_or_default(),
@@ -535,7 +594,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                     )
                                                 })?;
                                             psyche_modeling::PythonCausalLM::new(
-                                                &llm.architecture.to_string(),
+                                                &model_extra_data.architecture.to_string(),
                                                 &source.try_into()?,
                                                 device,
                                                 attn_implementation.unwrap_or_default(),
@@ -553,7 +612,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 #[cfg(not(feature = "python"))]
                                 {
                                     return Err(InitRunError::UnsupportedArchitecture(
-                                        llm.architecture.to_string(),
+                                        model_extra_data.architecture.to_string(),
                                     ));
                                 }
                             }
@@ -789,8 +848,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 barrier,
                                 data_parallel,
                             },
-                            llm.lr_schedule,
-                            llm.optimizer,
+                            model_extra_data.lr_schedule,
+                            model_extra_data.optimizer,
                             init_config.micro_batch_size,
                             init_config.optim_stats_every_n_steps,
                             init_config.grad_accum_in_fp32,
@@ -808,8 +867,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             barrier: Arc::new(psyche_modeling::NopBarrier) as Arc<dyn Barrier>,
                             data_parallel: None,
                         },
-                        llm.lr_schedule,
-                        llm.optimizer,
+                        model_extra_data.lr_schedule,
+                        model_extra_data.optimizer,
                         init_config.micro_batch_size,
                         init_config.optim_stats_every_n_steps,
                         init_config.grad_accum_in_fp32,
@@ -822,8 +881,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                 vec![
                     psyche_modeling::PythonDistributedTrainer::new(
                         model,
-                        llm.lr_schedule,
-                        llm.optimizer,
+                        model_extra_data.lr_schedule,
+                        model_extra_data.optimizer,
                         init_config.micro_batch_size,
                         init_config.optim_stats_every_n_steps,
                         init_config.grad_accum_in_fp32,
@@ -838,13 +897,18 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         let stats_logger = StatsLogger::new(
             tokenizer,
             model_task_runner.clone(),
-            llm.lr_schedule,
+            model_extra_data.lr_schedule,
             wandb_run,
             metrics,
         );
 
         let warmup = WarmupStepMetadata {
             model_task_runner: model_task_runner.clone(),
+        };
+
+        let quantize_1bit = match model_extra_data.optimizer {
+            psyche_core::OptimizerDefinition::Distro { quantize_1bit, .. } => quantize_1bit,
+            _ => false,
         };
 
         let training = TrainingStepMetadata {
@@ -855,6 +919,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             tx_distro_result,
 
             model_task_runner: model_task_runner.clone(),
+            quantize_1bit,
         };
 
         let witness = WitnessStepMetadata {

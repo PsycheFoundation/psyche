@@ -55,7 +55,6 @@ const InfoChits = styled.div`
 export const RunSummaryCard = memo(function RunSummaryCard({
 	info: {
 		id,
-		arch,
 		description,
 		name,
 		size,
@@ -93,7 +92,6 @@ export const RunSummaryCard = memo(function RunSummaryCard({
 				{size !== 0n && (
 					<InfoChit label="params">{formatNumber(Number(size), 2)}</InfoChit>
 				)}
-				<InfoChit label="arch">{arch}</InfoChit>
 				<InfoChit label="type">{type}</InfoChit>
 				<InfoChit label="tokens">
 					{formatNumber(Number(totalTokens), 2)}

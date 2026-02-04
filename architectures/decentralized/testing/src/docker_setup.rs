@@ -4,7 +4,7 @@ use bollard::{
         Config, CreateContainerOptions, KillContainerOptions, ListContainersOptions,
         RemoveContainerOptions,
     },
-    models::DeviceRequest,
+    models::{DeviceRequest, Mount, MountTypeEnum},
     secret::{ContainerSummary, HostConfig},
 };
 use psyche_core::IntegrationTestLogMarker;
@@ -119,6 +119,24 @@ pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, Dock
 
     // Setting extra hosts and optionally nvidia request
     let network_name = "test_psyche-test-network";
+
+    // Mount the config file from the host
+    let config_mount = Mount {
+        target: Some("/usr/local/config.toml".to_string()),
+        source: Some(
+            std::env::current_dir()
+                .unwrap()
+                .join("../../../config/solana-test/test-config.toml")
+                .canonicalize()
+                .unwrap()
+                .to_string_lossy()
+                .to_string(),
+        ),
+        typ: Some(MountTypeEnum::BIND),
+        read_only: Some(true),
+        ..Default::default()
+    };
+
     let host_config = if has_gpu {
         // Setting nvidia usage parameters
         let device_request = DeviceRequest {
@@ -132,12 +150,14 @@ pub async fn spawn_new_client(docker_client: Arc<Docker>) -> Result<String, Dock
             device_requests: Some(vec![device_request]),
             extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
             network_mode: Some(network_name.to_string()),
+            mounts: Some(vec![config_mount]),
             ..Default::default()
         }
     } else {
         HostConfig {
             extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
             network_mode: Some(network_name.to_string()),
+            mounts: Some(vec![config_mount]),
             ..Default::default()
         }
     };

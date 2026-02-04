@@ -11,8 +11,6 @@ type PsycheSolanaMiningPool = miningPoolTypes.PsycheSolanaMiningPool
 import type {
 	GcsRepo,
 	HubRepo,
-	LearningRateSchedule,
-	LLMArchitecture,
 	RunState,
 } from 'psyche-deserialize-zerocopy-wasm'
 
@@ -73,7 +71,6 @@ export interface RunSummary {
 	}
 
 	size: bigint
-	arch: LLMArchitecture
 	type: ModelType
 }
 
@@ -131,8 +128,6 @@ export interface RunData {
 
 			maxRoundTrainTime: number
 			roundWitnessTime: number
-
-			lrSchedule: LearningRateSchedule
 		}
 	}
 	recentTxs: Array<TxSummary>

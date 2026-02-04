@@ -1,7 +1,7 @@
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, bail};
 use async_trait::async_trait;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
-use psyche_coordinator::model::{self, Checkpoint, LLM, LLMTrainingDataLocation, Model};
+use psyche_coordinator::model::{self, Checkpoint, Model};
 use psyche_coordinator::{
     Client, ClientState, Coordinator, CoordinatorError, HealthChecks, Round, RunState,
     SOLANA_MAX_NUM_CLIENTS, TickResult,
@@ -148,12 +148,18 @@ impl App {
     }
 }
 
+fn default_data_server_port() -> u16 {
+    9088
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DataServerInfo {
     pub dir: PathBuf,
     pub token_size: TokenSize,
     pub seq_len: usize,
     pub shuffle_seed: [u8; 32],
+    #[serde(default = "default_data_server_port")]
+    pub port: u16,
 }
 
 impl App {
@@ -176,72 +182,58 @@ impl App {
 
             debug!("potentially launching data server...");
 
-            let training_data_server = match &coordinator.model {
-                Model::LLM(LLM {
-                    data_location,
-                    checkpoint,
-                    ..
-                }) => {
-                    if let LLMTrainingDataLocation::Server(url) = data_location {
-                        match checkpoint {
-                            Checkpoint::Hub(hub_repo) => {
-                                let repo_id = String::from(&hub_repo.repo_id);
-                                let revision = hub_repo.revision.map(|bytes| (&bytes).into());
-                                if revision.is_some()
-                                    || !tokio::fs::try_exists(PathBuf::from(repo_id.clone()))
-                                        .await
-                                        .unwrap_or_default()
-                                {
-                                    download_model_repo_async(&repo_id, revision, None, None, None, true)
-                                        .await?;
-                                }
-                            }
-                            Checkpoint::Ephemeral => {
-                                bail!("Can't start up a run with an Ephemeral checkpoint.")
-                            }
-                            Checkpoint::Dummy(_) => {
-                                // ok!
-                            }
-                            Checkpoint::P2P(_) | Checkpoint::P2PGcs(_) => {
-                                bail!("Can't start up a run with a P2P checkpoint.")
-                            }
-                            Checkpoint::Gcs(gcs_repo) => {
-                                let bucket: String = (&gcs_repo.bucket).into();
-                                let prefix: Option<String> =
-                                    gcs_repo.prefix.map(|p| (&p).into());
-                                download_model_from_gcs_async(&bucket, prefix.as_deref()).await?;
-                            }
-                        }
-
-                        let server_addr: SocketAddr = String::from(url).parse().map_err(|e| {
-                            anyhow!("Failed to parse training data server URL {:?}: {}", url, e)
-                        })?;
-                        let data_server_port = server_addr.port();
-                        let DataServerInfo {
-                            dir,
-                            seq_len,
-                            shuffle_seed,
-                            token_size
-                        } = data_server_config.ok_or_else(|| anyhow!(
-                            "Coordinator state requires we host training data, but no --data-config passed."
-                        ))?;
-
-                        let local_data_provider = LocalDataProvider::new_from_directory(
-                            dir,
-                            token_size,
-                            seq_len,
-                            Shuffle::Seeded(shuffle_seed),
-                        )?;
-
-                        let (tx, backend) = ChannelCoordinatorBackend::new();
-                        let data_server =
-                            DataProviderTcpServer::start(local_data_provider, backend, data_server_port)
+            let training_data_server = if let Some(DataServerInfo {
+                dir,
+                seq_len,
+                shuffle_seed,
+                token_size,
+                port,
+            }) = data_server_config
+            {
+                // Download model if needed based on checkpoint type
+                let Model::LLM(llm) = &coordinator.model;
+                match &llm.checkpoint {
+                    Checkpoint::Hub(hub_repo) => {
+                        let repo_id = String::from(&hub_repo.repo_id);
+                        let revision = hub_repo.revision.map(|bytes| (&bytes).into());
+                        if revision.is_some()
+                            || !tokio::fs::try_exists(PathBuf::from(repo_id.clone()))
+                                .await
+                                .unwrap_or_default()
+                        {
+                            download_model_repo_async(&repo_id, revision, None, None, None, true)
                                 .await?;
-                        Some((tx, data_server))
-                    } else {
-                        None
+                        }
+                    }
+                    Checkpoint::Ephemeral => {
+                        bail!("Can't start up a run with an Ephemeral checkpoint.")
+                    }
+                    Checkpoint::Dummy(_) => {
+                        // ok!
+                    }
+                    Checkpoint::P2P(_) | Checkpoint::P2PDummy | Checkpoint::P2PGcs(_) => {
+                        bail!("Can't start up a run with a P2P checkpoint.")
+                    }
+                    Checkpoint::Gcs(gcs_repo) => {
+                        let bucket: String = (&gcs_repo.bucket).into();
+                        let prefix: Option<String> = gcs_repo.prefix.map(|p| (&p).into());
+                        download_model_from_gcs_async(&bucket, prefix.as_deref()).await?;
                     }
                 }
+
+                let local_data_provider = LocalDataProvider::new_from_directory(
+                    dir,
+                    token_size,
+                    seq_len,
+                    Shuffle::Seeded(shuffle_seed),
+                )?;
+
+                let (tx, backend) = ChannelCoordinatorBackend::new();
+                let data_server =
+                    DataProviderTcpServer::start(local_data_provider, backend, port).await?;
+                Some((tx, data_server))
+            } else {
+                None
             };
             debug!("data server work done.");
 
@@ -253,8 +245,7 @@ impl App {
             } else {
                 (None, None)
             };
-            let (cancel, tx_tui_state) =
-                maybe_start_render_loop(tabs)?;
+            let (cancel, tx_tui_state) = maybe_start_render_loop(tabs)?;
 
             let mut tick_interval = interval(Duration::from_millis(500));
             tick_interval.set_missed_tick_behavior(MissedTickBehavior::Skip); //important!
@@ -293,7 +284,9 @@ impl App {
                 withdraw_on_disconnect,
                 pause,
             })
-        }.instrument(info_span!("App::new")).await
+        }
+        .instrument(info_span!("App::new"))
+        .await
     }
 
     pub async fn run(&mut self) -> Result<()> {

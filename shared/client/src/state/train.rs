@@ -8,7 +8,7 @@ use psyche_coordinator::{
     BLOOM_FALSE_RATE, Commitment, CommitteeSelection, Coordinator, CoordinatorError, HealthChecks,
     assign_data_for_state, get_batch_ids_for_node, get_batch_ids_for_round, model,
 };
-use psyche_core::{BatchId, Bloom, IntegrationTestLogMarker, NodeIdentity, OptimizerDefinition};
+use psyche_core::{BatchId, Bloom, IntegrationTestLogMarker, NodeIdentity};
 use psyche_modeling::{
     ApplyDistroResultError, Batch, BatchData, DistroResult, TrainOutput, Trainer,
     TrainerThreadCommunicationError,
@@ -99,6 +99,7 @@ pub struct TrainingStepMetadata<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub write_gradients_dir: Option<PathBuf>,
 
     pub model_task_runner: ModelTaskRunner,
+    pub quantize_1bit: bool,
 }
 
 #[derive(Debug)]
@@ -274,12 +275,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                 let cancel_training = cancel_training.clone();
                 let write_gradients_dir = self.write_gradients_dir.clone();
                 let tx_distro_result = self.tx_distro_result.clone();
-                let quantize = match &state.model {
-                    model::Model::LLM(llm) => match llm.optimizer {
-                        OptimizerDefinition::Distro { quantize_1bit, .. } => quantize_1bit,
-                        _ => false,
-                    },
-                };
+                let quantize = self.quantize_1bit;
                 let finished = finished.clone();
 
                 let TrainingDataForStep {

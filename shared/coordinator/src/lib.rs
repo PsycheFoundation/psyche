@@ -5,6 +5,7 @@ mod committee_selection;
 mod coordinator;
 mod data_selection;
 pub mod model;
+pub mod model_extra_data;
 
 pub use commitment::Commitment;
 pub use committee_selection::{

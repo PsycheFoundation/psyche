@@ -6968,6 +6968,7 @@ dependencies = [
  "tokenizers",
  "tokio",
  "tokio-util 0.7.16",
+ "toml 0.8.23",
  "tracing",
  "wandb",
 ]
@@ -6982,6 +6983,7 @@ dependencies = [
  "cfg_eval",
  "psyche-core",
  "serde",
+ "serde_json",
  "serde_with",
  "ts-rs",
 ]
@@ -7073,6 +7075,7 @@ dependencies = [
 name = "psyche-deserialize-zerocopy-wasm"
 version = "0.2.0"
 dependencies = [
+ "psyche-coordinator",
  "psyche-core",
  "psyche-solana-coordinator",
  "serde",
@@ -8106,6 +8109,7 @@ dependencies = [
  "clap-markdown",
  "psyche-coordinator",
  "psyche-core",
+ "psyche-data-provider",
  "psyche-solana-authorizer",
  "psyche-solana-coordinator",
  "psyche-solana-rpc",
