@@ -295,8 +295,8 @@ pub enum Checkpoint {
     Ephemeral,
     Dummy(HubRepo), // Used for testing
     Hub(HubRepo),
-    Gcs(GcsRepo),
     P2P(HubRepo),
+    Gcs(GcsRepo),
     P2PGcs(GcsRepo),
 }
 
