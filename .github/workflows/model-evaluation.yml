@@ -62,7 +62,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface/
-          key: ${{ runner.os }}-huggingface-tinyllama-v1
+          key: ${{ runner.os }}-huggingface-deepseek-v2-lite-v1
           restore-keys: |
             ${{ runner.os }}-huggingface-
 
@@ -77,9 +77,9 @@ jobs:
       - name: Run model evaluation
         id: eval
         run: |
-          echo "Running evaluation on TinyLlama with ARC-Easy"
+          echo "Running evaluation on DeepSeek-V2-Lite with ARC-Easy"
           nix develop --command cargo run --release --example evaluate -p psyche-eval -- \
-            --model TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
+            --model deepseek-ai/DeepSeek-V2-Lite \
             --tasks arc_easy \
             --num-fewshot 3 \
             --limit 10 \
@@ -118,7 +118,7 @@ jobs:
                 cat > results.json <<EOF
           {
             "task": "arc_easy",
-            "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+            "model": "deepseek-ai/DeepSeek-V2-Lite",
             "metrics": $JSON_RESULTS
           }
           EOF
@@ -149,7 +149,7 @@ jobs:
               cat > lm_eval_results.json <<EOF
           {
             "task": "arc_easy",
-            "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+            "model": "deepseek-ai/DeepSeek-V2-Lite",
             "metrics": {
               "acc": $(echo "$EVAL" | jq '.acc'),
               "acc_norm": $(echo "$EVAL" | jq '.acc_norm')
