@@ -7136,6 +7136,7 @@ dependencies = [
  "anyhow",
  "clap",
  "futures",
+ "google-cloud-storage",
  "hex",
  "hf-hub",
  "iroh",

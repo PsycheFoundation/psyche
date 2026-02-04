@@ -1,6 +1,6 @@
 use anyhow::{Error, Result};
 use bytemuck::Zeroable;
-use google_cloud_storage::client::{Storage, StorageControl};
+use google_cloud_storage::client::Storage;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
 use psyche_client::{
     Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
@@ -202,28 +202,8 @@ impl App {
             };
 
             match upload_info {
-                Some(UploadInfo::Hub(HubUploadInfo {
-                    hub_repo: _,
-                    hub_token,
-                })) => {
-                    let _api = hf_hub::api::tokio::ApiBuilder::new()
-                        .with_token(Some(hub_token.clone()))
-                        .build()?;
-                }
-                Some(UploadInfo::Gcs(_gcs_info)) => {
-                    let _storage = Storage::builder()
-                        .build()
-                        .await
-                        .map_err(|e| anyhow::anyhow!("Failed to create GCS client: {}", e))?;
-
-                    let _storage_control =
-                        StorageControl::builder().build().await.map_err(|e| {
-                            anyhow::anyhow!("Failed to create GCS control client: {}", e)
-                        })?;
-                    // GCS credentials are valid - actual bucket writability will be checked during checkpoint
-                }
-                Some(UploadInfo::Dummy()) => {
-                    // In test mode or skip_upload mode, we skip upload checks
+                Some(info) => {
+                    info.validate_credentials().await?;
                 }
                 None => {
                     anyhow::bail!(

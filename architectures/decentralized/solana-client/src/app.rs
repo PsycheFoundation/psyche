@@ -1,6 +1,4 @@
 use crate::network_identity::NetworkIdentity;
-use google_cloud_storage::client::StorageControl;
-use hf_hub::Repo;
 use psyche_solana_rpc::SolanaBackend;
 
 use anchor_client::{
@@ -251,56 +249,11 @@ impl App {
             }
             _ => None,
         };
-        match upload_info {
-            Some(UploadInfo::Hub(hub_info)) => {
-                let api = hf_hub::api::tokio::ApiBuilder::new()
-                    .with_token(Some(hub_info.hub_token))
-                    .build()?;
-                let repo_api = api.repo(Repo::new(
-                    hub_info.hub_repo.clone(),
-                    hf_hub::RepoType::Model,
-                ));
-                if !repo_api.is_writable().await {
-                    anyhow::bail!(
-                        "Checkpoint upload repo {} is not writable with the passed API key.",
-                        hub_info.hub_repo
-                    )
-                }
-            }
-            Some(UploadInfo::Gcs(gcs_info)) => {
-                let client = StorageControl::builder().build().await?;
-
-                let permissions_to_test = vec![
-                    "storage.objects.list",
-                    "storage.objects.get",
-                    "storage.objects.create",
-                    "storage.objects.delete",
-                ];
-
-                let resource = format!("projects/_/buckets/{}", gcs_info.gcs_bucket);
-                let perms_vec: Vec<String> =
-                    permissions_to_test.iter().map(|s| s.to_string()).collect();
-                let response = client
-                    .test_iam_permissions()
-                    .set_resource(&resource)
-                    .set_permissions(perms_vec)
-                    .send()
-                    .await?;
-
-                let correct_permissions = permissions_to_test
-                    .into_iter()
-                    .all(|p| response.permissions.contains(&p.to_string()));
-                if !correct_permissions {
-                    anyhow::bail!(
-                        "GCS bucket {} does not have the required permissions for checkpoint upload make sure to set GOOGLE_APPLICATION_CREDENTIALS environment variable correctly and have the correct permissions to the bucket.",
-                        gcs_info.gcs_bucket
-                    )
-                }
-            }
-            Some(UploadInfo::Dummy()) => {
-                // In test mode, we skip upload checks
-            }
-            None => {}
+        if let Some(ref info) = upload_info {
+            // Validate basic credentials
+            info.validate_credentials().await?;
+            // For GCS, also validate bucket permissions
+            info.validate_gcs_bucket_permissions().await?;
         }
 
         // if we're already in "WaitingForMembers" we won't get an update saying that
