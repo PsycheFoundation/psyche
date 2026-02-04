@@ -51,11 +51,11 @@ pub async fn run() {
         clients.push(Keypair::new());
     }
     let ticker = Keypair::new();
-    let warmup_time = 77;
-    let round_witness_time = 42;
+    let warmup_time = 10;
+    let round_witness_time = 10;
     let cooldown_time = 88;
-    let rounds_per_epoch = 4;
-    let earned_point_per_epoch = 33;
+    let epoch_time = 30;
+    let earned_point_per_epoch_total_shared = 444_444;
 
     // Create the empty pre-allocated coordinator_account
     let coordinator_account = endpoint
@@ -76,6 +76,7 @@ pub async fn run() {
             run_id: "This is a random run id!".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: join_authority.pubkey(),
+            client_version: "test".to_string(),
         },
     )
     .await
@@ -101,7 +102,9 @@ pub async fn run() {
             global_batch_size_warmup_tokens: 0,
             verification_percent: 0,
             witness_nodes: 0,
-            rounds_per_epoch,
+            epoch_time,
+            waiting_for_members_extra_time: WAITING_FOR_MEMBERS_EXTRA_SECONDS
+                as u8,
             total_steps: 100,
         }),
         Some(Model::LLM(LLM {
@@ -133,7 +136,7 @@ pub async fn run() {
         &main_authority,
         &coordinator_instance,
         &coordinator_account,
-        Some(earned_point_per_epoch),
+        Some(earned_point_per_epoch_total_shared),
         None,
     )
     .await
@@ -206,6 +209,7 @@ pub async fn run() {
         .forward_clock_unix_timestamp(warmup_time)
         .await
         .unwrap();
+
     process_coordinator_tick(
         &mut endpoint,
         &payer,
@@ -217,7 +221,7 @@ pub async fn run() {
     .unwrap();
 
     // Run a full epoch
-    for _ in 0..rounds_per_epoch {
+    for _ in 0..4 {
         // Fetch the state at the start of the round
         let coordinator_account_state =
             get_coordinator_account_state(&mut endpoint, &coordinator_account)
@@ -304,6 +308,9 @@ pub async fn run() {
             .iter()
             .find(|c| c.id.signer.eq(&client.pubkey()))
             .unwrap();
-        assert_eq!(client_state.earned, earned_point_per_epoch);
+        assert_eq!(
+            client_state.earned,
+            earned_point_per_epoch_total_shared / clients.len() as u64
+        );
     }
 }

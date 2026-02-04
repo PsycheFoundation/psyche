@@ -69,6 +69,7 @@ impl MMLUPro {
             answer,
             category: Some(category),
             cot_content: Some(cot_content),
+            eval_name: MMLUPro::name().to_string(),
         }
     }
 }

@@ -1,8 +1,8 @@
 use crate::{
     AttentionImplementation, AutoConfig, CausalLanguageModel, CausalSelfAttention,
     ColumnParallelLinear, CommunicatorId, EosToks, LanguageModelConfig, LanguageModelForward,
-    ModelConfig, ModelLoadError, PretrainedSource, RMSNorm, RoPECache, RoPEConfig,
-    RowParallelLinear, default_rope, parallelism::Communicator,
+    ModelLoadError, PretrainedSource, RMSNorm, RoPECache, RoPEConfig, RowParallelLinear,
+    default_rope, parallelism::Communicator,
 };
 use std::sync::Arc;
 use tch::{
@@ -296,39 +296,6 @@ impl LlamaForCausalLM {
             tensor_parallelism_world,
             override_max_position_embeddings,
         )
-    }
-}
-
-impl ModelConfig for LlamaConfig {
-    fn get_parameter_names(&self) -> Vec<String> {
-        let mut variables = Vec::new();
-        for layer_idx in 0..self.num_hidden_layers {
-            let layer_prefix = format!("model.layers.{}", layer_idx);
-
-            variables.push(format!("{}.self_attn.q_proj.weight", layer_prefix));
-            variables.push(format!("{}.self_attn.k_proj.weight", layer_prefix));
-            variables.push(format!("{}.self_attn.v_proj.weight", layer_prefix));
-            variables.push(format!("{}.self_attn.o_proj.weight", layer_prefix));
-
-            variables.push(format!("{}.mlp.gate_proj.weight", layer_prefix));
-            variables.push(format!("{}.mlp.up_proj.weight", layer_prefix));
-            variables.push(format!("{}.mlp.down_proj.weight", layer_prefix));
-
-            variables.push(format!("{}.input_layernorm.weight", layer_prefix));
-            variables.push(format!("{}.post_attention_layernorm.weight", layer_prefix));
-
-            if self.attention_bias.unwrap_or(false) {
-                variables.push(format!("{}.self_attn.q_proj.bias", layer_prefix));
-                variables.push(format!("{}.self_attn.k_proj.bias", layer_prefix));
-                variables.push(format!("{}.self_attn.v_proj.bias", layer_prefix));
-            }
-        }
-
-        variables.push("lm_head.weight".to_string());
-        variables.push("model.norm.weight".to_string());
-        variables.push("model.embed_tokens.weight".to_string());
-
-        variables
     }
 }
 

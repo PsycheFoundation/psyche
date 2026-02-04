@@ -3,7 +3,7 @@ use bytemuck::Zeroable;
 use psyche_coordinator::{Coordinator, HealthChecks, model};
 use psyche_core::NodeIdentity;
 use psyche_network::{
-    AuthenticatableIdentity, FromSignedBytesError, NodeId, PublicKey, SecretKey, SignedMessage,
+    AuthenticatableIdentity, EndpointId, FromSignedBytesError, PublicKey, SecretKey, SignedMessage,
 };
 use psyche_watcher::OpportunisticData;
 use serde::{Deserialize, Serialize};
@@ -25,7 +25,7 @@ pub enum ServerToClientMessage {
 
 #[derive(Serialize, Deserialize, Clone, Hash, PartialEq, Eq, Debug, Copy, TS)]
 #[ts(type = "string")]
-pub struct ClientId(NodeId);
+pub struct ClientId(EndpointId);
 
 impl Default for ClientId {
     fn default() -> Self {

@@ -1,6 +1,7 @@
 use crate::traits::{Document, GenerateUntilTask, LogLikelihoodTask};
 use crate::{
-    ASCII_UPPERCASE, ArcChallenge, ArcEasy, BoolQ, Hellaswag, MMLU, MMLUPro, OpenbookQA, PIQA,
+    ASCII_UPPERCASE, ArcChallenge, ArcEasy, BoolQ, Hellaswag, MMLU, MMLUCF, MMLUPro, OpenbookQA,
+    PIQA,
 };
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
@@ -25,11 +26,19 @@ pub fn progress_bar_template_with_task(task_name: &str) -> String {
     )
 }
 
-const TASKS_WITH_ACC_NORM: [&str; 5] = [
+const TASKS_WITH_ACC_NORM: [&str; 6] = [
     ArcChallenge::name(),
     ArcEasy::name(),
     Hellaswag::name(),
+    MMLUCF::name(),
     OpenbookQA::name(),
+    PIQA::name(),
+];
+
+const TASKS_WITH_ACC_UNCOND: [&str; 4] = [
+    ArcChallenge::name(),
+    ArcEasy::name(),
+    MMLUCF::name(),
     PIQA::name(),
 ];
 
@@ -100,6 +109,7 @@ struct TokenizedLLHDocument {
     answer: usize,
     choices_token_len: Vec<usize>,
     requests: Vec<Vec<i64>>,
+    acc_uncond_tokens_len: Vec<usize>,
 }
 
 #[derive(Debug)]
@@ -111,55 +121,75 @@ pub struct TokenizedGenerateUntilDocument {
 
 impl TokenizedLLHDocument {
     pub fn from_document(doc: Document, tokenizer: &Tokenizer, fewshot_prefix: &str) -> Self {
-        // e.g.
-        // choice: 'Sunlight is the source of energy for nearly all ecosystems.'
-        // text: 'Which statement best explains why photosynthesis is the foundation of most food webs?'
-        // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems.'
+        // We tokenize (fewshot_prefix + question_text) as one string then tokenize each choice separately.
+        // context_tokens = tokenize(fewshot_prefix + doc.text)
+        // choice_tokens = tokenize(" " + choice)
+        // full_tokens = [BOS] + context_tokens + choice_tokens
+
         let mut requests: Vec<Vec<i64>> = Vec::new();
         let mut choices_str = Vec::new();
         let mut choices_token_len = Vec::new();
-        let mut choices: Vec<Vec<i64>> = Vec::new();
+        let mut acc_uncond_tokens_len = Vec::new();
 
-        // Tokenize fewshot prefix once
-        let fewshot_tokens: Vec<i64> = tokenizer
-            .encode(fewshot_prefix, false)
+        // Build full context string: fewshot_prefix + doc.text
+        let context_string = if fewshot_prefix.is_empty() {
+            doc.text.clone()
+        } else {
+            format!("{}{}", fewshot_prefix, doc.text)
+        };
+
+        // Tokenize context once (full fewshots + question up to "Answer:")
+        let context_tokens: Vec<i64> = tokenizer
+            .encode(context_string.as_str(), false)
             .unwrap()
             .get_ids()
             .iter()
             .map(|x| *x as i64)
             .collect();
 
+        let bos_token_id = tokenizer.token_to_id("<s>").unwrap_or(1);
+
         for choice in doc.choices.iter() {
             choices_str.push(choice.clone());
 
-            // [fewshot_prefix] + [document_text + choice]
-            let text_and_choice = format!("{} {}", doc.text, choice);
-            let text_choice_tokens: Vec<i64> = tokenizer
-                .encode(text_and_choice, false)
+            // Tokenize the full context+choice string
+            let full_string = format!("{} {}", context_string, choice);
+            let full_tokens: Vec<i64> = tokenizer
+                .encode(full_string.as_str(), false)
                 .unwrap()
                 .get_ids()
                 .iter()
                 .map(|x| *x as i64)
                 .collect();
 
-            let mut full_request = fewshot_tokens.clone();
-            full_request.extend_from_slice(&text_choice_tokens);
+            // Extract only the choice tokens (the new tokens beyond context_tokens)
+            // We do this to avoid an extra space that was appearing otherwise
+            let choice_tokens = full_tokens[context_tokens.len()..].to_vec();
+
+            // BOS + context + choice
+            let mut full_request = vec![bos_token_id as i64];
+            full_request.extend_from_slice(&context_tokens);
+            full_request.extend_from_slice(&choice_tokens);
             requests.push(full_request.clone());
 
-            // Extract choice tokens from the text_choice_tokens part
-            // Tokenizing "choice" alone produces different tokens than tokenizing "text + choice" together.
-            // So, we extract choice tokens iterating the full request backwards to ensure exact matching.
-            for idx in 1..text_choice_tokens.len() {
-                let choice_tokens = &text_choice_tokens[text_choice_tokens.len() - idx..]
-                    .iter()
-                    .map(|x| *x as u32)
-                    .collect::<Vec<_>>();
-                let choice_str = tokenizer.decode(choice_tokens, false).unwrap();
-                if choice_str.contains(choice) {
-                    let choice_tokens = choice_tokens.iter().map(|x| *x as i64).collect::<Vec<_>>();
-                    choices.push(choice_tokens.clone());
-                    choices_token_len.push(choice_tokens.len());
-                    break;
+            choices_token_len.push(choice_tokens.len());
+
+            if TASKS_WITH_ACC_UNCOND.contains(&doc.eval_name.as_str()) {
+                let acc_uncond_fmt = format!("Answer: {choice}");
+                for idx in *choices_token_len.last().unwrap()..full_tokens.len() {
+                    let acc_uncond_tokens = &full_tokens[full_tokens.len() - idx..]
+                        .iter()
+                        .map(|x| *x as u32)
+                        .collect::<Vec<_>>();
+                    let acc_uncond_str = tokenizer.decode(acc_uncond_tokens, false).unwrap();
+                    if acc_uncond_str.contains(&acc_uncond_fmt) {
+                        let acc_uncond_tokens = acc_uncond_tokens
+                            .iter()
+                            .map(|x| *x as i64)
+                            .collect::<Vec<_>>();
+                        acc_uncond_tokens_len.push(acc_uncond_tokens.len());
+                        break;
+                    }
                 }
             }
         }
@@ -169,6 +199,7 @@ impl TokenizedLLHDocument {
             answer: doc.answer,
             requests,
             choices_token_len,
+            acc_uncond_tokens_len,
         }
     }
 }
@@ -180,7 +211,6 @@ impl Task {
         match self.task_type {
             TaskType::LogLikelihood(llh) => {
                 let mut docs = llh.get_documents();
-                docs.shuffle(&mut self.rand);
                 if let Some(limit) = limit {
                     docs.truncate(limit);
                 }
@@ -191,10 +221,12 @@ impl Task {
                     .into_iter()
                     .map(|doc| {
                         // Build fewshot prefix for this document
+                        let category = doc.category.as_deref().unwrap_or("default");
+                        let preamble = llh.get_preamble(category);
+
                         let fewshot_prefix = if self.num_fewshot > 0 {
                             // Get fewshot examples for this document's category
-                            let category = doc.category.as_deref().unwrap_or("default");
-                            let mut fewshot_examples = fewshot_by_category
+                            let fewshot_examples = fewshot_by_category
                                 .get(category)
                                 .cloned()
                                 .unwrap_or_else(|| {
@@ -205,16 +237,33 @@ impl Task {
                                         .cloned()
                                         .unwrap_or_else(Vec::new)
                                 });
-                            fewshot_examples.shuffle(&mut self.rand);
-                            fewshot_examples
-                                .into_iter()
-                                .take(self.num_fewshot)
-                                .map(|x| format!("{}{}", x.text, x.choices[x.answer]))
-                                .collect::<Vec<_>>()
-                                .join("\n\n")
+
+                            // MMLU/ARC tasks use first_n sampling (deterministic) other tasks like PIQA/Hellaswag use random sampling
+                            let should_shuffle = ![
+                                MMLU::name(),
+                                MMLUCF::name(),
+                                ArcEasy::name(),
+                                ArcChallenge::name(),
+                            ]
+                            .contains(&name.as_str());
+
+                            let mut fewshot_examples = fewshot_examples;
+                            if should_shuffle {
+                                fewshot_examples.shuffle(&mut self.rand);
+                            }
+
+                            // Build fewshots to match how test question is tokenized:
+                            // text (ends with "Answer:") + " " + choice
+                            preamble
+                                + &fewshot_examples
+                                    .into_iter()
+                                    .take(self.num_fewshot)
+                                    .map(|x| format!("{} {}", x.text, x.choices[x.answer]))
+                                    .collect::<Vec<_>>()
+                                    .join("\n\n")
                                 + "\n\n"
                         } else {
-                            String::new()
+                            preamble
                         };
 
                         TokenizedLLHDocument::from_document(doc, tokenizer, &fewshot_prefix)
@@ -228,7 +277,6 @@ impl Task {
             }
             TaskType::GenerateUntil(gu_docs) => {
                 let mut docs = gu_docs.get_documents();
-                docs.shuffle(&mut self.rand);
                 if let Some(limit) = limit {
                     docs.truncate(limit);
                 }
@@ -398,6 +446,9 @@ impl PreparedTask {
         if TASKS_WITH_ACC_NORM.contains(&eval_name.as_str()) {
             results.add_entry_if_needed("acc_norm", docs.len(), min_samples);
         }
+        if TASKS_WITH_ACC_UNCOND.contains(&eval_name.as_str()) {
+            results.add_entry_if_needed("acc_uncond", docs.len(), min_samples);
+        }
         let mut next_index = skip;
 
         let fast_forward = (skip / docs.len()) * docs.len();
@@ -428,6 +479,7 @@ impl PreparedTask {
                 }
             }
             let mut scores: Vec<(f32, bool)> = Vec::new();
+            let mut scores_uncond: Vec<f32> = Vec::new();
             for idx in 0..doc.requests.len() {
                 // e.g:
                 // request: 'Which statement best explains why photosynthesis is the foundation of most food webs? Sunlight is the source of energy for nearly all ecosystems.'
@@ -478,6 +530,14 @@ impl PreparedTask {
                 scores.push((loglikelihood, exact_match));
             }
 
+            if TASKS_WITH_ACC_UNCOND.contains(&eval_name.as_str()) {
+                for idx in 0..doc.requests.len() {
+                    let loglikelihood_uncond =
+                        calculate_unconditional_loglikelihood(doc, idx, options.model);
+                    scores_uncond.push(loglikelihood_uncond);
+                }
+            }
+
             let selected: i64 = Tensor::from_slice(&scores.iter().map(|x| x.0).collect::<Vec<_>>())
                 .argmax(-1, false)
                 .try_into()
@@ -505,6 +565,27 @@ impl PreparedTask {
                 results.push(
                     "acc_norm",
                     match selected_norm as usize == doc.answer {
+                        true => 1.,
+                        false => 0.,
+                    },
+                );
+            }
+
+            if TASKS_WITH_ACC_UNCOND.contains(&eval_name.as_str()) {
+                let selected_uncond: i64 = Tensor::from_slice(
+                    &scores
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, score)| score.0 - scores_uncond[idx])
+                        .collect::<Vec<_>>(),
+                )
+                .argmax(-1, false)
+                .try_into()
+                .unwrap();
+
+                results.push(
+                    "acc_uncond",
+                    match selected_uncond as usize == doc.answer {
                         true => 1.,
                         false => 0.,
                     },
@@ -754,6 +835,43 @@ impl PreparedTask {
     }
 }
 
+fn calculate_unconditional_loglikelihood(
+    doc: &TokenizedLLHDocument,
+    idx: usize,
+    model: &mut dyn CausalLM,
+) -> f32 {
+    // Extract the unconditional part: "Answer: {choice}" from the end of the request
+    let uncond_len = doc.acc_uncond_tokens_len[idx];
+    let uncond_request_full = &doc.requests[idx][doc.requests[idx].len() - uncond_len..];
+
+    // Remove the last token since we dont want to pass it to the model
+    let uncond_request = &uncond_request_full[..uncond_request_full.len() - 1];
+
+    // Pass request to model
+    let uncond_tensor = Tensor::from_slice(uncond_request)
+        .to(model.device())
+        .unsqueeze(0);
+
+    let (logits_uncond, _) = {
+        let _no_grad = tch::no_grad_guard();
+        model.forward(&uncond_tensor, None, None, None, None, None)
+    };
+
+    let logits_uncond = logits_uncond.unwrap().squeeze_dim(0);
+
+    let uncond_tokens_to_predict = &uncond_request_full[1..];
+    let choice_log_prob_uncond = logits_uncond.log_softmax(-1, None).gather(
+        -1,
+        &Tensor::from_slice(uncond_tokens_to_predict)
+            .to(logits_uncond.device())
+            .unsqueeze(-1),
+        false,
+    );
+
+    let loglikelihood_uncond: f32 = choice_log_prob_uncond.sum(Kind::Float).try_into().unwrap();
+    loglikelihood_uncond
+}
+
 fn min_reporting_ratio(eval_name: &String) -> Option<f32> {
     if eval_name == MMLUPro::name() {
         Some(0.1)
@@ -763,6 +881,7 @@ fn min_reporting_ratio(eval_name: &String) -> Option<f32> {
         || eval_name == Hellaswag::name()
         || eval_name == OpenbookQA::name()
         || eval_name == MMLU::name()
+        || eval_name == MMLUCF::name()
         || eval_name == PIQA::name()
     {
         Some(0.5)

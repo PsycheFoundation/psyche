@@ -1,5 +1,4 @@
 use crate::{
-    IntegrationTestLogMarker,
     fetch_data::{BatchIdSet, DataFetcher, TrainingDataForStep},
     state::types::{DeserializeError, PayloadState},
 };
@@ -9,7 +8,7 @@ use psyche_coordinator::{
     BLOOM_FALSE_RATE, Commitment, CommitteeSelection, Coordinator, CoordinatorError, HealthChecks,
     assign_data_for_state, get_batch_ids_for_node, get_batch_ids_for_round, model,
 };
-use psyche_core::{BatchId, Bloom, NodeIdentity, OptimizerDefinition};
+use psyche_core::{BatchId, Bloom, IntegrationTestLogMarker, NodeIdentity, OptimizerDefinition};
 use psyche_modeling::{
     ApplyDistroResultError, Batch, BatchData, DistroResult, TrainOutput, Trainer,
     TrainerThreadCommunicationError,
@@ -84,7 +83,7 @@ pub enum TrainError {
     #[error("Failed to send health checks, channel must be closed")]
     SendHealthChecks,
 
-    #[error("Healthcheck thread crashed")]
+    #[error("Health check thread crashed")]
     HealthCheckCrashed,
 
     #[error("Coordinator error: {0}")]
@@ -173,27 +172,24 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
         )
         .map_err(TrainError::CoordinatorError)?;
 
-        let have_training = round.height < state.config.rounds_per_epoch - 2;
-        let (data_assignments, num_all_batch_ids, batch_ids_not_yet_trained_on) =
-            match have_training {
-                true => {
-                    let data_assignments = assign_data_for_state(state, &committee_selection);
-                    let all_batch_ids = get_batch_ids_for_round(
-                        state.current_round().unwrap(),
-                        state,
-                        committee_selection.get_num_trainer_nodes(),
-                    );
-                    let num_all_batch_ids = all_batch_ids.len();
-                    let batch_ids_not_yet_trained_on: BatchIdSet =
-                        all_batch_ids.into_iter().collect();
-                    (
-                        data_assignments,
-                        num_all_batch_ids,
-                        Arc::new(Mutex::new(Some(batch_ids_not_yet_trained_on))),
-                    )
-                }
-                false => (BTreeMap::new(), 0, Arc::new(Mutex::new(None))),
-            };
+        let have_training = !state.epoch_state.last_step_set();
+        let (data_assignments, num_all_batch_ids, batch_ids_not_yet_trained_on) = if have_training {
+            let data_assignments = assign_data_for_state(state, &committee_selection);
+            let all_batch_ids = get_batch_ids_for_round(
+                state.current_round().unwrap(),
+                state,
+                committee_selection.get_num_trainer_nodes(),
+            );
+            let num_all_batch_ids = all_batch_ids.len();
+            let batch_ids_not_yet_trained_on: BatchIdSet = all_batch_ids.into_iter().collect();
+            (
+                data_assignments,
+                num_all_batch_ids,
+                Arc::new(Mutex::new(Some(batch_ids_not_yet_trained_on))),
+            )
+        } else {
+            (BTreeMap::new(), 0, Arc::new(Mutex::new(None)))
+        };
 
         let committee_proof = committee_selection.get_committee(client_index);
         let witness_proof = committee_selection.get_witness(client_index);
@@ -241,7 +237,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             round = round.height,
             epoch = epoch,
             index = client_index,
-            comittee_position = committee_proof.position,
+            committee_position = committee_proof.position,
             committee = %committee_proof.committee,
             witness_position = witness_proof.position,
             witness = %witness_proof.witness,
@@ -682,7 +678,7 @@ fn start_sending_health_checks<T: NodeIdentity>(
                 }
 
                 if !checks.is_empty() {
-                    info!("Sending health check for following indicies: {:?}", checks);
+                    info!("Sending health check for following indices: {:?}", checks);
                     tx_health_check
                         .send(checks)
                         .map_err(|_| TrainError::SendHealthChecks)

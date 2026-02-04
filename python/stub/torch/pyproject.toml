@@ -1,0 +1,5 @@
+[project]
+name = "torch"
+version = "99.99.99"
+description = "stub package"
+dependencies = []

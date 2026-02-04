@@ -8,6 +8,7 @@ use psyche_core::BatchId;
 use pyo3::{PyErr, PyResult, Python, prelude::*, types::PyDict};
 use pyo3_tch::PyTensor;
 use std::{
+    collections::HashMap,
     process::{Child, Command},
     sync::{
         Arc,
@@ -521,6 +522,10 @@ impl CausalLM for PythonDistributedCausalLM {
 
         // barrier to ensure everyone has seen the broadcast
         self.comm.barrier(Some(self.device())).unwrap();
+    }
+
+    fn convert(&self, state_dict: Option<HashMap<String, Tensor>>) -> HashMap<String, Tensor> {
+        self.local.convert(state_dict)
     }
 }
 

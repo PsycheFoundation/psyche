@@ -9,8 +9,8 @@ use std::{sync::Arc, time::Duration};
 
 use bollard::container::StartContainerOptions;
 use bollard::{Docker, container::KillContainerOptions};
-use psyche_client::IntegrationTestLogMarker;
 use psyche_coordinator::{RunState, model::Checkpoint};
+use psyche_core::IntegrationTestLogMarker;
 use psyche_decentralized_testing::docker_setup::e2e_testing_setup_subscription;
 use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
@@ -301,8 +301,7 @@ async fn test_rejoining_client_delay() {
                    panic!("{}", e);
                }
                let current_epoch = solana_client.get_current_epoch().await;
-               let current_step = solana_client.get_last_step().await;
-               if current_epoch >= 1 && current_step > 25 {
+               if current_epoch > 1 {
                     panic!("Second epoch started and the clients did not get the model");
                }
            }
@@ -397,6 +396,14 @@ async fn disconnect_client() {
                         epoch,
                         epoch_clients.len()
                     );
+                }
+
+                if killed_client
+                    && epoch > 0
+                    && new_state == RunState::WaitingForMembers.to_string()
+                {
+                    println!("Epoch ended after killing client, breaking to verify assertions");
+                    break;
                 }
 
                 if epoch == 0
@@ -743,7 +750,7 @@ async fn test_solana_subscriptions() {
 
                         }
                         // resume subscription 2
-                        if step == 45 && new_state == RunState::RoundWitness.to_string(){
+                        if step == 30 && new_state == RunState::RoundWitness.to_string(){
                             println!("resume container {NGINX_PROXY_PREFIX}-2");
 
                             docker

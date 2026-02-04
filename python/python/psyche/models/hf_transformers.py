@@ -78,6 +78,18 @@ def build_mesh(device_type, pp=1, dp_replicate=1, dp_shard=1, cp=1, tp=1) -> Dev
     return mesh
 
 
+def auto_config_from_dict(config: dict):
+    model_type = config.get("model_type")
+    if model_type is None:
+        raise RuntimeError("model_type not present in config.json")
+    try:
+        config_class = CONFIG_MAPPING[model_type]
+    except KeyError:
+        raise ValueError(f"Unknown model_type {model_type}")
+
+    return config_class.from_dict(config)
+
+
 class HfTransformersAuto(CausalLM):
     def __init__(self, model, config, world_mesh: DeviceMesh, device: torch.device):
         self.model = model
@@ -117,27 +129,7 @@ class HfTransformersAuto(CausalLM):
 
         if config_json is None:
             raise RuntimeError("No config.json present")
-        config: dict = json.loads(config_json)
-
-        model_type = config.get("model_type")
-        if model_type is None:
-            raise RuntimeError("model_type not present in config.json")
-        try:
-            config_class = CONFIG_MAPPING[model_type]
-        except KeyError:
-            raise ValueError(f"Unknown model_type {model_type}")
-
-        config = config_class.from_dict(config)
-
-        # If n_routed_experts is None disable all MoE related features
-        if hasattr(config, "n_routed_experts") and config.n_routed_experts is None:
-            config.n_shared_experts = None
-            config.moe_layer_freq = None
-            config.num_experts_per_tok = None
-            config.moe_intermediate_size = None
-            # Set first_k_dense_replace to a very large number to force all layers to be dense
-            config.first_k_dense_replace = 999999
-
+        config = auto_config_from_dict(json.loads(config_json))
         if override_max_position_embeddings:
             config.max_position_embeddings = override_max_position_embeddings
 
@@ -146,8 +138,7 @@ class HfTransformersAuto(CausalLM):
                 config,
                 attn_implementation=attn_implementation,
             )
-        if device.type == "cuda":
-            torch.cuda.set_device(device)
+        torch.cuda.set_device(device)
 
         world_mesh = None
         if tp != 1 or dp != 1:
@@ -345,3 +336,8 @@ class HfTransformersAuto(CausalLM):
 
     def get_config(self):
         return self.config.to_dict()
+
+    def convert(
+        self, state_dict: Optional[dict[str, torch.Tensor]]
+    ) -> dict[str, torch.Tensor]:
+        return state_dict if state_dict is not None else self.model.state_dict()

@@ -12,6 +12,7 @@ await esbuild
 		define: {
 			'process.env.GITCOMMIT': `"${process.env.GITCOMMIT}"`,
 		},
+		sourcemap: 'inline',
 	})
 	.catch(() => process.exit(1))
 

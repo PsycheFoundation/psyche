@@ -8,8 +8,8 @@ if [[ -n "${devnet__keypair__wallet_PATH}" && -f "${devnet__keypair__wallet_PATH
 elif [[ -z "${WALLET_FILE:-}" ]]; then
     echo "No wallet file specified, generating ephemeral keypair..."
     # Create a named pipe for the keypair data
-    mkdir -p ~/solana-keys
-    WALLET_FILE=$(mktemp ~/solana-keys/solana-wallet-XXXXXXXXX)
+    mkdir -p ~/.config/solana/solana-keys
+    WALLET_FILE=$(mktemp ~/.config/solana/solana-keys/solana-wallet-XXXXXXXXX)
 
     # Generate keypair and write to the generated file
     solana-keygen new --no-bip39-passphrase --force --outfile "${WALLET_FILE}"
@@ -23,6 +23,7 @@ fi
 RPC=${RPC:-"http://127.0.0.1:8899"}
 WS_RPC=${WS_RPC:-"ws://127.0.0.1:8900"}
 RUN_ID=${RUN_ID:-"test"}
+AUTHORIZER=${AUTHORIZER:-"11111111111111111111111111111111"}
 
 # presets for a DGX or an HGX
 DP=${DP:-"8"}
@@ -44,6 +45,7 @@ if [[ "$OTLP_METRICS_URL" == "" ]]; then
         --data-parallelism ${DP} \
         --tensor-parallelism ${TP} \
         --micro-batch-size ${BATCH_SIZE} \
+        --authorizer ${AUTHORIZER} \
         --logs "console" \
         "$@"
 else
@@ -57,6 +59,7 @@ else
         --tensor-parallelism ${TP} \
         --micro-batch-size ${BATCH_SIZE} \
         --logs "console" \
+        --authorizer ${AUTHORIZER} \
         --oltp-metrics-url "http://localhost:4318/v1/metrics" \
         --oltp-logs-url "http://localhost:4318/v1/logs" \
         "$@"

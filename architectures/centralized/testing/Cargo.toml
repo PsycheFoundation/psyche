@@ -19,6 +19,7 @@ anyhow.workspace = true
 rand.workspace = true
 toml = "0.8.19"
 tracing.workspace = true
+clap.workspace = true
 
 [dev-dependencies]
 test-log.workspace = true

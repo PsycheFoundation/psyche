@@ -1,0 +1,121 @@
+name: Build run-manager
+
+on:
+  push:
+    branches:
+      - main
+      - 'rewbs/**' # Include my personal branches for testing
+    tags:
+      - 'v*'
+  workflow_dispatch: # Allow manual triggering
+
+# Ensure workflow has permissions to create releases
+permissions:
+  contents: write
+
+# Note: Previously filtered by paths (tools/rust-tools/run-manager/**).
+# Removed because GitHub Actions ANDs paths with tags, which breaks tag triggers.
+# The build is fast enough that running on all main pushes is acceptable.
+# The alternative would be to split into two workflows, one for main branch and one for tags.
+
+jobs:
+  build:
+    # If we use ubuntu-latest it will link against a newer version of glibc making
+    # the binary non-portable to our 22.04 servers, so use this for compatibility.
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev perl
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-run-manager-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-run-manager-
+            ${{ runner.os }}-cargo-
+
+      - name: Build run-manager binary
+        run: |
+          cargo build --release --package run-manager
+          ls -lh target/release/run-manager
+          ldd target/release/run-manager
+
+      - name: Prepare release artifact
+        id: prepare
+        run: |
+          # Get version from Cargo.toml (cargo pkgid outputs "path+file://...#0.1.0")
+          VERSION=$(cargo pkgid -p run-manager | sed 's/.*#//')
+          SHORT_SHA=$(git rev-parse --short HEAD)
+
+          # Determine filename based on whether this is a tag build
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG="${{ github.ref_name }}"
+            FILENAME="run-manager-${TAG}-linux-x64.tar.gz"
+            IS_TAG_BUILD="true"
+          else
+            FILENAME="run-manager-${VERSION}-${SHORT_SHA}-linux-x64.tar.gz"
+            IS_TAG_BUILD="false"
+          fi
+
+          echo "filename=${FILENAME}" >> "$GITHUB_OUTPUT"
+          echo "is_tag_build=${IS_TAG_BUILD}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+          # Create tarball
+          tar -czvf "${FILENAME}" -C target/release run-manager
+          ls -lh "${FILENAME}"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-manager-linux-x64
+          path: target/release/run-manager
+          retention-days: 30
+
+      - name: Upload tarball artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.prepare.outputs.filename }}
+          path: ${{ steps.prepare.outputs.filename }}
+          retention-days: 30
+
+      - name: Create tagged release
+        if: steps.prepare.outputs.is_tag_build == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.prepare.outputs.filename }}
+          generate_release_notes: true
+
+      - name: Update dev release
+        if: steps.prepare.outputs.is_tag_build == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dev
+          name: Development Build
+          body: |
+            Rolling development release from `main` branch.
+
+            **Version:** ${{ steps.prepare.outputs.version }}
+            **Commit:** ${{ github.sha }}
+
+            This release is updated automatically on each push. For stable releases, use a versioned tag.
+          prerelease: true
+          files: ${{ steps.prepare.outputs.filename }}
+          make_latest: false

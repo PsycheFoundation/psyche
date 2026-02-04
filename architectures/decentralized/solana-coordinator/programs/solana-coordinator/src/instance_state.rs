@@ -67,6 +67,7 @@ pub struct CoordinatorInstanceState {
     pub clients_state: ClientsState,
     pub is_warmup_first_tick: SmallBoolean,
     pub is_training_first_tick: SmallBoolean,
+    pub client_version: FixedString<96>,
 }
 
 unsafe impl Pod for CoordinatorInstanceState {}
@@ -146,7 +147,8 @@ impl CoordinatorInstanceState {
                             client.earned += self
                                 .clients_state
                                 .current_epoch_rates
-                                .earning_rate;
+                                .earning_rate_total_shared
+                                .saturating_div(finished_clients.len() as u64);
                         }
                         finished_client_index += 1;
                     }
@@ -160,7 +162,7 @@ impl CoordinatorInstanceState {
                             client.slashed += self
                                 .clients_state
                                 .current_epoch_rates
-                                .slashing_rate;
+                                .slashing_rate_per_client;
                         }
                         exited_client_index += 1;
                     }
@@ -175,6 +177,11 @@ impl CoordinatorInstanceState {
 
     pub fn set_paused(&mut self, paused: bool) -> Result<()> {
         let unix_timestamp = Clock::get()?.unix_timestamp as u64;
+        msg!(
+            "set_paused called: paused={}, state={}",
+            paused,
+            self.coordinator.run_state
+        );
         if let Err(err) = match paused {
             true => self.coordinator.pause(unix_timestamp),
             false => {
@@ -248,16 +255,22 @@ impl CoordinatorInstanceState {
 
     pub fn set_future_epoch_rates(
         &mut self,
-        epoch_earning_rate: Option<u64>,
-        epoch_slashing_rate: Option<u64>,
+        epoch_earning_rate_total_shared: Option<u64>,
+        epoch_slashing_rate_per_client: Option<u64>,
     ) -> Result<()> {
-        if let Some(epoch_earning_rate) = epoch_earning_rate {
-            self.clients_state.future_epoch_rates.earning_rate =
-                epoch_earning_rate;
+        if let Some(epoch_earning_rate_total_shared) =
+            epoch_earning_rate_total_shared
+        {
+            self.clients_state
+                .future_epoch_rates
+                .earning_rate_total_shared = epoch_earning_rate_total_shared;
         }
-        if let Some(epoch_slashing_rate) = epoch_slashing_rate {
-            self.clients_state.future_epoch_rates.slashing_rate =
-                epoch_slashing_rate;
+        if let Some(epoch_slashing_rate_per_client) =
+            epoch_slashing_rate_per_client
+        {
+            self.clients_state
+                .future_epoch_rates
+                .slashing_rate_per_client = epoch_slashing_rate_per_client;
         }
         Ok(())
     }
@@ -390,6 +403,17 @@ impl CoordinatorInstanceState {
         self.coordinator
             .checkpoint(id, index as u64, repo)
             .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
-        self.tick()
+
+        // Only tick if not halted (Paused/Uninitialized/Finished)
+        // Checkpoint update itself doesn't require state transitions
+        if !self.coordinator.halted() {
+            self.tick()
+        } else {
+            msg!(
+                "Checkpoint recorded while halted (state: {}), skipping tick",
+                self.coordinator.run_state
+            );
+            Ok(())
+        }
     }
 }

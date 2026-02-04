@@ -106,8 +106,7 @@ impl LocalDataProvider {
                 .enumerate()
                 // find every sequence in every file
                 .flat_map(|(file_index, current_tokens)| {
-                    (0..current_tokens.as_ref().as_ref().len()
-                        - (seq_len_in_bytes + usize::from(token_size_in_bytes))) // +1 token for pretraining data!
+                    (0..current_tokens.as_ref().as_ref().len() - seq_len_in_bytes)
                         .step_by(seq_len_in_bytes)
                         .map(move |byte_offset| SequencePointer {
                             file_index,
@@ -144,7 +143,7 @@ impl LocalDataProvider {
             })?;
 
             let file = &self.data_files[*file_index];
-            let data_len = usize::from(self.token_size_in_bytes) * (self.seq_len + 1);
+            let data_len = usize::from(self.token_size_in_bytes) * self.seq_len;
             let data = &file.as_ref().as_ref()[*byte_offset..*byte_offset + data_len];
 
             let tokens: Vec<i32> = data

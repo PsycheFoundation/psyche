@@ -3,20 +3,19 @@ use bytemuck::Zeroable;
 use hf_hub::Repo;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
 use psyche_client::{
-    CheckpointConfig, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, WandBInfo,
+    Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
 };
 use psyche_coordinator::{Coordinator, HealthChecks, model};
 use psyche_metrics::ClientMetrics;
-use psyche_modeling::Devices;
 use psyche_network::{
-    AuthenticatableIdentity, DiscoveryMode, NetworkTUIState, NetworkTui, NodeId, SecretKey,
-    TcpClient, allowlist,
+    AuthenticatableIdentity, EndpointId, NetworkTUIState, NetworkTui, SecretKey, TcpClient,
+    allowlist,
 };
 use psyche_tui::logging::LoggerWidget;
 use psyche_tui::{CustomWidget, TabbedWidget};
 use psyche_watcher::{Backend as WatcherBackend, CoordinatorTui, OpportunisticData};
 use std::sync::Arc;
-use std::{path::PathBuf, time::Duration};
+use std::time::Duration;
 use tokio::sync::mpsc::Sender;
 use tokio::time::interval;
 use tokio::{select, sync::mpsc, time::Interval};
@@ -25,7 +24,7 @@ use tracing::debug;
 
 pub(super) type Tabs = TabbedWidget<(ClientTUI, CoordinatorTui, NetworkTui, LoggerWidget)>;
 pub const TAB_NAMES: [&str; 4] = ["Client", "Coordinator", "Network", "Logger"];
-type TabsData = <Tabs as CustomWidget>::Data;
+pub type TabsData = <Tabs as CustomWidget>::Data;
 
 pub enum ToSend {
     Witness(Box<OpportunisticData>),
@@ -52,7 +51,7 @@ impl WatcherBackend<ClientId> for Backend {
                 .epoch_state
                 .clients
                 .iter()
-                .map(|c| NodeId::from_bytes(c.id.get_p2p_public_key()).unwrap()),
+                .map(|c| EndpointId::from_bytes(c.id.get_p2p_public_key()).unwrap()),
         );
         Ok(new_state)
     }
@@ -85,109 +84,87 @@ pub struct App {
     metrics: Arc<ClientMetrics>,
 }
 
-pub struct AppBuilder(AppParams);
+pub async fn build_app(
+    cancel: CancellationToken,
+    server_addr: String,
+    tx_tui_state: Option<Sender<TabsData>>,
+    p: TrainArgs,
+) -> Result<(
+    App,
+    allowlist::AllowDynamic,
+    NC,
+    RunInitConfig<ClientId, ClientId>,
+)> {
+    let metrics = Arc::new(ClientMetrics::new(
+        p.metrics_local_port,
+        Some(Duration::from_secs(30)),
+    ));
+    let identity_secret_key = read_identity_secret_key(p.identity_secret_key_path.as_ref())?
+        .unwrap_or_else(|| SecretKey::generate(&mut rand::rng()));
+    let server_conn = TcpClient::<ClientId, ClientToServerMessage, ServerToClientMessage>::connect(
+        &server_addr,
+        identity_secret_key.public().into(),
+        identity_secret_key.clone(),
+    )
+    .await?;
 
-pub struct AppParams {
-    pub cancel: CancellationToken,
-    pub identity_secret_key: SecretKey,
-    pub server_addr: String,
-    pub tx_tui_state: Option<Sender<TabsData>>,
-    pub run_id: String,
-    pub data_parallelism: usize,
-    pub tensor_parallelism: usize,
-    pub micro_batch_size: usize,
-    pub write_gradients_dir: Option<PathBuf>,
-    pub p2p_port: Option<u16>,
-    pub p2p_interface: Option<String>,
-    pub eval_tasks: Vec<psyche_eval::Task>,
-    pub eval_task_max_docs: Option<usize>,
-    pub prompt_task: bool,
-    pub checkpoint_upload_info: Option<CheckpointConfig>,
-    pub hub_read_token: Option<String>,
-    pub hub_max_concurrent_downloads: usize,
-    pub wandb_info: Option<WandBInfo>,
-    pub optim_stats: Option<u32>,
-    pub grad_accum_in_fp32: bool,
-    pub dummy_training_delay_secs: Option<u64>,
-    pub discovery_mode: DiscoveryMode,
-    pub max_concurrent_parameter_requests: usize,
-    pub metrics_local_port: Option<u16>,
-    pub device: Devices,
-    pub sidecar_port: Option<u16>,
-}
+    let hub_read_token = std::env::var("HF_TOKEN").ok();
+    let eval_tasks = p.eval_tasks()?;
+    let checkpoint_config = p.checkpoint_config()?;
+    let wandb_info = p.wandb_info(format!(
+        "{}-{}",
+        p.run_id.clone(),
+        identity_secret_key.public().fmt_short()
+    ))?;
 
-impl AppBuilder {
-    pub fn new(params: AppParams) -> Self {
-        Self(params)
-    }
+    let allowlist = allowlist::AllowDynamic::new();
 
-    pub async fn build(
-        self,
-    ) -> Result<(
-        App,
-        allowlist::AllowDynamic,
-        NC,
-        RunInitConfig<ClientId, ClientId>,
-    )> {
-        let p = self.0;
+    let p2p = NC::init(
+        &p.run_id,
+        p.bind_p2p_port,
+        p.bind_p2p_interface,
+        p.iroh_discovery,
+        p.iroh_relay,
+        vec![],
+        Some(identity_secret_key.clone()),
+        allowlist.clone(),
+        metrics.clone(),
+        Some(cancel.clone()),
+    )
+    .await?;
 
-        let metrics = Arc::new(ClientMetrics::new(p.metrics_local_port));
-        let server_conn =
-            TcpClient::<ClientId, ClientToServerMessage, ServerToClientMessage>::connect(
-                &p.server_addr,
-                p.identity_secret_key.public().into(),
-                p.identity_secret_key.clone(),
-            )
-            .await?;
-
-        let allowlist = allowlist::AllowDynamic::new();
-
-        let p2p = NC::init(
-            &p.run_id,
-            p.p2p_port,
-            p.p2p_interface,
-            p.discovery_mode,
-            vec![],
-            Some(p.identity_secret_key.clone()),
-            allowlist.clone(),
-            metrics.clone(),
-            Some(p.cancel.clone()),
-        )
-        .await?;
-
-        let state_options: RunInitConfig<ClientId, ClientId> = RunInitConfig {
-            data_parallelism: p.data_parallelism,
-            tensor_parallelism: p.tensor_parallelism,
-            micro_batch_size: p.micro_batch_size,
-            write_gradients_dir: p.write_gradients_dir,
-            eval_tasks: p.eval_tasks,
-            eval_task_max_docs: p.eval_task_max_docs,
-            prompt_task: p.prompt_task,
-            checkpoint_config: p.checkpoint_upload_info,
-            hub_read_token: p.hub_read_token,
-            hub_max_concurrent_downloads: p.hub_max_concurrent_downloads,
-            wandb_info: p.wandb_info,
-            identity: p.identity_secret_key.public().into(),
-            network_identity: p.identity_secret_key.public().into(),
-            private_key: p.identity_secret_key,
-            optim_stats_every_n_steps: p.optim_stats,
-            grad_accum_in_fp32: p.grad_accum_in_fp32,
-            dummy_training_delay_secs: p.dummy_training_delay_secs,
-            max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
-            device: p.device,
-            sidecar_port: p.sidecar_port,
-        };
-        let app = App {
-            cancel: p.cancel,
-            tx_tui_state: p.tx_tui_state,
-            update_tui_interval: interval(Duration::from_millis(150)),
-            coordinator_state: Coordinator::zeroed(),
-            server_conn,
-            run_id: p.run_id,
-            metrics,
-        };
-        Ok((app, allowlist, p2p, state_options))
-    }
+    let state_options: RunInitConfig<ClientId, ClientId> = RunInitConfig {
+        data_parallelism: p.data_parallelism,
+        tensor_parallelism: p.tensor_parallelism,
+        micro_batch_size: p.micro_batch_size,
+        write_gradients_dir: p.write_gradients_dir,
+        eval_tasks,
+        eval_task_max_docs: p.eval_task_max_docs,
+        prompt_task: p.prompt_task,
+        checkpoint_config,
+        hub_read_token,
+        hub_max_concurrent_downloads: p.hub_max_concurrent_downloads,
+        wandb_info,
+        identity: identity_secret_key.public().into(),
+        network_identity: identity_secret_key.public().into(),
+        private_key: identity_secret_key,
+        optim_stats_every_n_steps: p.optim_stats_steps,
+        grad_accum_in_fp32: p.grad_accum_in_fp32,
+        dummy_training_delay_secs: p.dummy_training_delay_secs,
+        max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
+        device: p.device,
+        sidecar_port: p.sidecar_port,
+    };
+    let app = App {
+        cancel,
+        tx_tui_state,
+        update_tui_interval: interval(Duration::from_millis(150)),
+        coordinator_state: Coordinator::zeroed(),
+        server_conn,
+        run_id: p.run_id,
+        metrics,
+    };
+    Ok((app, allowlist, p2p, state_options))
 }
 
 impl App {

@@ -231,12 +231,12 @@ impl HttpDataProvider {
 
         let range = format!("bytes={}-{}", start, start + length - 1);
         let response = client
-            .get(url)
+            .get(url.clone())
             .header("Range", &range)
             .timeout(HTTP_REQUEST_TIMEOUT)
             .send()
             .await
-            .with_context(|| format!("request for bytes {range}"))?;
+            .with_context(|| format!("request for bytes {range}, from {url}"))?;
 
         // Check if we got a 206 Partial Content response
         if !response.status().is_success()
@@ -308,7 +308,7 @@ impl HttpDataProvider {
         // check if this is fully sequential (all in the same file and with contiguous offsets)
         let first_file_index = sequences[0].file_index;
         let token_size = usize::from(self.token_size_in_bytes);
-        let single_seq_len = self.seq_len as usize + 1; // each sequence has seq_len + 1 tokens
+        let single_seq_len = self.seq_len as usize;
         let single_seq_bytes = token_size * (self.seq_len as usize); // bytes for seq_len tokens (not including overlap)
 
         let is_sequential = sequences.iter().all(|x| x.file_index == first_file_index)
@@ -319,8 +319,7 @@ impl HttpDataProvider {
         if is_sequential && sequences.len() > 1 {
             // for sequential access, read the entire range at once
             let start_offset = sequences[0].byte_offset;
-            // total length is all sequences plus one extra token at the end
-            let total_length = single_seq_bytes * sequences.len() + token_size;
+            let total_length = single_seq_bytes * sequences.len();
 
             trace!(
                 length = total_length,
@@ -356,7 +355,7 @@ impl HttpDataProvider {
             );
 
             let mut futures = Vec::new();
-            let data_len = usize::from(self.token_size_in_bytes) * (self.seq_len as usize + 1);
+            let data_len = usize::from(self.token_size_in_bytes) * self.seq_len as usize;
             for sequence in sequences {
                 let future: JoinHandle<Result<Vec<i32>>> =
                     tokio::spawn(Self::fetch_tokenized_data_range(

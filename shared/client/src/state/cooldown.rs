@@ -7,7 +7,8 @@ use psyche_coordinator::{
 use psyche_core::{FixedString, NodeIdentity};
 use psyche_data_provider::{UploadModelError, upload_model_repo_async};
 use psyche_modeling::{
-    SaveSafetensorsError, Trainer, TrainerThreadCommunicationError, save_tensors_into_safetensors,
+    CausalLM, SaveSafetensorsError, Trainer, TrainerThreadCommunicationError,
+    save_tensors_into_safetensors,
 };
 use std::{
     cmp::Reverse,
@@ -141,10 +142,9 @@ impl CooldownStepMetadata {
         let tx_checkpoint = self.tx_checkpoint.clone();
         let tx_model = self.tx_model.clone();
         let model_task_runner = self.model_task_runner.clone();
-        let doing_checkpoint = checkpoint_info.is_some();
         let delete_queue = self.delete_queue.clone();
 
-        let checkpointing_and_evals = tokio::task::spawn(
+        let checkpointing_and_evals: CheckpointAndEvalsHandle = tokio::task::spawn(
             async move {
                 info!("Extracting full model...");
                 let (variables, trainer) =
@@ -161,12 +161,22 @@ impl CooldownStepMetadata {
                     .map(|(name, var)| (name.clone(), var.shallow_clone()))
                     .collect();
 
-                trainers.push(trainer);
-                let evals = model_task_runner.start(trainers);
-
+                // for p2p model sharing we use the native trainer shape
                 tx_model
                     .send(variables_clone)
                     .map_err(|_| CheckpointError::SendCheckpoint)?;
+
+                let (variables, trainer) = if checkpoint_info.is_some() {
+                    // convert from internal shape to serialized shape (e.g. torchtitan to hf)
+                    tokio::task::spawn_blocking(|| (trainer.convert(Some(variables)), trainer))
+                        .await
+                        .map_err(|_| CheckpointError::ExtractThreadCrashed)?
+                } else {
+                    (variables, trainer)
+                };
+
+                trainers.push(trainer);
+                let evals = model_task_runner.start(trainers);
 
                 let Some(CheckpointConfig {
                     hub_upload,
@@ -176,11 +186,11 @@ impl CooldownStepMetadata {
                 }) = checkpoint_info
                 else {
                     // If there was no HF checkpointing configuration, return immediately
-                    return Ok(evals);
+                    return Ok((evals, None));
                 };
 
                 // Start the upload process of the updated model parameters in a separate task
-                tokio::task::spawn(async move {
+                let upload_handle = tokio::task::spawn(async move {
                     let path = checkpoint_dir.join(format!("{run_id}-step{step}"));
                     info!("Saving to {}", path.display());
                     let mut local = tokio::task::spawn_blocking({
@@ -226,7 +236,11 @@ impl CooldownStepMetadata {
                     .await
                     {
                         Ok(revision) => {
-                            info!(repo = hub_repo, "Upload to HuggingFace complete");
+                            info!(
+                                repo = hub_repo,
+                                revision = revision,
+                                "Upload to HuggingFace complete"
+                            );
                             revision
                         }
                         Err(err) => {
@@ -262,34 +276,46 @@ impl CooldownStepMetadata {
                     Ok(())
                 });
 
-                Ok(evals)
+                Ok((evals, Some(upload_handle)))
             }
             .instrument(info_span!("checkpointing")),
         );
         Ok(CooldownStep {
             checkpointing_and_evals,
-            doing_checkpoint,
         })
     }
 }
 
+type CheckpointAndEvalsHandle = JoinHandle<
+    Result<
+        (
+            RunningEvals,
+            Option<JoinHandle<Result<(), CheckpointError>>>,
+        ),
+        CheckpointError,
+    >,
+>;
+
 #[derive(Debug)]
 pub struct CooldownStep {
-    checkpointing_and_evals: JoinHandle<Result<RunningEvals, CheckpointError>>,
-    doing_checkpoint: bool,
+    checkpointing_and_evals: CheckpointAndEvalsHandle,
 }
 
 impl CooldownStep {
-    pub async fn finish(self) -> Result<RunningEvals, CooldownError> {
-        let running_evals = self
+    pub async fn finish(
+        self,
+    ) -> Result<
+        (
+            RunningEvals,
+            Option<JoinHandle<Result<(), CheckpointError>>>,
+        ),
+        CooldownError,
+    > {
+        let (running_evals, upload_handle) = self
             .checkpointing_and_evals
             .await
             .map_err(|_| CooldownError::CheckpointThreadCrashed)??;
 
-        Ok(running_evals)
-    }
-
-    pub fn doing_checkpoint(&self) -> bool {
-        self.doing_checkpoint
+        Ok((running_evals, upload_handle))
     }
 }

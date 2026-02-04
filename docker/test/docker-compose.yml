@@ -1,30 +1,17 @@
 services:
-  psyche-run-owner:
+  psyche-test-client:
     image: psyche-solana-test-client:latest
     depends_on:
       psyche-solana-test-validator:
         condition: service_healthy
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
-    env_file:
-      - '../../config/client/.env.local'
-    volumes:
-      - ../../config/solana-test/test-config.toml:/usr/local/config.toml
-    entrypoint: ['/bin/sh', '-c', '/bin/run_owner_entrypoint.sh']
-    networks:
-      - psyche-test-network
-
-  psyche-test-client:
-    image: psyche-solana-test-client:latest
-    depends_on:
-      psyche-run-owner:
-        condition: service_completed_successfully
     deploy:
       replicas: ${NUM_REPLICAS:-1}
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     env_file:
       - '../../config/client/.env.local'
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
     networks:
       - psyche-test-network
 
@@ -37,7 +24,7 @@ services:
       test:
         [
           'CMD-SHELL',
-          'solana account PsyAUmhpmiUouWsnJdNGFSX8vZ6rWjXjgDPHsgqPGyw --url http://localhost:8899 | grep -q "Executable: true" && solana account HR8RN2TP9E9zsi2kjhvPbirJWA1R6L6ruf4xNNGpjU5Y --url http://localhost:8899 | grep -q "Executable: true" || exit 1',
+          'AUTHORIZER_ID=$(solana address -k /local/solana-authorizer/target/deploy/psyche_solana_authorizer-keypair.json) && COORDINATOR_ID=$(solana address -k /local/solana-coordinator/target/deploy/psyche_solana_coordinator-keypair.json) && solana account $$AUTHORIZER_ID --url http://localhost:8899 | grep -q "Executable: true" && solana account $$COORDINATOR_ID --url http://localhost:8899 | grep -q "Executable: true" || exit 1',
         ]
       interval: 5s
       timeout: 5s

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use iroh::NodeId;
+use iroh::EndpointId;
 use iroh::protocol::AcceptError;
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
 use iroh_blobs::api::Tag;
@@ -30,17 +30,17 @@ pub struct PeerManagerHandle {
 /// List of commands that the Peer manager actor will respond in the process of asking and downloading the model parameters
 enum PeerCommand {
     SetPeers {
-        peers: Vec<NodeId>,
+        peers: Vec<EndpointId>,
     },
     GetPeer {
-        reply: oneshot::Sender<Option<NodeId>>,
+        reply: oneshot::Sender<Option<EndpointId>>,
     },
     ReportSuccess {
-        peer_id: NodeId,
+        peer_id: EndpointId,
     },
     ReportModelDownloadError {
         blob_ticket: Option<BlobTicket>,
-        peer_id: NodeId,
+        peer_id: EndpointId,
     },
 }
 
@@ -59,13 +59,13 @@ impl PeerManagerHandle {
     }
 
     /// Set the list of peers that the manager will use to download the model parameters
-    pub fn set_peers(&self, peers: Vec<NodeId>) {
+    pub fn set_peers(&self, peers: Vec<EndpointId>) {
         let _ = self.peer_tx.send(PeerCommand::SetPeers { peers });
     }
 
     /// Get the next peer to download the model parameters from
     /// We'll get a None if no peers are available, a peer might be available later when it finishes sharing a parameter
-    pub async fn get_next_peer(&self) -> Option<NodeId> {
+    pub async fn get_next_peer(&self) -> Option<EndpointId> {
         let (reply_tx, reply_rx) = oneshot::channel();
 
         if self
@@ -80,14 +80,14 @@ impl PeerManagerHandle {
     }
 
     /// Report that a peer has successfully shared the hash of a blob ticket for a parameter
-    pub fn report_success(&self, peer_id: NodeId) {
+    pub fn report_success(&self, peer_id: EndpointId) {
         let _ = self.peer_tx.send(PeerCommand::ReportSuccess { peer_id });
     }
 
     /// Report that a peer has failed to share the hash of the blob ticket for a model parameter
     pub fn report_blob_ticket_request_error(
         &self,
-        peer_id: NodeId,
+        peer_id: EndpointId,
         blob_ticket: Option<BlobTicket>,
     ) {
         if self
@@ -105,9 +105,9 @@ impl PeerManagerHandle {
 
 struct PeerManagerActor {
     /// Peers that are available to request the model to
-    available_peers: VecDeque<NodeId>,
+    available_peers: VecDeque<EndpointId>,
     /// A map for the peer's blob ticket to their errors
-    errors_per_peers: HashMap<NodeId, u8>,
+    errors_per_peers: HashMap<EndpointId, u8>,
     /// Max errors we tolerate for a peer to share a parameter blob ticket
     max_errors_per_peer: u8,
 }
@@ -306,11 +306,16 @@ impl TransmittableModelParameter {
 pub struct TransmittableModelConfig {
     pub config: String,
     pub tokenizer: String,
+    pub parameter_names: Vec<String>,
 }
 
 impl TransmittableModelConfig {
-    pub fn new(config: String, tokenizer: String) -> Self {
-        Self { config, tokenizer }
+    pub fn new(config: String, tokenizer: String, parameter_names: Vec<String>) -> Self {
+        Self {
+            config,
+            tokenizer,
+            parameter_names,
+        }
     }
 }
 
@@ -324,10 +329,11 @@ pub struct SharableModel {
         HashMap<String, JoinHandle<Result<TransmittableModelParameter, SharableModelError>>>,
     >,
     serialized_parameters: Option<HashMap<String, BlobTicket>>,
+    parameters_to_download: Vec<String>,
     model_config: Option<String>,
     tokenizer_config: Option<Tokenizer>,
     config_and_tokenizer_ticket: Option<BlobTicket>,
-    pub tx_model_config_response: Option<oneshot::Sender<(String, Tokenizer)>>,
+    pub tx_model_config_response: Option<oneshot::Sender<(String, Tokenizer, Vec<String>)>>,
     tx_params_response: Option<oneshot::Sender<HashMap<String, Tensor>>>,
 }
 
@@ -344,6 +350,7 @@ impl SharableModel {
             tokenizer_config: None,
             config_and_tokenizer_ticket: None,
             tx_model_config_response: None,
+            parameters_to_download: Vec::new(),
         }
     }
 }
@@ -438,7 +445,7 @@ impl SharableModel {
                     let transmittable_download =
                         TransmittableDownload::ModelParameter(transmittable_parameter);
                     trace!("Adding parameter downloadable {param_name}");
-                    let blob_ticket = p2p
+                    let (blob_ticket, _) = p2p
                         .add_downloadable(transmittable_download, tag)
                         .await
                         .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
@@ -473,11 +480,19 @@ impl SharableModel {
                 let raw_tokenizer = tokenizer
                     .to_string(false)
                     .map_err(|err| SharableModelError::ParseConfig(err.to_string()))?;
-                let transmittable_config: TransmittableModelConfig =
-                    TransmittableModelConfig::new(config.clone(), raw_tokenizer);
+                let transmittable_config: TransmittableModelConfig = TransmittableModelConfig::new(
+                    config.clone(),
+                    raw_tokenizer,
+                    self.parameters
+                        .as_ref()
+                        .ok_or(SharableModelError::ModelConfigNotInitialized)?
+                        .keys()
+                        .cloned()
+                        .collect::<Vec<_>>(),
+                );
                 let transmittable_download =
                     TransmittableDownload::ModelConfig(transmittable_config);
-                let ticket = p2p
+                let (ticket, _) = p2p
                     .add_downloadable(transmittable_download, Tag::from(tag))
                     .await
                     .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
@@ -559,6 +574,7 @@ impl SharableModel {
 
         self.model_config = Some(config);
         self.tokenizer_config = Some(tokenizer);
+        self.parameters_to_download = transmittable_config.parameter_names;
         Ok(())
     }
 
@@ -609,7 +625,7 @@ impl SharableModel {
                 return Err(SharableModelError::TokenizerConfigNotInitialized);
             };
             tx_model_config_response
-                .send((config, tokenizer))
+                .send((config, tokenizer, self.parameters_to_download.clone()))
                 .map_err(|_e| SharableModelError::SendConfig)?;
             return Ok(());
         }

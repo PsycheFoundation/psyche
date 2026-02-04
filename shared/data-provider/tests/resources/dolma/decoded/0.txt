@@ -57,4 +57,4 @@ For translates, we recall the following result.
 
 This left only the following question open: Is there for any planar convex body $C$ a positive integer $m$ such that that no 4-chromatic $m$-uniform hypergraph is realizable with translates of $C$?
 Our Theorem \ref{thm:general_three_col} answers this question affirmatively for all $C$ by showing that all realizable $m$-heavy hypergraphs are three-colorable for some $m$.
-This has been hitherto known to hold only when $C$ is a polygon (in which case 2 colors suffice \cite{PT10}, and 3 colors are known to be enough
+This has been hitherto known to hold only when $C$ is a polygon (in which case 2 colors suffice \cite{PT10}, and 3 colors are known to be

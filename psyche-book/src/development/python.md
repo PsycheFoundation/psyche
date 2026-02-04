@@ -7,13 +7,13 @@
 
 ## Overview
 
-Psyche provides a Python integration that allows you to write modeling code in Python using libraries like [Hugging Face Transformers](https://github.com/huggingface/transformers) while leveraging Psyche's Rust core for training orchestration. This integration is designed for research where you want the flexibility of Python modeling with Psyche's training infrastructure, and production-scale training where you want to take advanted of highly optimized training frameworks already built in Python.
+Psyche provides a Python integration that allows you to write modeling code in Python using libraries like [Hugging Face Transformers](https://github.com/huggingface/transformers) while leveraging Psyche's Rust core for training orchestration. This integration is designed for research where you want the flexibility of Python modeling with Psyche's training infrastructure, and production-scale training where you want to take advantage of highly optimized training frameworks already built in Python.
 
 The Python integration works through a "sidecar" process that Psyche spawns and communicates with during training.
 
 ## Development Setup
 
-To develop with the Python integration, we have a Python development shell available.
+To develop with the Python integration, we have a Nix development shell with Python available.
 
 This shell provides:
 
@@ -24,7 +24,7 @@ This shell provides:
 
 ### Development Workflow
 
-You can use `uv pip` to install arbitrary packages. Dependencies are tracked via `uv.lock`, so if you don't have `direnv` set up, you must exit and re-enter the development shell with `nix develop`.
+You can use `uv pip` to install arbitrary packages. Dependencies are tracked via `uv.lock`, so if you don't have `direnv` set up, you must exit and re-enter the development shell with `nix develop .#python`.
 
 When you enter the dev shell, it compiles the Rust extension that provides the `psyche` Python module. **If you modify any Rust code in the Python extension or its dependencies, you must exit and re-enter the dev shell** to recompile the extension.
 
@@ -33,7 +33,7 @@ We recommend running commands directly through the dev shell without entering it
 For example, to run the `train` program using python:
 
 ```bash
-nix develop .#dev-python --command cargo run --features python --example train -- \
+nix develop .#python --command just train-model-python \
   --model emozilla/llama2-20m-init \
   --data-path ./data/fineweb-10bt/ \
   --total-batch 2 \
@@ -41,10 +41,10 @@ nix develop .#dev-python --command cargo run --features python --example train -
   --python
 ```
 
-Alternatively, you _could_ enter the shell with
+Alternatively, you _could_ enter the shell and run the commands with:
 
 ```bash
-nix develop .#dev-python
+nix develop .#python
 ```
 
 but **this is likely to be a footgun** as it's easy to forget to exit and re-enter the shell.
@@ -62,21 +62,21 @@ When you use the `--python` flag, Psyche automatically spawns Python sidecar pro
 python -m psyche.sidecar --parent-pid <pid> --backend <backend> --init-method <method> --world-size <size> --rank <rank>
 ```
 
+By default only one sidecar using one GPU will be spawned, the amount will change depending on two different arguments `--data-parallelism` and `--tensor-parallelism`. The first one will spawned one entire copy of the model per GPU and the latter will split the model across multiple GPUs. The amount of sidecars spawned will be the product of these two arguments. Take into account that you will need `tensor_parallelism * data_parallelism` GPUs to run that amount of sidecars.
+
+Here's an overview of the different options that the `psyche-sidecar` provides in case you want to test sidecars with different configurations.
+
+<details>
+    <summary>Command-line options</summary>
+    {{#include ../../generated/cli/psyche-sidecar.md}}
+</details>
+
 ## Testing Your Changes
 
 To test modifications to the Python integration:
 
 1. **Modify the sidecar code** in the Python extension
-2. **Run the training example**:
-
-```bash
-nix develop .#dev-python --command cargo run --features python --example train -- \
-  --model emozilla/llama2-20m-init \
-  --data-path ./data/fineweb-10bt/ \
-  --total-batch 2 \
-  --micro-batch 1 \
-  --python
-```
+2. **Run the training example** with the same `just train-model-python` command we outlined earlier.
 
 ## How It Works
 

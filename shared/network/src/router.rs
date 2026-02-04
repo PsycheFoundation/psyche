@@ -29,15 +29,16 @@ pub(crate) fn spawn_router_with_allowlist<A: Allowlist + 'static + Send + std::m
     protocols: SupportedProtocols,
 ) -> Result<Arc<Router>> {
     let allowlist_clone = allowlist.clone();
-    let allowlisted_blobs =
-        AccessLimit::new(protocols.1, move |node_id| allowlist_clone.allowed(node_id));
+    let allowlisted_blobs = AccessLimit::new(protocols.1, move |endpoint_id| {
+        allowlist_clone.allowed(endpoint_id)
+    });
     let allowlist_clone_2 = allowlist.clone();
-    let allowlisted_gossip = AccessLimit::new(protocols.0.clone(), move |node_id| {
-        allowlist_clone_2.allowed(node_id)
+    let allowlisted_gossip = AccessLimit::new(protocols.0.clone(), move |endpoint_id| {
+        allowlist_clone_2.allowed(endpoint_id)
     });
     let allowlist_clone_3 = allowlist.clone();
-    let allowlisted_model_sharing = AccessLimit::new(protocols.2.clone(), move |node_id| {
-        allowlist_clone_3.allowed(node_id)
+    let allowlisted_model_sharing = AccessLimit::new(protocols.2.clone(), move |endpoint_id| {
+        allowlist_clone_3.allowed(endpoint_id)
     });
     let router = Arc::new(
         Router::builder(endpoint.clone())
@@ -147,17 +148,17 @@ mod tests {
                     let blobs_protocol = BlobsProtocol::new(&blobs.clone(), None);
 
                     let allowlist_clone = allowlist.clone();
-                    let allowlisted_blobs = AccessLimit::new(blobs_protocol, move |node_id| {
-                        allowlist_clone.allowed(node_id)
+                    let allowlisted_blobs = AccessLimit::new(blobs_protocol, move |endpoint_id| {
+                        allowlist_clone.allowed(endpoint_id)
                     });
                     let allowlist_clone_2 = allowlist.clone();
-                    let allowlisted_gossip = AccessLimit::new(gossip.clone(), move |node_id| {
-                        allowlist_clone_2.allowed(node_id)
+                    let allowlisted_gossip = AccessLimit::new(gossip.clone(), move |endpoint_id| {
+                        allowlist_clone_2.allowed(endpoint_id)
                     });
                     let allowlist_clone_3 = allowlist.clone();
                     let allowlisted_model_sharing =
-                        AccessLimit::new(p2p_model_sharing, move |node_id| {
-                            allowlist_clone_3.allowed(node_id)
+                        AccessLimit::new(p2p_model_sharing, move |endpoint_id| {
+                            allowlist_clone_3.allowed(endpoint_id)
                         });
                     let router = Arc::new(
                         Router::builder(endpoint.clone())
@@ -179,28 +180,25 @@ mod tests {
         let mut subscriptions = Vec::new();
         for (i, (gossip, router, static_discovery)) in routers.iter().enumerate() {
             for (_, router, _) in routers.iter() {
-                static_discovery.add_node_info(router.endpoint().node_addr());
+                static_discovery.add_endpoint_info(router.endpoint().addr());
             }
             let mut sub = gossip
                 .subscribe(
                     gossip_topic,
                     pubkeys
                         .iter()
-                        .filter(|k| **k != router.endpoint().node_id())
+                        .filter(|k| **k != router.endpoint().id())
                         .cloned()
                         .collect(),
                 )
                 .await?;
-            println!(
-                "subscribing {i} ({}) to topic..",
-                router.endpoint().node_id()
-            );
+            println!("subscribing {i} ({}) to topic..", router.endpoint().id());
 
             subscriptions.push(async move {
                 if i < N_ALLOWED as usize {
                     println!(
                         "waiting for {i} ({}) to get at least 1 peer..",
-                        router.endpoint().node_id()
+                        router.endpoint().id()
                     );
                     sub.joined().await.unwrap();
                     println!("gossip connections {i} ready");

@@ -21,6 +21,7 @@ mod similarity;
 mod sized_iterator;
 mod small_boolean;
 mod swap_or_not;
+mod testing;
 mod token_size;
 
 pub use batch_id::BatchId;
@@ -52,6 +53,7 @@ pub use similarity::{
 pub use sized_iterator::SizedIterator;
 pub use small_boolean::SmallBoolean;
 pub use swap_or_not::compute_shuffled_index;
+pub use testing::IntegrationTestLogMarker;
 pub use token_size::TokenSize;
 
 #[cfg(test)]

@@ -1,0 +1,78 @@
+name: Run-manager integration test base
+
+on:
+  workflow_call:
+    inputs:
+      test-name:
+        description: 'Name of the test to run (e.g., test_create_run)'
+        required: true
+        type: string
+
+jobs:
+  run-manager-integration-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+
+      - name: Check initial disk space
+        run: |
+          echo "Initial disk usage"
+          df -h
+          echo "Docker info"
+          docker info | grep -i "docker root dir" || true
+
+      - uses: nixbuild/nix-quick-install-action@v31
+        with:
+          nix_conf: |
+            download-buffer-size = 524288000
+            accept-flake-config = true
+            substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
+            trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+
+      - name: Get Validator Image from cache
+        id: cache-validator
+        uses: actions/cache/restore@v4
+        with:
+          path: validator-image.tar.gz
+          key: validator-image-${{ runner.os }}-${{ hashFiles('shared/coordinator/src/coordinator.rs', 'architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-coordinator/Cargo.lock', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'architectures/decentralized/solana-authorizer/Cargo.lock', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
+          fail-on-cache-miss: true
+
+      - name: Load Validator Image
+        run: |
+          echo "Loading validator image from cache"
+          docker load < validator-image.tar.gz
+          docker images | grep psyche-solana-test-validator
+
+          echo "Disk usage after loading validator"
+          df -h
+
+      - name: Clean up validator tar file
+        run: |
+          # Remove the compressed validator image to free up disk space
+          rm -f validator-image.tar.gz
+          echo "Disk usage after removing validator tar"
+          df -h
+
+      - name: Verify Docker images exist
+        run: |
+          echo "Checking for required Docker images"
+          docker images
+          docker images | grep psyche-solana-test-validator || (echo "ERROR: psyche-solana-test-validator image not found" && exit 1)
+          echo "Validator image is present"
+
+          echo "Final disk usage before tests"
+          df -h
+
+      - name: Run integration test
+        run: |
+          nix develop --command cargo test --release -p run-manager --test integration_tests -- --nocapture "${{ inputs.test-name }}"

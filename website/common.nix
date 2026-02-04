@@ -1,5 +1,7 @@
 {
   lib,
+  pnpmConfigHook,
+  fetchPnpmDeps,
   pnpm,
   stdenv,
   nodejs,
@@ -20,7 +22,7 @@ lib.extendMkDerivation {
       preBuild,
       buildCommand ? "build",
       installPhase,
-      extraInputs ? [ ],
+      extraNativeBuildInputs ? [ ],
       meta ? { },
     }@args:
     {
@@ -30,7 +32,7 @@ lib.extendMkDerivation {
       version = packageJson.version;
       src = workspaceSrc;
 
-      pnpmDeps = pnpm.fetchDeps {
+      pnpmDeps = fetchPnpmDeps {
         inherit (finalAttrs) pname version;
         fetcherVersion = 2;
         src = workspaceSrc;
@@ -38,11 +40,12 @@ lib.extendMkDerivation {
       };
 
       nativeBuildInputs = [
-        pnpm.configHook
+        pnpm
+        pnpmConfigHook
         nodejs
         curl
       ]
-      ++ extraInputs;
+      ++ extraNativeBuildInputs;
 
       inherit preBuild installPhase;
 

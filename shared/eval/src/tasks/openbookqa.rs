@@ -80,6 +80,7 @@ impl OpenbookQA {
             answer,
             category: None,
             cot_content: None,
+            eval_name: OpenbookQA::name().to_string(),
         }
     }
 }

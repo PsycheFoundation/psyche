@@ -1,0 +1,43 @@
+[package]
+name = "run-manager"
+edition = "2021"
+version.workspace = true
+
+[lib]
+name = "run_manager"
+path = "src/lib.rs"
+
+[[bin]]
+name = "run-manager"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+clap.workspace = true
+tokio.workspace = true
+psyche-solana-rpc.workspace = true
+psyche-solana-coordinator.workspace = true
+psyche-solana-authorizer.workspace = true
+psyche-solana-treasurer.workspace = true
+psyche-coordinator.workspace = true
+psyche-core.workspace = true
+anchor-client.workspace = true
+anchor-lang.workspace = true
+anchor-spl.workspace = true
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap-markdown.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
+time.workspace = true
+solana-client = "=2.1.4"
+
+[dev-dependencies]
+serial_test = "3.0"
+
+[build-dependencies]
+chrono.workspace = true

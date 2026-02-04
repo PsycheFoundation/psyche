@@ -1,10 +1,11 @@
 use anyhow::{Result, bail};
 use chrono::{Local, Timelike};
-use clap::{ArgAction, Parser};
+use clap::{ArgAction, Args, Parser, Subcommand};
 use iroh::{PublicKey, RelayMode, RelayUrl};
 use iroh_blobs::api::Tag;
 use psyche_metrics::ClientMetrics;
 use psyche_network::Hash;
+use psyche_network::RelayKind;
 use psyche_network::{
     BlobTicket, DiscoveryMode, DownloadType, NetworkConnection, NetworkEvent, NetworkTUIState,
     NetworkTui, allowlist, fmt_bytes,
@@ -34,7 +35,25 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 #[derive(Parser, Debug)]
-struct Args {
+struct CliArgs {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
+    #[command(flatten)]
+    run_args: RunArgs,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    #[clap(hide = true)]
+    PrintAllHelp {
+        #[arg(long, required = true)]
+        markdown: bool,
+    },
+}
+
+#[derive(Args, Debug)]
+struct RunArgs {
     #[clap(long)]
     secret_key: Option<String>,
     #[clap(short, long)]
@@ -216,15 +235,15 @@ impl App {
         const DATA_SIZE_MB: usize = 10;
         let mut data = vec![0u8; DATA_SIZE_MB * 1024 * 1024];
         rand::rng().fill(&mut data[..]);
-        let node_id = self.network.node_id();
+        let endpoint_id = self.network.endpoint_id();
 
         let blob_ticket = match self
             .network
             .add_downloadable(DistroResultBlob { step, data }, Tag::from(step.to_string()))
             .await
         {
-            Ok(v) => {
-                info!(name:"upload_blob", from=%node_id.fmt_short(), step=step, blob=%v.hash().fmt_short());
+            Ok((v, _)) => {
+                info!(name:"upload_blob", from=%endpoint_id.fmt_short(), step=step, blob=%v.hash().fmt_short());
                 v
             }
             Err(err) => {
@@ -242,14 +261,22 @@ impl App {
             error!("Error sending message: {err}");
         } else {
             info!("broadcasted message for step {step}: {}", blob_ticket);
-            info!(name:"message_send_distro", from=%node_id.fmt_short(), step=step, blob=%blob_ticket.hash().fmt_short());
+            info!(name:"message_send_distro", from=%endpoint_id.fmt_short(), step=step, blob=%blob_ticket.hash().fmt_short());
         }
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let args = Args::parse();
+    let cli_args = CliArgs::parse();
+
+    if let Some(Commands::PrintAllHelp { markdown }) = cli_args.command {
+        assert!(markdown);
+        clap_markdown::print_help_markdown::<CliArgs>();
+        return Ok(());
+    }
+
+    let args = cli_args.run_args;
 
     let logger = psyche_tui::logging()
         .with_output(if args.tui {
@@ -259,13 +286,13 @@ async fn main() -> Result<()> {
         })
         .init()?;
 
-    let single_node_id = args
+    let single_endpoint_id = args
         .connect_to
         .map(|p| {
             data_encoding::HEXLOWER
                 .decode(p.as_bytes())
                 .map(|b| PublicKey::try_from(&b as &[u8]))
-                .expect("failed to parse node addr from arg")
+                .expect("failed to parse endpoint id from arg")
         })
         .transpose()?
         .map(Into::into);
@@ -290,10 +317,11 @@ async fn main() -> Result<()> {
         args.bind_port,
         args.bind_interface,
         DiscoveryMode::N0,
-        single_node_id.into_iter().collect(),
+        RelayKind::Psyche,
+        single_endpoint_id.into_iter().collect(),
         secret_key,
         allowlist::AllowAll,
-        Arc::new(ClientMetrics::new(None)),
+        Arc::new(ClientMetrics::new(None, None)),
         Some(cancel.clone()),
     )
     .await?;

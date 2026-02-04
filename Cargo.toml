@@ -4,6 +4,7 @@ members = [
   "architectures/decentralized/solana-client",
   "architectures/decentralized/testing",
   "architectures/decentralized/solana-tooling",
+  "architectures/inference-only/*",
   "python/",
   "python/extension-impl/",
   "shared/*",
@@ -16,7 +17,7 @@ resolver = "2"
 name = "psyche-workspace"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 
 [workspace.dependencies]
 psyche-coordinator = { path = "./shared/coordinator" }
@@ -24,6 +25,7 @@ psyche-core = { path = "./shared/core" }
 psyche-client = { path = "./shared/client" }
 psyche-data-provider = { path = "./shared/data-provider" }
 psyche-eval = { path = "./shared/eval" }
+psyche-inference = { path = "./shared/inference" }
 psyche-network = { path = "./shared/network" }
 psyche-modeling = { path = "./shared/modeling" }
 psyche-python-extension = { path = "./python" }
@@ -33,10 +35,12 @@ psyche-watcher = { path = "./shared/watcher" }
 psyche-metrics = { path = "./shared/metrics" }
 
 psyche-solana-client = { path = "./architectures/decentralized/solana-client" }
+psyche-solana-rpc = { path = "./architectures/decentralized/solana-common" }
 psyche-solana-authorizer = { path = "./architectures/decentralized/solana-authorizer/programs/solana-authorizer" }
 psyche-solana-coordinator = { path = "./architectures/decentralized/solana-coordinator/programs/solana-coordinator" }
 psyche-solana-treasurer = { path = "./architectures/decentralized/solana-treasurer/programs/solana-treasurer" }
 psyche-solana-tooling = { path = "./architectures/decentralized/solana-tooling" }
+run-manager = { path = "./tools/rust-tools/run-manager" }
 
 hf-hub = { git = "https://github.com/NousResearch/hf-hub.git", rev = "269dc3df4e194f9071ddbdbd25ed90d4990f9262" }
 tokio = { version = "1", features = [
@@ -65,19 +69,19 @@ futures-util = "0.3.30"
 chrono = { version = "0.4.38", features = ["clock"] }
 fast-math = "0.1"
 async-trait = "0.1.82"
-iroh = { version = "0.93.2", features = ["metrics"] }
-iroh-relay = { version = "0.93.2", features = ["metrics"] }
-iroh-blobs = { version = "0.95.0", features = ["metrics"] }
+iroh = { version = "0.95.1", features = ["metrics"] }
+iroh-relay = { version = "0.95.1", features = ["metrics"] }
+iroh-blobs = { version = "0.97", features = ["metrics"] }
 flume = "0.11.1"
-iroh-gossip = { version = "0.93.1" }
+iroh-gossip = { version = "0.95.0" }
 memmap2 = { version = "0.9.3", features = ["stable_deref_trait"] }
 indicatif = "0.17.5"
 tokenizers = { version = "0.20.0", default-features = false, features = [
   "onig",
 ] }
-tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "11d1ca2ef6dbd3f1e5b0986fab0a90fbb6734496" }
-torch-sys = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "11d1ca2ef6dbd3f1e5b0986fab0a90fbb6734496" }
-pyo3-tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "11d1ca2ef6dbd3f1e5b0986fab0a90fbb6734496" }
+tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "dda507e05a776547a112b6854d1e611684f8c729" }
+torch-sys = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "dda507e05a776547a112b6854d1e611684f8c729" }
+pyo3-tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "dda507e05a776547a112b6854d1e611684f8c729" }
 #tch = { path = "../tch-rs" }
 #torch-sys = { path = "../tch-rs/torch-sys" }
 #pyo3-tch = { path = "../tch-rs/pyo3-tch" }
@@ -109,12 +113,18 @@ serial_test = "3.2.0"
 rstest = "0.25.0"
 
 [patch.crates-io]
-iroh = { version = "0.93.2", git = "https://github.com/arilotter/iroh", rev = "ca67ba14f6e1d9db7cb7083acf9bb03cdf71c3ea" }
-iroh-base = { version = "0.93.2", git = "https://github.com/arilotter/iroh", rev = "ca67ba14f6e1d9db7cb7083acf9bb03cdf71c3ea" }
-iroh-relay = { version = "0.93.2", git = "https://github.com/arilotter/iroh", rev = "ca67ba14f6e1d9db7cb7083acf9bb03cdf71c3ea" }
+iroh = { version = "0.95.1", git = "https://github.com/arilotter/iroh", rev = "420fde1d3fdb7a5bacb85ef821c2b1a3c6691bd1" }
+iroh-base = { version = "0.95.1", git = "https://github.com/arilotter/iroh", rev = "420fde1d3fdb7a5bacb85ef821c2b1a3c6691bd1" }
+iroh-relay = { version = "0.95.1", git = "https://github.com/arilotter/iroh", rev = "420fde1d3fdb7a5bacb85ef821c2b1a3c6691bd1" }
 
 [profile.dev]
 opt-level = 1
 
 [profile.test]
 opt-level = 1
+
+[workspace.metadata.release]
+tag-name = "v{{version}}"
+sign-tag = true
+push = true
+publish = false

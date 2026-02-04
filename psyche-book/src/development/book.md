@@ -4,7 +4,7 @@ That's the document you're reading! :D
 
 ## Development
 
-Simply run `just serve_book` to serve the book over http on localhost!
+Simply run `just serve_book` to serve the book over http on localhost! This will also automatically rebuild the book when changes are made.
 
 ## Building
 

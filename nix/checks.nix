@@ -23,7 +23,7 @@
               rustWorkspaceArgsWithPython
               // {
                 inherit cargoArtifacts;
-
+                RUST_BACKTRACE = "full";
                 RUST_LOG = "info,psyche=trace";
                 partitions = 1;
                 partitionType = "count";

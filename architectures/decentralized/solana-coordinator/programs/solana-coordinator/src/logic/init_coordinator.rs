@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use psyche_coordinator::SOLANA_RUN_ID_MAX_LEN;
 use psyche_core::FixedString;
 
 use crate::CoordinatorAccount;
@@ -40,12 +41,17 @@ pub struct InitCoordinatorParams {
     pub main_authority: Pubkey,
     pub join_authority: Pubkey,
     pub run_id: String,
+    pub client_version: String,
 }
 
 pub fn init_coordinator_processor(
     context: Context<InitCoordinatorAccounts>,
     params: InitCoordinatorParams,
 ) -> Result<()> {
+    if params.run_id.len() > SOLANA_RUN_ID_MAX_LEN {
+        return err!(ProgramError::RunIdInvalidLength);
+    }
+
     // Initialize the coordinator instance
     let coordinator_instance = &mut context.accounts.coordinator_instance;
     coordinator_instance.bump = context.bumps.coordinator_instance;
@@ -67,11 +73,17 @@ pub fn init_coordinator_processor(
         return err!(ErrorCode::AccountDiscriminatorAlreadySet);
     }
     data_disc.copy_from_slice(disc);
+
     // Ready to prepare the coordinator content
     let account = bytemuck::from_bytes_mut::<CoordinatorAccount>(
         &mut data[disc.len()..CoordinatorAccount::space_with_discriminator()],
     );
+    account.version = CoordinatorAccount::VERSION;
     account.nonce = 0;
+
+    account.state.client_version =
+        FixedString::from_str_truncated(&params.client_version);
+
     // Setup the run_id const
     account.state.coordinator.run_id =
         FixedString::from_str_truncated(&params.run_id);

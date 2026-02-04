@@ -35,3 +35,4 @@ jobs:
     uses: ./.github/workflows/solana-integration-test-base.yml
     with:
       test-name: ${{ matrix.test-name }}
+    secrets: inherit

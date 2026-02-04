@@ -49,7 +49,7 @@ impl Authorization {
 
 The smart contract then exposes a set of instruction to manipulate those `Authorization` PDAs:
 
-- `authoziation_create`, create a new PDA
+- `authorization_create`, create a new PDA
 - `authorization_grantor_update`, allow the grantor to activate/deactivate the authorization
 - `authorization_grantee_update`, allow the grantee to add/remove delegates
 - `authorization_close` allow the grantor to remove the PDA
@@ -58,20 +58,6 @@ The smart contract then exposes a set of instruction to manipulate those `Author
 
 Note: We'll use the `jq` library in this example which is an open-source JSON cli tool <https://jqlang.org/>
 Note: We'll also use the `solana-toolbox` from the `cargo install solana_toolbox_cli` rust crate
-
-## Psyche's specific scripts
-
-We provide a standard script for creating a new coordinator's join authorization in psyche:
-
-```sh
-sh scripts/join-authorization-create.sh devnet grantor.json $GRANTEE_PUBKEY
-```
-
-We also provide a standard script for a grantee to set its delegates:
-
-```sh
-sh scripts/join-authorization-set-delegates.sh devnet $GRANTOR_PUBKEY grantee.json delegate*.json
-```
 
 ## Setting up an authorized user from the authority
 

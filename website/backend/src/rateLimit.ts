@@ -90,6 +90,7 @@ export function makeRetryPromise<T extends (...args: any[]) => Promise<any>>(
 			try {
 				return await fn(...args)
 			} catch (err) {
+				console.warn(err)
 				if (attempts >= maxRetries) {
 					throw err
 				}

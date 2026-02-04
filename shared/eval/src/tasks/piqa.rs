@@ -53,6 +53,7 @@ impl PIQA {
             answer,
             category: None,
             cot_content: None,
+            eval_name: PIQA::name().to_string(),
         }
     }
 }

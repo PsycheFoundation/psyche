@@ -46,6 +46,10 @@ struct Args {
     #[cfg(feature = "python")]
     #[clap(long)]
     python: bool,
+
+    #[cfg(feature = "python")]
+    #[clap(long, default_value = "HfAuto")]
+    python_arch: String,
 }
 
 fn main() -> Result<()> {
@@ -106,15 +110,15 @@ fn main() -> Result<()> {
     let repo = download_model_repo_sync(&args.model, args.revision, None, args.hf_token, true)?;
     let tokenizer = auto_tokenizer(&repo)?;
 
-    let python = {
+    let (python, python_arch) = {
         #[cfg(feature = "python")]
         {
-            args.python
+            (args.python, args.python_arch)
         }
 
         #[cfg(not(feature = "python"))]
         {
-            false
+            (false, String::new())
         }
     };
 
@@ -128,6 +132,7 @@ fn main() -> Result<()> {
         args.seed,
         args.limit,
         python,
+        python_arch,
     )?;
     Ok(())
 }
@@ -142,6 +147,7 @@ fn run_data_parallel(
     seed: u64,
     limit: Option<usize>,
     python: bool,
+    python_arch: String,
 ) -> Result<()> {
     let task_info: Vec<(String, usize, u64)> = tasks
         .iter()
@@ -192,6 +198,8 @@ fn run_data_parallel(
         let shared_results = shared_results.clone();
         let shared_progress_bars = shared_progress_bars.clone();
         let task_info = task_info.clone();
+        #[allow(unused)]
+        let python_arch = python_arch.clone();
 
         let handle = std::thread::spawn(move || -> Result<()> {
             let device = if data_parallelism == 1 {
@@ -206,7 +214,7 @@ fn run_data_parallel(
                     psyche_python_extension_impl::init_embedded_python()?;
 
                     Box::new(psyche_modeling::PythonDistributedCausalLM::new(
-                        "hf-auto".to_string(),
+                        python_arch,
                         psyche_modeling::PretrainedSource::RepoFiles(repo),
                         device,
                         psyche_modeling::AttentionImplementation::default(),

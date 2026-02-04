@@ -1,0 +1,43 @@
+name: Run-manager integration tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, '**']
+jobs:
+  # First, build the validator image and cache it
+  build-validator:
+    permissions:
+      contents: read
+      actions: write
+    uses: ./.github/workflows/solana-build-anchor-programs.yml
+
+  # Then run all tests in parallel, using the cached validator image
+  test:
+    needs: build-validator
+    strategy:
+      fail-fast: false
+      matrix:
+        test-name:
+          # run manager integration tests are temporarily disabled,
+          # due to CI flakes.
+          # - test_create_run
+          # - test_pause_and_resume_run
+          # - test_json_dump_run
+          # - test_close_run
+          # - test_join_authorization_create_and_read
+          # - test_join_authorization_delete
+          # - test_can_join_paused_run
+          # - test_full_authorization_workflow
+          # - test_update_config
+          # - test_tick
+          # - test_set_future_epoch_rates
+          # - test_checkpoint
+          # - test_join_authorization_delegate
+          # - test_json_dump_user
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/run-manager-integration-test-base.yml
+    with:
+      test-name: ${{ matrix.test-name }}

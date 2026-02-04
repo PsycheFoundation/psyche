@@ -6,15 +6,16 @@ slow-timeout = { period = "30s", terminate-after = 3 }
 # and there's a decentralized & parallel section to cover the gap
 # parallelism tests require more than one gpu.
 # psyche-decentralized-testing tests are slow and laborious.
+# run-manager tests require docker (solana-test-validator).
 
 [profile.ci]
-slow-timeout = { period = "30s", terminate-after = 3 }
-default-filter = 'not (package(psyche-modeling) and test(parallelism::)) and not package(psyche-decentralized-testing)'
+slow-timeout = { period = "60s", terminate-after = 3 }
+default-filter = 'not (package(psyche-modeling) and test(parallelism::)) and not package(psyche-decentralized-testing) and not package(run-manager)'
 fail-fast = false
 
 [profile.decentralized]
 slow-timeout = { period = "60s", terminate-after = 3 }
-default-filter = 'package(psyche-decentralized-testing)'
+default-filter = 'package(psyche-decentralized-testing) or package(run-manager)'
 
 [profile.parallelism]
 slow-timeout = { period = "30s", terminate-after = 3 }

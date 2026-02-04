@@ -125,7 +125,7 @@ export const RunSummaryCard = memo(function RunSummaryCard({
 						pausedAt={new Date(0)}
 					/>
 				)}
-				<span>tokens trained</span>
+				<span>&nbsp;tokens trained</span>
 			</div>
 		</ShadowCard>
 	)

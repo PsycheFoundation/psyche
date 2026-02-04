@@ -67,6 +67,7 @@ impl BoolQ {
             answer,
             category: None,
             cot_content: None,
+            eval_name: BoolQ::name().to_string(),
         }
     }
 }

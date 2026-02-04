@@ -44,8 +44,8 @@ Optional:
 ### setting up a localnet run for data
 
 1. start `solana-test-validator --limit-ledger-size 10000000` in another terminal.
-2. deploy a run to the localnet. locally, you probably want to use a small model, so do `just setup-solana-localnet-light-test-run RUN_ID --name "\"silly run name\"" --description "\"this is a test run set up locally. it's used for training a silly model.\"" --num-parameters 12345678`
-3. start training your run! `just start-training-localnet-light-client RUN_ID` in another terminal.
+2. deploy a run to the localnet. locally, you probably want to use a small model, so do `just dev setup-solana-localnet-light-test-run RUN_ID --name "\"silly run name\"" --num-parameters 12345678`
+3. start training your run! `just dev start-training-localnet-light-client RUN_ID` in another terminal.
 
 ### running with the backend pointed to localnet
 

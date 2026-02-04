@@ -115,13 +115,14 @@ export interface RunData {
 	state?: {
 		phase: RunState
 		phaseStartTime: Date
+		epochStartTime: Date
 		clients: Array<RunRoundClient>
 
 		checkpoint: HubRepo | null
 
 		round: number
 		config: {
-			roundsPerEpoch: number
+			epochTime: number
 			minClients: number
 
 			warmupTime: number

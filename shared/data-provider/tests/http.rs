@@ -87,7 +87,6 @@ async fn test_http_data_provider() -> Result<()> {
         i32::from_le_bytes([0, 1, 0, 0]),
         i32::from_le_bytes([2, 3, 0, 0]),
         i32::from_le_bytes([4, 5, 0, 0]),
-        i32::from_le_bytes([6, 7, 0, 0]),
     ];
 
     assert_eq!(first_sequence, &expected_sequence);
@@ -104,7 +103,6 @@ async fn test_http_data_provider() -> Result<()> {
         i32::from_le_bytes([6, 7, 0, 0]),
         i32::from_le_bytes([8, 9, 0, 0]),
         i32::from_le_bytes([10, 11, 0, 0]),
-        i32::from_le_bytes([12, 13, 0, 0]),
     ];
 
     assert_eq!(

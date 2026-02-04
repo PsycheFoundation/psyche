@@ -15,5 +15,6 @@
 - How do I update the client to the latest version?
   - You can force Docker to pull the latest image by running `docker pull nousresearch/psyche-client:latest` before running the client.
 - Do I need a Solana wallet to train? Does it need to have funds?
+  - Yes, even if you want to join a run that does not track rewards you will need a Solana wallet with funds to pay for the transactions to the coordinator.
 - Are the client and coordinator open-source? Can I report bugs?
   - Yes, you may check [Psyche's github repo](https://github.com/PsycheFoundation/psyche)

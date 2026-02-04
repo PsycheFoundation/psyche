@@ -1,17 +1,18 @@
 [config]
 warmup_time = 15
 cooldown_time = 30
-rounds_per_epoch = 5000
-max_round_train_time = 30
+epoch_time = 60
+max_round_train_time = 15
 round_witness_time = 1
 min_clients = 1
 init_min_clients = 1
 verification_percent = 0
-witness_nodes = 1
+witness_nodes = 0
 global_batch_size_start = 2048
 global_batch_size_end = 2048
 global_batch_size_warmup_tokens = 0
 total_steps = 25000
+waiting_for_members_extra_time = 3
 
 [model.LLM]
 architecture = "HfLlama"

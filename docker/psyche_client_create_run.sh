@@ -48,39 +48,30 @@ if [[ ! -f "$CONFIG_PATH" ]]; then
 fi
 
 echo -e "\n[+] Creating training run with run ID '${RUN_ID}'"
-docker run --rm -v "$WALLET_FILE":/keys/id.json \
-    --add-host=host.docker.internal:host-gateway \
-    --entrypoint /usr/local/bin/psyche-solana-client \
-    psyche-client \
+cargo run --release --bin run-manager -- \
     create-run \
-    --wallet-private-key-path "/keys/id.json" \
+    --wallet-private-key-path "${WALLET_FILE}" \
     --rpc ${RPC} \
     --ws-rpc ${WS_RPC} \
-    --run-id ${RUN_ID}
+    --run-id ${RUN_ID} \
+    --client-version "latest"
 
 echo -e "\n[+] Training run created successfully!"
 echo -e "\n[+] Uploading model config..."
 
-docker run --rm -v "$WALLET_FILE":/keys/id.json \
-    -v "$CONFIG_PATH":/model_config/config.toml \
-    --add-host=host.docker.internal:host-gateway \
-    --entrypoint /usr/local/bin/psyche-solana-client \
-    psyche-client \
+cargo run --release --bin run-manager -- \
     update-config \
-    --wallet-private-key-path "/keys/id.json" \
+    --wallet-private-key-path "${WALLET_FILE}" \
     --rpc ${RPC} \
     --ws-rpc ${WS_RPC} \
     --run-id ${RUN_ID} \
-    --config-path "/model_config/config.toml"
+    --config-path "${CONFIG_PATH}"
 
 echo -e "\n[+] Model config uploaded successfully"
 
-docker run --rm -v "$WALLET_FILE":/keys/id.json \
-    --add-host=host.docker.internal:host-gateway \
-    --entrypoint /usr/local/bin/psyche-solana-client \
-    psyche-client \
+cargo run --release --bin run-manager -- \
     set-paused \
-    --wallet-private-key-path "/keys/id.json" \
+    --wallet-private-key-path "${WALLET_FILE}" \
     --rpc ${RPC} \
     --ws-rpc ${WS_RPC} \
     --run-id ${RUN_ID} \

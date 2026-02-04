@@ -27,7 +27,7 @@ chrono.workspace = true
 thiserror.workspace = true
 tch.workspace = true
 data-encoding = "2.6.0"
-ed25519 = "3.0.0-rc.1"
+ed25519-dalek = "3.0.0-pre.1"
 serde_json.workspace = true
 serde_bytes = "0.11.15"
 tokenizers.workspace = true
@@ -38,5 +38,6 @@ url = { version = "2.5", features = ["serde"] }
 [dev-dependencies]
 # for examples
 clap.workspace = true
+clap-markdown.workspace = true
 
 test-log.workspace = true

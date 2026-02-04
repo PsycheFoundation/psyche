@@ -1,17 +1,17 @@
 use crate::{
-    Broadcast, BroadcastType, ClientTUIState, Finished, IntegrationTestLogMarker, NC,
-    RunInitConfig, RunInitConfigAndIO, TrainingResult,
+    Broadcast, BroadcastType, ClientTUIState, Finished, NC, RunInitConfig, RunInitConfigAndIO,
+    TrainingResult,
     state::{ApplyMessageOutcome, DistroBroadcastAndPayload, FinishedBroadcast, RunManager},
 };
 use anyhow::anyhow;
 use anyhow::{Error, Result, bail};
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
-use psyche_core::NodeIdentity;
+use psyche_core::{IntegrationTestLogMarker, NodeIdentity};
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
     AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
-    MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkEvent, NetworkTUIState, NodeId,
-    ParameterDownloaderHandle, PeerManagerHandle, SharableModel, TransmittableDownload, allowlist,
+    EndpointId, MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkEvent, NetworkTUIState, NodeId,
+    PeerManagerHandle, RetriedDownloadsHandle, SharableModel, TransmittableDownload, allowlist,
     blob_ticket_param_request_task, raw_p2p_verify,
 };
 use psyche_watcher::{Backend, BackendWatcher};
@@ -178,8 +178,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 );
                             }
 
-                            let run_participating_node_ids = participating_node_ids(new_state);
-                            allowlist.set(run_participating_node_ids);
+                            let run_participating_endpoint_ids = participating_endpoint_ids(new_state);
+                            allowlist.set(run_participating_endpoint_ids);
                             ensure_gossip_connected(new_state, &mut p2p, &mut last_gossip_connection_time);
 
                             if old_state.map(|s| s.run_state) != Some(new_state.run_state) && new_state.run_state == RunState::RoundTrain {
@@ -190,7 +190,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 }
                                 let p2p_info = p2p.remote_infos();
                                 metrics.update_bandwidth(p2p_info.iter().map(|v| v.bandwidth).sum());
-                                if let Err(e) = run.set_node_info(p2p_info) {
+                                if let Err(e) = run.set_endpoint_info(p2p_info) {
                                     warn!("failed to set p2p info: {e}");
                                 }
                                 broadcasts.retain(|(_, step)| *step >= last_needed_step_blobs);
@@ -315,12 +315,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 // We often get an error after some time in the iroh-blobs side so we use the base backoff to retry faster.
                                                 let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE;
                                                 let retry_time = Some(std::time::Instant::now() + backoff_duration);
-                                                peer_manager.report_blob_ticket_request_error(dl.blob_ticket.node_addr().node_id, Some(dl.blob_ticket.clone()));
+                                                peer_manager.report_blob_ticket_request_error(dl.blob_ticket.addr().id, Some(dl.blob_ticket.clone()));
 
                                                 info!(
                                                     "Model Sharing download failed {} time/s with provider node {} (will retry in {:?}): {}",
                                                     retries + 1,
-                                                    dl.blob_ticket.node_addr().node_id,
+                                                    dl.blob_ticket.addr().id,
                                                     backoff_duration,
                                                     dl.error
                                                 );
@@ -434,13 +434,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let transmittable_distro_result = TransmittableDownload::DistroResult(distro_result.clone());
 
                             let tag_name = format!("distro-result_{step}");
-                            let ticket = p2p.add_downloadable(transmittable_distro_result, Tag::from(tag_name)).await?;
+                            let (ticket, size) = p2p.add_downloadable(transmittable_distro_result, Tag::from(tag_name)).await?;
 
                             let hash = ticket.hash();
                             info!(
                                 client_id = %identity, step = step,
-                                "Broadcasting payload batch id {batch_id} hash 0x{}",
+                                "Broadcasting payload batch id {batch_id} hash 0x{} ({:.3} MB)",
                                 hex::encode(hash),
+                                (size as f64 ) / 1_000_000f64
                             );
 
                             let signature = network_identity.raw_p2p_sign(&private_key, &commitment_data_hash);
@@ -519,9 +520,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         }
 
                         Some((download_ticket, tag)) = rx_request_download.recv() => {
-                            let self_node_id = p2p.node_id();
-                            let other_possible_nodes = run.coordinator_state().map(all_node_ids_shuffled).unwrap_or_default();
-                            let other_possible_nodes = other_possible_nodes.into_iter().filter(|addr| *addr != self_node_id).collect();
+                            let self_endpoint_id = p2p.endpoint_id();
+                            let other_possible_nodes = run.coordinator_state().map(all_endpoint_ids_shuffled).unwrap_or_default();
+                            let other_possible_nodes = other_possible_nodes.into_iter().filter(|addr| *addr != self_endpoint_id).collect();
                             let kind = DownloadType::DistroResult(other_possible_nodes);
                             metrics.record_download_started(download_ticket.hash(), kind.kind());
                             p2p.start_download(download_ticket, tag, kind);
@@ -583,8 +584,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 return Ok(());
                             };
 
-                            let me = NodeId::from_bytes(identity.get_p2p_public_key())?;
-                            let peer_ids: Vec<NodeId> = participating_node_ids(&coordinator_state)
+                            let me = EndpointId::from_bytes(identity.get_p2p_public_key())?;
+                            let peer_ids: Vec<EndpointId> = participating_endpoint_ids(&coordinator_state)
                                 .into_iter()
                                 .filter(|peer_id| peer_id != &me)
                                 .collect();
@@ -630,7 +631,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     .filter(|info| !matches!(info.path, psyche_network::ConnectionType::None))
                                     .map(|info| {
                                         PeerConnection {
-                                            node_id: info.node_id.to_string(),
+                                            endpoint_id: info.id.to_string(),
                                             connection_type: match info.path {
                                                 psyche_network::ConnectionType::None => unreachable!(),
                                                 psyche_network::ConnectionType::Direct(..) => psyche_metrics::ConnectionType::Direct,
@@ -654,11 +655,27 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let p2p_shutdown = p2p.shutdown();
 
                 if wait_for_checkpoint {
-                    info!("Waiting for checkpoint to finish");
-                    if let Some(checkpoint) = rx_checkpoint.recv().await {
-                        watcher.backend_mut().send_checkpoint(checkpoint).await?;
+                    info!("Waiting for all pending checkpoints to finish");
+
+                    // Keep waiting for checkpoints while there are uploads pending
+                    let mut checkpoint_check_interval = interval(Duration::from_secs(10));
+                    while run.doing_checkpoint() {
+                        tokio::select! {
+                            checkpoint = rx_checkpoint.recv() => {
+                                if let Some(checkpoint) = checkpoint {
+                                    info!("Checkpoint upload completed, sending to Solana");
+                                    watcher.backend_mut().send_checkpoint(checkpoint).await?;
+                                } else {
+                                    // Channel closed, no more checkpoints coming
+                                    break;
+                                }
+                            }
+                            _ = checkpoint_check_interval.tick() => {
+                            }
+                        }
                     }
-                    info!("Checkpoint finished, exiting main client loop");
+
+                    info!("All checkpoints finished, exiting main client loop");
                 }
 
                 p2p_shutdown
@@ -709,12 +726,12 @@ fn ensure_gossip_connected<T: NodeIdentity>(
         return;
     }
 
-    let my_node_id = p2p.node_id();
+    let my_endpoint_id = p2p.endpoint_id();
 
-    let run_participating_node_ids = participating_node_ids(run_state);
+    let run_participating_endpoint_ids = participating_endpoint_ids(run_state);
 
     // only connect to peers after we become part of the set of current clients
-    if !run_participating_node_ids.contains(&my_node_id) {
+    if !run_participating_endpoint_ids.contains(&my_endpoint_id) {
         return;
     }
 
@@ -738,10 +755,10 @@ fn ensure_gossip_connected<T: NodeIdentity>(
         return;
     }
 
-    let mut to_connect = run_participating_node_ids
+    let mut to_connect = run_participating_endpoint_ids
         .iter()
-        .filter(|node_id| *node_id != &my_node_id)
-        .filter(|node_id| !gossip_neighbors.contains(*node_id))
+        .filter(|id| *id != &my_endpoint_id)
+        .filter(|id| !gossip_neighbors.contains(*id))
         .collect::<Vec<_>>();
     to_connect.shuffle(&mut rand::rng());
     let to_connect = to_connect
@@ -756,17 +773,17 @@ fn ensure_gossip_connected<T: NodeIdentity>(
     }
 }
 
-fn participating_node_ids<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<NodeId> {
+fn participating_endpoint_ids<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<EndpointId> {
     state
         .epoch_state
         .clients
         .iter()
-        .map(|c| NodeId::from_bytes(c.id.get_p2p_public_key()).unwrap())
+        .map(|c| EndpointId::from_bytes(c.id.get_p2p_public_key()).unwrap())
         .collect()
 }
 
-fn all_node_ids_shuffled<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<NodeId> {
-    let mut addrs = participating_node_ids(state);
+fn all_endpoint_ids_shuffled<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<EndpointId> {
+    let mut addrs = participating_endpoint_ids(state);
     addrs.shuffle(&mut rand::rng());
     addrs
 }

@@ -1,0 +1,22 @@
+[package]
+name = "psyche-solana-rpc"
+edition = "2021"
+version.workspace = true
+
+[dependencies]
+anchor-client.workspace = true
+anchor-spl.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+futures-util.workspace = true
+psyche-core.workspace = true
+psyche-coordinator.workspace = true
+psyche-solana-authorizer.workspace = true
+psyche-solana-coordinator.workspace = true
+psyche-solana-treasurer.workspace = true
+psyche-watcher.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+backon = "1.4.1"
+solana-account-decoder-client-types = "=2.1.4"
+solana-transaction-status-client-types = "=2.1.4"

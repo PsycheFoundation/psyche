@@ -5,6 +5,10 @@ inputs:
     description: 'Maximum time to wait in minutes'
     required: false
     default: '50'
+  package:
+    description: 'Name of the package to wait for'
+    required: false
+    default: 'docker-psyche-solana-test-client-no-python [x86_64-linux]'
 runs:
   using: 'composite'
   steps:
@@ -32,10 +36,10 @@ runs:
             echo "Found Garnix CI check suite: $GARNIX_SUITE_ID"
           fi
           
-          CHECK=$(gh api repos/${{ github.repository }}/check-suites/$GARNIX_SUITE_ID/check-runs --jq '.check_runs[] | select(.name == "package docker-psyche-solana-test-client-no-python [x86_64-linux]") | {name: .name, status: .status, conclusion: .conclusion}')
+          CHECK=$(gh api repos/${{ github.repository }}/check-suites/$GARNIX_SUITE_ID/check-runs --jq '.check_runs[] | select(.name == "package ${{ inputs.package }}") | {name: .name, status: .status, conclusion: .conclusion}')
           
           if [ -z "$CHECK" ]; then
-            echo "No 'package docker-psyche-solana-test-client-no-python [x86_64-linux]' found yet, waiting..."
+            echo "No 'package ${{ inputs.package }}' found yet, waiting..."
             sleep 10
             continue
           fi
@@ -57,7 +61,7 @@ runs:
             fi
           fi
 
-          echo "Waiting for 'package docker-psyche-solana-test-client-no-python [x86_64-linux]' to complete... (attempt $i/$TOTAL_ATTEMPTS)"
+          echo "Waiting for 'package ${{ inputs.package }}' to complete... (attempt $i/$TOTAL_ATTEMPTS)"
           sleep 10
 
         done

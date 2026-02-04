@@ -3,15 +3,14 @@ use anyhow::{Context, Result, anyhow};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
-use iroh::{Watcher, endpoint::TransportConfig, protocol::Router};
+use iroh::{EndpointAddr, RelayConfig, Watcher};
+use iroh::{endpoint::TransportConfig, protocol::Router};
 use iroh_blobs::api::Tag;
+use iroh_blobs::store::GcConfig;
 use iroh_blobs::{
     BlobsProtocol,
     api::downloader::Downloader,
-    store::{
-        fs::options::GcConfig,
-        mem::{MemStore, Options as MemStoreOptions},
-    },
+    store::mem::{MemStore, Options as MemStoreOptions},
 };
 use iroh_gossip::{
     api::{GossipReceiver, GossipSender},
@@ -25,6 +24,7 @@ pub use p2p_model_sharing::{
 use psyche_metrics::{ClientMetrics, PeerConnection};
 use router::{SupportedProtocols, spawn_router_with_allowlist};
 use state::State;
+use std::str::FromStr;
 use std::{
     fmt::Debug,
     hash::{DefaultHasher, Hash as _, Hasher},
@@ -48,8 +48,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
 use util::{fmt_relay_mode, gossip_topic};
 
-pub use ed25519::Signature;
-pub use iroh::{NodeAddr, NodeId, RelayMode, endpoint::ConnectionType};
+pub use ed25519_dalek::Signature;
+pub use iroh::{RelayMode, endpoint::ConnectionType};
 pub use iroh_blobs::{BlobFormat, Hash, ticket::BlobTicket};
 
 pub mod allowlist;
@@ -77,8 +77,8 @@ pub use download_manager::{
     DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, MAX_DOWNLOAD_RETRIES,
     ParameterDownloaderHandle, TransmittableDownload,
 };
-pub use iroh::{Endpoint, PublicKey, SecretKey};
-use iroh_relay::{RelayMap, RelayNode, RelayQuicConfig};
+pub use iroh::{Endpoint, EndpointId, PublicKey, SecretKey};
+use iroh_relay::{RelayMap, RelayQuicConfig};
 pub use latency_sorted::LatencySorted;
 pub use p2p_model_sharing::{
     ALPN, ModelRequestType, SharableModel, SharableModelError, TransmittableModelConfig,
@@ -109,18 +109,60 @@ pub enum DiscoveryMode {
     N0,
 }
 
+impl FromStr for DiscoveryMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "local" => Ok(DiscoveryMode::Local),
+            "n0" => Ok(DiscoveryMode::N0),
+            _ => Err(format!(
+                "Invalid discovery mode: '{}'. Expected 'local' or 'n0'",
+                s
+            )),
+        }
+    }
+}
+
+/// What relays should we connect to?
+#[derive(Debug, Clone, Copy)]
+pub enum RelayKind {
+    /// No relays (for local tests)
+    Disabled,
+    /// Psyche-specific relays
+    Psyche,
+    /// N0 default relays
+    N0,
+}
+
+impl FromStr for RelayKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "disabled" => Ok(RelayKind::Disabled),
+            "psyche" => Ok(RelayKind::Psyche),
+            "n0" => Ok(RelayKind::N0),
+            _ => Err(format!(
+                "Invalid relay kind: '{}'. Expected 'psyche' or 'n0'",
+                s
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
-pub struct P2PNodeInfo {
-    pub node_id: NodeId,
+pub struct P2PEndpointInfo {
+    pub id: EndpointId,
     pub path: ConnectionType,
     pub bandwidth: f64,
     pub latency: f64,
 }
 
-impl From<P2PNodeInfo> for PeerConnection {
-    fn from(value: P2PNodeInfo) -> Self {
+impl From<P2PEndpointInfo> for PeerConnection {
+    fn from(value: P2PEndpointInfo) -> Self {
         Self {
-            node_id: value.node_id.to_string(),
+            endpoint_id: value.id.to_string(),
             connection_type: match value.path {
                 ConnectionType::None => psyche_metrics::ConnectionType::None,
                 ConnectionType::Direct(..) => psyche_metrics::ConnectionType::Direct,
@@ -182,7 +224,8 @@ where
         port: Option<u16>,
         interface: Option<String>,
         discovery_mode: DiscoveryMode,
-        bootstrap_peers: Vec<NodeAddr>,
+        relay_kind: RelayKind,
+        bootstrap_peers: Vec<EndpointAddr>,
         secret_key: Option<SecretKey>,
         allowlist: A,
         metrics: Arc<ClientMetrics>,
@@ -222,7 +265,7 @@ where
             Ipv4Addr::new(0, 0, 0, 0)
         };
 
-        let bootstrap_node_ids = bootstrap_peers.iter().map(|p| p.node_id).collect();
+        let bootstrap_endpoint_ids = bootstrap_peers.iter().map(|p| p.id).collect();
 
         let endpoint = {
             let mut transport_config = TransportConfig::default();
@@ -230,20 +273,30 @@ where
                 .max_idle_timeout(Some(Duration::from_secs(10).try_into()?))
                 .keep_alive_interval(Some(Duration::from_secs(1)));
 
-            let relay_mode = RelayMode::Custom(psyche_relay_map());
+            let relay_mode = match relay_kind {
+                RelayKind::Disabled => RelayMode::Disabled,
+                RelayKind::N0 => RelayMode::Default,
+                RelayKind::Psyche => RelayMode::Custom(psyche_relay_map()),
+            };
             debug!("Using relay servers: {}", fmt_relay_mode(&relay_mode));
 
             let endpoint = Endpoint::builder()
                 .secret_key(secret_key)
                 .relay_mode(relay_mode)
                 .transport_config(transport_config)
-                .bind_addr_v4(SocketAddrV4::new(ipv4, port.unwrap_or(0)));
+                .bind_addr_v4(SocketAddrV4::new(ipv4, port.unwrap_or(0)))
+                .clear_discovery();
 
             let endpoint = match discovery_mode {
                 DiscoveryMode::Local => {
                     endpoint.discovery(local_discovery::LocalTestDiscovery::new(public_key))
                 }
-                DiscoveryMode::N0 => endpoint.discovery_n0(),
+                DiscoveryMode::N0 => {
+                    let dns = iroh::discovery::dns::DnsDiscovery::n0_dns().build();
+                    let pkarr = iroh::discovery::pkarr::PkarrPublisher::n0_dns();
+
+                    endpoint.discovery(dns).discovery(pkarr)
+                }
             };
 
             endpoint.bind().await?
@@ -264,9 +317,9 @@ where
             }
         }
 
-        let node_addr = endpoint.node_addr();
+        let endpoint_addr = endpoint.addr();
 
-        info!("Our node id: {}", node_addr.node_id);
+        info!("Our endpoint ID: {}", endpoint_addr.id);
         trace!("creating blobs store...");
 
         let gc_interval: u64 = std::env::var("BLOBS_GC_INTERVAL_MILLIS")
@@ -318,7 +371,7 @@ where
         trace!("router created!");
 
         let (gossip_tx, gossip_rx) = gossip
-            .subscribe(gossip_topic(run_id), bootstrap_node_ids)
+            .subscribe(gossip_topic(run_id), bootstrap_endpoint_ids)
             .await?
             .split();
         info!("Connected!");
@@ -350,17 +403,17 @@ where
         self.router.shutdown().await
     }
 
-    pub fn node_id(&self) -> NodeId {
-        self.router.endpoint().node_id()
+    pub fn endpoint_id(&self) -> EndpointId {
+        self.router.endpoint().id()
     }
 
-    pub fn is_allowlisted<A: Allowlist>(node_id: &NodeId, allowlist: &A) -> bool {
-        allowlist.allowed(*node_id)
+    pub fn is_allowlisted<A: Allowlist>(endpoint_id: &EndpointId, allowlist: &A) -> bool {
+        allowlist.allowed(*endpoint_id)
     }
 
     /// Don't call this often / with many peers!
     /// It can force disconnection of other gossip peers if we have too many.
-    pub fn add_peers(&self, peers: Vec<NodeId>) {
+    pub fn add_peers(&self, peers: Vec<EndpointId>) {
         let peer_list = peers
             .iter()
             .map(|n| n.fmt_short().to_string())
@@ -368,11 +421,11 @@ where
             .join(",");
         debug!(name: "gossip_join_peers", peers=peer_list);
         let gossip_tx = self.gossip_tx.clone();
-        let node_id = self.router.endpoint().node_id();
+        let endpoint_id = self.router.endpoint().id();
         tokio::task::spawn(
             async move {
                 if let Err(err) = gossip_tx
-                    .join_peers(peers.into_iter().filter(|p| p != &node_id).collect())
+                    .join_peers(peers.into_iter().filter(|p| p != &endpoint_id).collect())
                     .await
                 {
                     error!("Failed to join gossip peers: {err:#}")
@@ -398,7 +451,7 @@ where
     }
 
     pub fn start_download(&mut self, ticket: BlobTicket, tag: Tag, download_type: DownloadType) {
-        let provider_node_id = ticket.node_addr().clone();
+        let provider_endpoint_id = ticket.addr().clone();
         let ticket_hash = ticket.hash();
         let additional_peers_to_try = match download_type.clone() {
             DownloadType::DistroResult(peers) => peers,
@@ -413,7 +466,7 @@ where
         debug!(name: "blob_download_start", hash = %ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
 
         let latency_sorted = LatencySorted::new(
-            std::iter::once(provider_node_id.node_id)
+            std::iter::once(provider_endpoint_id.id)
                 .chain(additional_peers_to_try.iter().cloned())
                 .collect(),
             self.endpoint.clone(),
@@ -437,7 +490,11 @@ where
         });
     }
 
-    pub async fn add_downloadable(&mut self, data: Download, tag: Tag) -> Result<BlobTicket> {
+    pub async fn add_downloadable(
+        &mut self,
+        data: Download,
+        tag: Tag,
+    ) -> Result<(BlobTicket, usize)> {
         let blob_data = postcard::to_allocvec(&data)?;
         let blob_res = self
             .blobs_store
@@ -445,7 +502,7 @@ where
             .add_bytes(blob_data.clone())
             .with_named_tag(tag)
             .await?;
-        let addr = self.router.endpoint().node_addr();
+        let addr = self.router.endpoint().addr();
         let blob_ticket = BlobTicket::new(addr, blob_res.hash, blob_res.format);
         debug!(
             name: "blob_upload",
@@ -456,7 +513,7 @@ where
             blob_data.len()
         );
 
-        Ok(blob_ticket)
+        Ok((blob_ticket, blob_data.len()))
     }
 
     /// Removes all the tags from the store that are lower than the target tag.
@@ -516,34 +573,34 @@ where
         Ok(())
     }
 
-    pub async fn node_addr(&self) -> NodeAddr {
-        self.router.endpoint().node_addr()
+    pub async fn endpoint_addr(&self) -> EndpointAddr {
+        self.router.endpoint().addr()
     }
 
-    pub fn remote_infos(&self) -> Vec<P2PNodeInfo> {
-        std::iter::once(P2PNodeInfo {
-            node_id: self.endpoint.node_id(),
+    pub fn remote_infos(&self) -> Vec<P2PEndpointInfo> {
+        std::iter::once(P2PEndpointInfo {
+            id: self.endpoint.id(),
             bandwidth: 0.0,
             path: ConnectionType::None,
             latency: 0.0,
         })
-        .chain(self.endpoint.connections().into_iter().map(|node_id| {
+        .chain(self.endpoint.connections().into_iter().map(|endpoint_id| {
             let bandwidth = self
                 .state
                 .bandwidth_tracker
-                .get_bandwidth_by_node(&node_id)
+                .get_bandwidth_by_node(&endpoint_id)
                 .unwrap_or_default();
-            P2PNodeInfo {
-                node_id,
+            P2PEndpointInfo {
+                id: endpoint_id,
                 path: self
                     .endpoint
-                    .conn_type(node_id)
+                    .conn_type(endpoint_id)
                     .map(|mut c| c.get())
                     .unwrap_or(ConnectionType::None),
                 bandwidth,
                 latency: self
                     .endpoint
-                    .latency(node_id)
+                    .latency(endpoint_id)
                     .unwrap_or(Duration::MAX)
                     .as_secs_f64(),
             }
@@ -594,10 +651,9 @@ where
         &mut self,
         update: DownloadUpdate,
     ) -> Option<NetworkEvent<BroadcastMessage, Download>> {
-        self.state.bandwidth_tracker.add_event(
-            update.blob_ticket.node_addr().node_id,
-            update.downloaded_size_delta,
-        );
+        self.state
+            .bandwidth_tracker
+            .add_event(update.blob_ticket.addr().id, update.downloaded_size_delta);
 
         let hash = update.blob_ticket.hash();
 
@@ -632,19 +688,19 @@ where
         self.router.clone()
     }
 
-    pub fn neighbors(&self) -> impl Iterator<Item = NodeId> + '_ {
+    pub fn neighbors(&self) -> impl Iterator<Item = EndpointId> + '_ {
         self.gossip_rx.neighbors()
     }
 }
 
 pub async fn request_model_blob_ticket(
     router: Arc<Router>,
-    node_addr: NodeId,
+    endpoint_addr: EndpointId,
     request_type: &ModelRequestType,
 ) -> Result<BlobTicket> {
     let conn = router
         .endpoint()
-        .connect(node_addr, p2p_model_sharing::ALPN)
+        .connect(endpoint_addr, p2p_model_sharing::ALPN)
         .await?;
 
     // Open a bidirectional QUIC stream
@@ -689,14 +745,14 @@ fn parse_gossip_event<BroadcastMessage: Networkable>(
                 }
             }
         }
-        Ok(iroh_gossip::api::Event::NeighborUp(node_id)) => {
+        Ok(iroh_gossip::api::Event::NeighborUp(endpoint_id)) => {
             let peers: Vec<_> = gossip.neighbors().collect();
-            debug!(name: "gossip_new_peer", node_id=%node_id, all_gossip_peers = ?peers, "gossip connected to new peer {node_id}, we now have {} peers", peers.len());
+            debug!(name: "gossip_new_peer", endpoint_id=%endpoint_id, all_gossip_peers = ?peers, "gossip connected to new peer {endpoint_id}, we now have {} peers", peers.len());
             metrics.update_p2p_gossip_neighbors(&peers);
         }
-        Ok(iroh_gossip::api::Event::NeighborDown(node_id)) => {
+        Ok(iroh_gossip::api::Event::NeighborDown(endpoint_id)) => {
             let peers: Vec<_> = gossip.neighbors().collect();
-            debug!(name: "gossip_lost_peer", node_id=%node_id, all_gossip_peers = ?peers, "gossip disconnected from peer {node_id}, we now have {} peers", peers.len());
+            debug!(name: "gossip_lost_peer", endpoint_id=%endpoint_id, all_gossip_peers = ?peers, "gossip disconnected from peer {endpoint_id}, we now have {} peers", peers.len());
             metrics.update_p2p_gossip_neighbors(&peers);
         }
         Ok(iroh_gossip::api::Event::Lagged) => {
@@ -728,12 +784,12 @@ where
 
 async fn on_update_stats(
     endpoint: &Endpoint,
-    remote_infos: Vec<P2PNodeInfo>,
+    remote_infos: Vec<P2PEndpointInfo>,
     stats: &mut State,
 ) -> Result<()> {
-    stats.node_id = Some(endpoint.node_id());
+    stats.endpoint_id = Some(endpoint.id());
 
-    stats.node_connections = remote_infos;
+    stats.connection_info = remote_infos;
 
     stats
         .bandwidth_history
@@ -751,23 +807,23 @@ pub fn psyche_relay_map() -> RelayMap {
     RelayMap::from_iter([psyche_use_relay_node(), psyche_usw_relay_node()])
 }
 
-/// Get the Psyche [`RelayNode`] for US East.
-pub fn psyche_use_relay_node() -> RelayNode {
+/// Get the Psyche [`RelayConfig`] for US East.
+pub fn psyche_use_relay_node() -> RelayConfig {
     let url: Url = format!("https://{USE_RELAY_HOSTNAME}")
         .parse()
         .expect("default url");
-    RelayNode {
+    RelayConfig {
         url: url.into(),
         quic: Some(RelayQuicConfig::default()),
     }
 }
 
-/// Get the Psyche [`RelayNode`] for US West.
-pub fn psyche_usw_relay_node() -> RelayNode {
+/// Get the Psyche [`RelayConfig`] for US West.
+pub fn psyche_usw_relay_node() -> RelayConfig {
     let url: Url = format!("https://{USW_RELAY_HOSTNAME}")
         .parse()
         .expect("default_url");
-    RelayNode {
+    RelayConfig {
         url: url.into(),
         quic: Some(RelayQuicConfig::default()),
     }

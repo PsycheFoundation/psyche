@@ -18,7 +18,7 @@ impl MMLU {
             validation_dataset: load_dataset(
                 "cais/mmlu",
                 None,
-                Split::Validation,
+                Split::Dev,
                 Some("all".to_owned()),
             )?,
         };
@@ -50,12 +50,7 @@ impl MMLU {
         let choices = (0..options.len())
             .map(|i| ASCII_UPPERCASE[i].to_owned())
             .collect::<Vec<_>>();
-        let text = format!(
-            "The following are multiple choice questions (with answers) about {}.\n\n{}\n{}\nAnswer:",
-            subject,
-            question,
-            options.join("\n")
-        );
+        let text = format!("{}\n{}\nAnswer:", question, options.join("\n"));
         let answer = row
             .get_long(dataset.get_column_id("answer").unwrap())
             .unwrap() as usize;
@@ -66,6 +61,7 @@ impl MMLU {
             answer,
             category: Some(subject),
             cot_content: None,
+            eval_name: MMLU::name().to_string(),
         }
     }
 }
@@ -90,6 +86,13 @@ impl LogLikelihoodTask for MMLU {
             }
         });
         fewshot_documents
+    }
+
+    fn get_preamble(&self, category: &str) -> String {
+        format!(
+            "The following are multiple choice questions (with answers) about {}.\n\n",
+            category
+        )
     }
 }
 

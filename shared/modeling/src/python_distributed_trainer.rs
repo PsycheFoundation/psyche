@@ -338,12 +338,12 @@ impl PythonDistributedTrainer {
         let dummy = Tensor::zeros([], (Kind::Float, self.device));
         self.comm.all_reduce(&dummy, ReduceType::Sum)?;
 
-        let result = self.local.extract();
+        let result = self.local.extract()?;
 
         trace!("Extract operation complete on all Python clients");
         self.comm.delete(&iteration.to_string())?;
 
-        result
+        Ok(result)
     }
 
     fn broadcast_distro_results(&self, distro_results: &[DistroResults]) -> PyResult<()> {
@@ -442,5 +442,9 @@ impl CausalLM for PythonDistributedTrainer {
 
     fn shutdown(&self) {
         self.model.shutdown();
+    }
+
+    fn convert(&self, state_dict: Option<HashMap<String, Tensor>>) -> HashMap<String, Tensor> {
+        self.model.convert(state_dict)
     }
 }

@@ -4,7 +4,7 @@ use psyche_coordinator::{
 use psyche_core::{BoundedQueue, FixedVec, LearningRateSchedule, NodeIdentity};
 use psyche_metrics::ClientMetrics;
 use psyche_modeling::Trainer;
-use psyche_network::P2PNodeInfo;
+use psyche_network::P2PEndpointInfo;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokenizers::Tokenizer;
 use tracing::{debug, trace, warn};
@@ -28,7 +28,7 @@ pub struct StatsLogger {
     eval_history: HashMap<String, Vec<f64>>,
     lr_schedule: LearningRateSchedule,
 
-    pub node_info: Vec<P2PNodeInfo>,
+    pub endpoint_info: Vec<P2PEndpointInfo>,
 }
 
 impl StatsLogger {
@@ -49,7 +49,7 @@ impl StatsLogger {
             lr_schedule,
             eval_history: HashMap::new(),
             last_optim_stats: HashMap::new(),
-            node_info: Vec::new(),
+            endpoint_info: Vec::new(),
             metrics,
         }
     }
@@ -139,17 +139,17 @@ impl StatsLogger {
 
         // P2P nodes (only for wandb, not metrics as requested)
         let p2p_nodes: HashMap<String, DataValue> = self
-            .node_info
+            .endpoint_info
             .iter()
             .map(
-                |P2PNodeInfo {
-                     node_id,
+                |P2PEndpointInfo {
+                     id: endpoint_id,
                      path,
                      bandwidth,
                      latency,
                  }| {
                     (
-                        node_id.to_string(),
+                        endpoint_id.to_string(),
                         HashMap::from([
                             ("path", DataValue::from(path.to_string())),
                             ("bandwidth", DataValue::from(*bandwidth)),
@@ -172,7 +172,7 @@ impl StatsLogger {
     }
 
     pub fn get_witness_metadata<T: NodeIdentity>(&self, state: &Coordinator<T>) -> WitnessMetadata {
-        let bandwidth_total: f64 = self.node_info.iter().map(|v| v.bandwidth).sum();
+        let bandwidth_total: f64 = self.endpoint_info.iter().map(|v| v.bandwidth).sum();
 
         let evals = {
             let mut evals: FixedVec<WitnessEvalResult, 8> = Default::default();
