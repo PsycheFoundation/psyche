@@ -2,14 +2,13 @@ use std::{str::FromStr, time::Duration};
 
 use anyhow::{Context, Result, anyhow, bail};
 use futures::future::join_all;
-use google_cloud_gax::paginator::ItemPaginator;
-use google_cloud_storage::client::StorageControl;
 use psyche_coordinator::model::HttpTrainingDataLocation;
 use psyche_core::{BatchId, Shuffle, TokenSize};
 use rand::seq::SliceRandom;
 use rand_chacha::ChaCha8Rng;
 use rand_chacha::rand_core::SeedableRng;
 use reqwest::IntoUrl;
+use serde::Deserialize;
 use tokio::task::JoinHandle;
 use tracing::{debug, info, trace};
 
@@ -20,6 +19,22 @@ use crate::{
 };
 
 const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_millis(5000);
+
+/// Response from GCS JSON API list objects endpoint
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GcsListResponse {
+    items: Option<Vec<GcsObject>>,
+    next_page_token: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GcsObject {
+    name: String,
+    size: Option<String>,
+    media_link: Option<String>,
+}
 
 #[derive(Clone, Copy, Debug)]
 struct SequencePointer {
@@ -86,57 +101,81 @@ impl FileURLs {
         Ok(Self(urls_with_sizes))
     }
 
-    pub async fn from_gcp_bucket(
-        bucket_name: &str,
-        directory: Option<String>,
-    ) -> anyhow::Result<Self> {
+    pub async fn from_gcp_bucket(bucket_name: &str, directory: Option<String>) -> Result<Self> {
         debug!(
             "http: from_gcp_bucket: bucket_name={}, directory={:?}",
             bucket_name, directory
         );
-        let storage_control = StorageControl::builder().build().await?;
 
-        let mut builder = storage_control
-            .list_objects()
-            .set_parent(format!("projects/_/buckets/{}", bucket_name));
-        if let Some(p) = directory {
-            builder = builder.set_prefix(p);
-        }
+        // Use the public GCS JSON API directly - no credentials required for public buckets
+        let client = reqwest::Client::new();
+        let mut all_results: Vec<(reqwest::Url, u64)> = vec![];
+        let mut page_token: Option<String> = None;
 
-        let mut items = builder.by_item();
-        let mut all_results = vec![];
+        loop {
+            let mut url = format!(
+                "https://storage.googleapis.com/storage/v1/b/{}/o",
+                urlencoding::encode(bucket_name)
+            );
 
-        // transpose does Result<Option<T>> -> Option<Result<T>>
-        while let Some(obj) = items.next().await.transpose()? {
-            // Only process those files with extensions we care about
-            let file_ext = obj.name.split('.').next_back().unwrap_or("");
-            if !DATA_FILE_EXTENSIONS.contains(&file_ext) {
-                continue;
+            let mut params = vec![];
+            if let Some(ref prefix) = directory {
+                params.push(format!("prefix={}", urlencoding::encode(prefix)));
+            }
+            if let Some(ref token) = page_token {
+                params.push(format!("pageToken={}", urlencoding::encode(token)));
+            }
+            if !params.is_empty() {
+                url = format!("{}?{}", url, params.join("&"));
             }
 
-            let full_url = {
-                // Transforms spaces, etc. into %20 and other url-friendly encodings
-                let encoded_name = urlencoding::encode(&obj.name);
+            let response = client
+                .get(&url)
+                .send()
+                .await
+                .with_context(|| format!("Failed to list GCS bucket {}", bucket_name))?;
 
-                // Just in case we have the whole "projects/_/buckets/bucket-name" prefix remove it
-                let bucket_name_only = obj
-                    .bucket
-                    .strip_prefix("projects/_/buckets/")
-                    .unwrap_or(&obj.bucket);
+            if !response.status().is_success() {
+                bail!(
+                    "Failed to list GCS bucket {}: HTTP {}",
+                    bucket_name,
+                    response.status()
+                );
+            }
 
-                format!("https://www.googleapis.com/storage/v1/b/{bucket_name_only}/o/{encoded_name}?alt=media")
-                    .parse::<reqwest::Url>()
-                    .map_err(anyhow::Error::from)?
-            };
-            debug!(
-                "Constructed full url: {:?} for object: {} with size {}",
-                full_url, obj.name, obj.size
-            );
-            all_results.push((full_url, obj.size as u64));
+            let list_response: GcsListResponse = response
+                .json()
+                .await
+                .with_context(|| "Failed to parse GCS list response")?;
+
+            if let Some(items) = list_response.items {
+                for obj in items {
+                    let file_ext = obj.name.split('.').next_back().unwrap_or("");
+                    if !DATA_FILE_EXTENSIONS.contains(&file_ext) {
+                        continue;
+                    }
+
+                    if let Some(ref media_link) = obj.media_link {
+                        if let Ok(full_url) = media_link.parse::<reqwest::Url>() {
+                            let size = obj
+                                .size
+                                .as_ref()
+                                .and_then(|s| s.parse::<u64>().ok())
+                                .unwrap_or(0);
+                            all_results.push((full_url, size));
+                        }
+                    }
+                }
+            }
+
+            match list_response.next_page_token {
+                Some(token) => page_token = Some(token),
+                None => break,
+            }
         }
 
-        // We sort here to return in deterministic order
         all_results.sort_by(|a, b| a.0.cmp(&b.0));
+
         Ok(Self(all_results))
     }
 
