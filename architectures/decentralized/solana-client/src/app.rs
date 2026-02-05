@@ -233,26 +233,28 @@ impl App {
         let mut joined_run_this_epoch = None;
         let mut ever_joined_run = false;
 
-        // sanity checks
-        let Model::LLM(LLM { checkpoint, .. }) = start_coordinator_state.model;
-        let credentials = match checkpoint {
-            model::Checkpoint::Hub(_) | model::Checkpoint::P2P(_) => self
-                .state_options
-                .checkpoint_config
-                .hub_token
-                .as_ref()
-                .map(|token| UploadCredentials::HubToken(token.clone())),
-            model::Checkpoint::Gcs(GcsRepo { bucket, .. })
-            | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, .. }) => {
-                Some(UploadCredentials::GcsBucket(bucket.to_string()))
+        // sanity checks — skip credential validation when checkpoint upload is disabled
+        if !self.state_options.checkpoint_config.skip_upload {
+            let Model::LLM(LLM { checkpoint, .. }) = start_coordinator_state.model;
+            let credentials = match checkpoint {
+                model::Checkpoint::Hub(_) | model::Checkpoint::P2P(_) => self
+                    .state_options
+                    .checkpoint_config
+                    .hub_token
+                    .as_ref()
+                    .map(|token| UploadCredentials::HubToken(token.clone())),
+                model::Checkpoint::Gcs(GcsRepo { bucket, .. })
+                | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, .. }) => {
+                    Some(UploadCredentials::GcsBucket(bucket.to_string()))
+                }
+                _ => None,
+            };
+            if let Some(ref creds) = credentials {
+                // Validate basic credentials
+                creds.validate().await?;
+                // For GCS, also validate bucket permissions
+                creds.validate_gcs_bucket_permissions().await?;
             }
-            _ => None,
-        };
-        if let Some(ref creds) = credentials {
-            // Validate basic credentials
-            creds.validate().await?;
-            // For GCS, also validate bucket permissions
-            creds.validate_gcs_bucket_permissions().await?;
         }
 
         // if we're already in "WaitingForMembers" we won't get an update saying that
