@@ -66,7 +66,6 @@ impl BandwidthTracker {
         }
     }
 
-    #[allow(dead_code)]
     pub fn get_bandwidth_by_node(&self, id: &EndpointId) -> Option<f64> {
         self.events.get(id).map(endpoint_bandwidth)
     }

@@ -1,6 +1,7 @@
 use iroh::endpoint::{AfterHandshakeOutcome, ConnectionInfo, EndpointHooks};
 use iroh::{EndpointId, Watcher};
 use n0_future::task::AbortOnDropHandle;
+use psyche_metrics::ConnectionType;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -13,13 +14,6 @@ pub struct ConnectionData {
     pub endpoint_id: EndpointId,
     pub connection_type: ConnectionType,
     pub latency: Duration,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConnectionType {
-    Direct,
-    Relay,
-    Mixed,
 }
 
 /// track active connections and their metadata
@@ -87,31 +81,74 @@ impl ConnectionMonitor {
                         });
                     }
 
-                    // spawn a task to monitor this connection
+                    // spawn a task to monitor this connection continuously
                     let connections_clone = connections.clone();
+                    let paths_watcher = conn.paths();
                     tasks.spawn(async move {
-                        match conn.closed().await {
-                            Some((close_reason, stats)) => {
-                                info!(
-                                    remote = %remote_id.fmt_short(),
-                                    %alpn,
-                                    ?close_reason,
-                                    udp_rx = stats.udp_rx.bytes,
-                                    udp_tx = stats.udp_tx.bytes,
-                                    "connection closed"
-                                );
-                            }
-                            None => {
-                                debug!(
-                                    remote = %remote_id.fmt_short(),
-                                    %alpn,
-                                    "connection closed before tracking started"
-                                );
+                        let mut update_interval = tokio::time::interval(Duration::from_secs(5));
+                        update_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+                        loop {
+                            tokio::select! {
+                                _ = update_interval.tick() => {
+                                    let (conn_type, latency) = Self::extract_connection_info_from_watcher(&paths_watcher);
+
+                                    let mut conns = connections_clone.write().unwrap();
+                                    if let Some(data) = conns.get_mut(&remote_id) {
+                                        let type_changed = data.connection_type != conn_type;
+                                        let latency_delta = if latency != Duration::MAX && data.latency != Duration::MAX {
+                                            latency.as_millis().abs_diff(data.latency.as_millis())
+                                        } else {
+                                            0
+                                        };
+
+                                        data.connection_type = conn_type;
+                                        data.latency = latency;
+
+                                        if type_changed {
+                                            info!(
+                                                remote = %remote_id.fmt_short(),
+                                                new_type = ?conn_type,
+                                                latency_ms = latency.as_millis(),
+                                                "connection type changed"
+                                            );
+                                        } else if latency_delta > 50 {
+                                            debug!(
+                                                remote = %remote_id.fmt_short(),
+                                                latency_ms = latency.as_millis(),
+                                                delta_ms = latency_delta,
+                                                "latency changed"
+                                            );
+                                        }
+                                    }
+                                }
+                                result = conn.closed() => {
+                                    match result {
+                                        Some((close_reason, stats)) => {
+                                            info!(
+                                                remote = %remote_id.fmt_short(),
+                                                %alpn,
+                                                ?close_reason,
+                                                udp_rx = stats.udp_rx.bytes,
+                                                udp_tx = stats.udp_tx.bytes,
+                                                "connection closed"
+                                            );
+                                        }
+                                        None => {
+                                            debug!(
+                                                remote = %remote_id.fmt_short(),
+                                                %alpn,
+                                                "connection closed before tracking started"
+                                            );
+                                        }
+                                    }
+
+                                    let mut conns = connections_clone.write().unwrap();
+                                    conns.remove(&remote_id);
+                                    break;
+                                }
                             }
                         }
-
-                        let mut conns = connections_clone.write().unwrap();
-                        conns.remove(&remote_id);
                     }.instrument(tracing::Span::current()));
                 }
                 Some(res) = tasks.join_next(), if !tasks.is_empty() => {
@@ -129,6 +166,13 @@ impl ConnectionMonitor {
     /// extract connection type and latency from ConnectionInfo
     fn extract_connection_info(conn: &ConnectionInfo) -> (ConnectionType, Duration) {
         let paths_watcher = conn.paths();
+        Self::extract_connection_info_from_watcher(&paths_watcher)
+    }
+
+    /// extract connection type and latency from a paths watcher
+    fn extract_connection_info_from_watcher<T: Watcher<Value = iroh::endpoint::PathInfoList>>(
+        paths_watcher: &T,
+    ) -> (ConnectionType, Duration) {
         let paths = paths_watcher.peek();
 
         if paths.is_empty() {
@@ -146,7 +190,7 @@ impl ConnectionMonitor {
             (true, true) => ConnectionType::Mixed,
             (true, false) => ConnectionType::Direct,
             (false, true) => ConnectionType::Relay,
-            (false, false) => ConnectionType::Direct, // shouldn't happen, default to Direct
+            (false, false) => ConnectionType::None,
         };
 
         (conn_type, min_rtt)

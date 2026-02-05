@@ -22,7 +22,7 @@ pub use p2p_model_sharing::{
     MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
     PeerManagerHandle,
 };
-use psyche_metrics::{ClientMetrics, PeerConnection};
+use psyche_metrics::{ClientMetrics, ConnectionType, PeerConnection};
 use router::{SupportedProtocols, spawn_router_with_allowlist};
 use state::State;
 use std::str::FromStr;
@@ -155,25 +155,6 @@ impl FromStr for RelayKind {
 }
 
 #[derive(Debug, Clone)]
-pub enum ConnectionType {
-    None,
-    Direct,
-    Mixed,
-    Relay,
-}
-
-impl std::fmt::Display for ConnectionType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ConnectionType::None => write!(f, "None"),
-            ConnectionType::Direct => write!(f, "Direct"),
-            ConnectionType::Mixed => write!(f, "Mixed"),
-            ConnectionType::Relay => write!(f, "Relay"),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct P2PEndpointInfo {
     pub id: EndpointId,
     pub path: ConnectionType,
@@ -185,12 +166,7 @@ impl From<P2PEndpointInfo> for PeerConnection {
     fn from(value: P2PEndpointInfo) -> Self {
         Self {
             endpoint_id: value.id.to_string(),
-            connection_type: match value.path {
-                ConnectionType::None => psyche_metrics::ConnectionType::None,
-                ConnectionType::Direct => psyche_metrics::ConnectionType::Direct,
-                ConnectionType::Mixed => psyche_metrics::ConnectionType::Mixed,
-                ConnectionType::Relay => psyche_metrics::ConnectionType::Relay,
-            },
+            connection_type: value.path,
             latency: value.latency as f32,
         }
     }
@@ -358,7 +334,7 @@ where
                 match std::env::var(API_SECRET_ENV_VAR_NAME) {
                     Ok(ticket_string) => {
                         let ticket = ApiSecret::from_str(&ticket_string)
-                            .context("invalid {API_SECRET_ENV_VAR_NAME}")?;
+                            .context(format!("invalid {API_SECRET_ENV_VAR_NAME}"))?;
                         let endpoint_id = ticket.remote.id;
                         allowlist.force_allow(endpoint_id);
                     }
@@ -652,15 +628,9 @@ where
                 .get_bandwidth_by_node(&conn_data.endpoint_id)
                 .unwrap_or_default();
 
-            let path = match conn_data.connection_type {
-                connection_monitor::ConnectionType::Direct => ConnectionType::Direct,
-                connection_monitor::ConnectionType::Relay => ConnectionType::Relay,
-                connection_monitor::ConnectionType::Mixed => ConnectionType::Mixed,
-            };
-
             infos.push(P2PEndpointInfo {
                 id: conn_data.endpoint_id,
-                path,
+                path: conn_data.connection_type,
                 bandwidth,
                 latency: conn_data.latency.as_secs_f64(),
             });
