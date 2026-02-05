@@ -68,9 +68,9 @@ WS_RPC=wss://your-primary-rpc-provider.com
 RUN_ID=your_run_id_here
 
 # Required: access token to write model states in the storage.
-# Depending on the config this will be a HuggingFace token or Google cloud storage access file path, only one of them should be needed
+# Depending on the config this will be a HuggingFace token or Google Cloud Storage credentials file path, only one of them should be needed
 HF_TOKEN=HuggingFace_write_token_for_repo
-GOOGLE_APPLICATION_CREDENTIALS=path_to_credentials_file_with_access_to_bucket
+GOOGLE_CREDENTIALS_FILE_PATH=/path/to/application_default_credentials.json
 
 # Recommended: Fallback RPC Endpoints (for reliability)
 RPC_2=https://your-backup-rpc-provider.com

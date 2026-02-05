@@ -3,7 +3,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use psyche_coordinator::model::Checkpoint;
 use std::fs;
 use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tokio::signal;
 use tracing::{error, info, warn};
@@ -22,6 +22,7 @@ pub struct RunManager {
     local_docker: bool,
     coordinator_client: CoordinatorClient,
     scratch_dir: Option<String>,
+    gcs_credentials_path: Option<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -68,7 +69,24 @@ impl RunManager {
         let run_id = get_env_var("RUN_ID")?;
         let rpc = get_env_var("RPC")?;
 
-        let scratch_dir = std::env::var("SCRATCH_DIR").ok();
+        let scratch_dir = get_env_var("SCRATCH_DIR").ok();
+
+        // Check for GCS credentials file path - will be mounted into container
+        let gcs_credentials_path = get_env_var("GOOGLE_CREDENTIALS_FILE_PATH")
+            .ok()
+            .map(PathBuf::from)
+            .and_then(|path| {
+                if path.exists() {
+                    info!("Found GCS credentials file at: {}", path.display());
+                    Some(path)
+                } else {
+                    warn!(
+                        "GOOGLE_CREDENTIALS_FILE_PATH set to {} but file does not exist",
+                        path.display()
+                    );
+                    None
+                }
+            });
 
         let coordinator_client = CoordinatorClient::new(rpc, coordinator_program_id);
 
@@ -79,6 +97,7 @@ impl RunManager {
             env_file,
             local_docker,
             scratch_dir,
+            gcs_credentials_path,
         })
     }
 
@@ -166,13 +185,27 @@ impl RunManager {
         if let Some(dir) = &self.scratch_dir {
             cmd.arg("--mount")
                 .arg(format!("type=bind,src={dir},dst=/scratch"));
+        }
 
-            let scratch_credentials_path = format!("{dir}/application_default_credentials.json");
-            if Path::new(&scratch_credentials_path).exists() {
-                cmd.arg("--env").arg(
-                    "GOOGLE_APPLICATION_CREDENTIALS=/scratch/application_default_credentials.json",
-                );
-            }
+        // Mount GCS credentials file if provided and set the env var inside container
+        if let Some(creds_path) = &self.gcs_credentials_path {
+            let container_creds_path = "/scratch/application_default_credentials.json";
+            cmd.arg("--mount")
+                .arg(format!(
+                    "type=bind,src={},dst={},readonly",
+                    creds_path.display(),
+                    container_creds_path
+                ))
+                .arg("--env")
+                .arg(format!(
+                    "GOOGLE_APPLICATION_CREDENTIALS={}",
+                    container_creds_path
+                ));
+            info!(
+                "Mounting GCS credentials from {} to {}",
+                creds_path.display(),
+                container_creds_path
+            );
         }
 
         if let Some(Entrypoint { entrypoint, .. }) = entrypoint {
@@ -290,16 +323,10 @@ impl RunManager {
 
         match checkpoint {
             Checkpoint::Gcs(_) | Checkpoint::P2PGcs(_) => {
-                // Check if GCS credentials are available
-                let has_gcs_creds = self.scratch_dir.as_ref().is_some_and(|dir| {
-                    Path::new(&format!("{dir}/application_default_credentials.json")).exists()
-                }) || std::env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok();
-
-                if !has_gcs_creds {
+                if self.gcs_credentials_path.is_none() {
                     bail!(
                         "This run uses GCS checkpointing but no GCS credentials found. \
-                        Either set GOOGLE_APPLICATION_CREDENTIALS or place \
-                        application_default_credentials.json in SCRATCH_DIR."
+                        Set GOOGLE_CREDENTIALS_FILE_PATH in your env file."
                     );
                 }
                 info!("GCS credentials validated for checkpoint upload");
