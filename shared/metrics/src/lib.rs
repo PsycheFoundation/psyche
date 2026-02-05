@@ -126,12 +126,23 @@ impl Drop for ClientMetrics {
     }
 }
 
-#[derive(Debug, Serialize, Clone, Copy)]
+#[derive(Debug, Serialize, Clone, Copy, PartialEq)]
 pub enum ConnectionType {
     None,
     Direct,
     Mixed,
     Relay,
+}
+
+impl Display for ConnectionType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            ConnectionType::None => "none",
+            ConnectionType::Direct => "direct",
+            ConnectionType::Mixed => "mixed",
+            ConnectionType::Relay => "relay",
+        })
+    }
 }
 
 #[derive(Debug, Serialize, Clone)]
