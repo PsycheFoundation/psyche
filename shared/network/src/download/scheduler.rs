@@ -1,13 +1,41 @@
-use std::{collections::HashMap, time::Instant};
+use std::{collections::HashMap, time::Duration, time::Instant};
 
 use iroh_blobs::{Hash, api::Tag, ticket::BlobTicket};
 use tokio::sync::{mpsc, oneshot};
 use tracing::info;
 
-use super::manager::{DownloadRetryInfo, DownloadType};
-use crate::ModelRequestType;
+use super::manager::DownloadType;
+use std::collections::VecDeque;
 
-/// A retry that is ready to be started.
+#[derive(Debug, Clone)]
+pub struct RetryConfig {
+    pub backoff_base: Duration,
+    pub max_distro_retries: usize,
+}
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            backoff_base: Duration::from_secs(2),
+            max_distro_retries: 3,
+        }
+    }
+}
+
+struct RetryEntry {
+    retries: usize,
+    retry_time: Option<Instant>,
+    ticket: BlobTicket,
+    tag: Tag,
+    download_type: DownloadType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RetryQueueResult {
+    Queued,
+    MaxRetriesExceeded,
+}
+
 #[derive(Debug, Clone)]
 pub struct ReadyRetry {
     pub hash: Hash,
@@ -17,38 +45,25 @@ pub struct ReadyRetry {
     pub retries: usize,
 }
 
-/// Messages for the download scheduler actor.
 #[derive(Debug)]
-pub enum SchedulerMessage {
-    /// Wait for capacity to start a new Parameter download.
-    WaitForCapacity { response: oneshot::Sender<()> },
-
-    /// Release a download slot. Called when a Parameter download completes or fails.
+enum SchedulerMessage {
+    WaitForCapacity {
+        response: oneshot::Sender<()>,
+    },
     ReleaseCapacity,
-
-    /// Queue a failed download for retry with backoff.
-    /// Works for both Parameter and DistroResult downloads.
-    QueueRetry { info: DownloadRetryInfo },
-
-    /// Remove a download from the retry queue.
+    QueueFailedDownload {
+        ticket: BlobTicket,
+        tag: Tag,
+        download_type: DownloadType,
+        response: oneshot::Sender<RetryQueueResult>,
+    },
     RemoveRetry {
         hash: Hash,
-        response: oneshot::Sender<Option<DownloadRetryInfo>>,
+        response: oneshot::Sender<bool>,
     },
-
-    /// Get retry info for a specific hash (to check retry count).
-    GetRetryInfo {
-        hash: Hash,
-        response: oneshot::Sender<Option<DownloadRetryInfo>>,
-    },
-
-    /// Try to start a due Parameter retry if capacity is available.
-    TryStartParameterRetry {
+    TryStartModelSharingRetry {
         response: oneshot::Sender<Option<ReadyRetry>>,
     },
-
-    /// Get all due DistroResult retries (no capacity check needed).
-    /// These are removed from the retry queue.
     GetDueDistroRetries {
         response: oneshot::Sender<Vec<ReadyRetry>>,
     },
@@ -60,43 +75,63 @@ pub struct DownloadSchedulerHandle {
 }
 
 impl DownloadSchedulerHandle {
-    pub fn new(max_concurrent_downloads: usize) -> Self {
+    pub fn new(max_concurrent_downloads: usize, retry_config: RetryConfig) -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
 
-        tokio::spawn(download_scheduler_actor(rx, max_concurrent_downloads));
+        tokio::spawn(download_scheduler_actor(
+            rx,
+            max_concurrent_downloads,
+            retry_config,
+        ));
 
         Self { tx }
     }
 
-    /// Wait for capacity to start a new download.
-    pub async fn wait_for_capacity(&self) {
+    pub async fn wait_for_capacity(&self) -> anyhow::Result<()> {
         let (response_tx, response_rx) = oneshot::channel();
 
-        if self
-            .tx
+        self.tx
             .send(SchedulerMessage::WaitForCapacity {
                 response: response_tx,
             })
-            .is_err()
-        {
-            return;
-        }
+            .map_err(|_| anyhow::anyhow!("Download scheduler actor has shut down"))?;
 
-        let _ = response_rx.await;
+        response_rx
+            .await
+            .map_err(|_| anyhow::anyhow!("Download scheduler actor dropped before responding"))
     }
 
-    /// Release a download slot. Call this when a download completes or fails.
     pub fn release_capacity(&self) {
         let _ = self.tx.send(SchedulerMessage::ReleaseCapacity);
     }
 
-    /// Queue a failed download for retry.
-    pub fn queue_retry(&self, info: DownloadRetryInfo) {
-        let _ = self.tx.send(SchedulerMessage::QueueRetry { info });
+    pub async fn queue_failed_download(
+        &self,
+        ticket: BlobTicket,
+        tag: Tag,
+        download_type: DownloadType,
+    ) -> RetryQueueResult {
+        let (response_tx, response_rx) = oneshot::channel();
+
+        if self
+            .tx
+            .send(SchedulerMessage::QueueFailedDownload {
+                ticket,
+                tag,
+                download_type,
+                response: response_tx,
+            })
+            .is_err()
+        {
+            return RetryQueueResult::MaxRetriesExceeded;
+        }
+
+        response_rx
+            .await
+            .unwrap_or(RetryQueueResult::MaxRetriesExceeded)
     }
 
-    /// Remove a download from the retry queue.
-    pub async fn remove_retry(&self, hash: Hash) -> Option<DownloadRetryInfo> {
+    pub async fn remove_retry(&self, hash: Hash) -> bool {
         let (response_tx, response_rx) = oneshot::channel();
 
         if self
@@ -107,20 +142,18 @@ impl DownloadSchedulerHandle {
             })
             .is_err()
         {
-            return None;
+            return false;
         }
 
-        response_rx.await.unwrap_or(None)
+        response_rx.await.unwrap_or(false)
     }
 
-    /// Get retry info for a specific hash.
-    pub async fn get_retry_info(&self, hash: Hash) -> Option<DownloadRetryInfo> {
+    pub async fn try_start_model_sharing_retry(&self) -> Option<ReadyRetry> {
         let (response_tx, response_rx) = oneshot::channel();
 
         if self
             .tx
-            .send(SchedulerMessage::GetRetryInfo {
-                hash,
+            .send(SchedulerMessage::TryStartModelSharingRetry {
                 response: response_tx,
             })
             .is_err()
@@ -131,24 +164,6 @@ impl DownloadSchedulerHandle {
         response_rx.await.unwrap_or(None)
     }
 
-    /// Try to start a due Parameter retry if capacity is available.
-    pub async fn try_start_parameter_retry(&self) -> Option<ReadyRetry> {
-        let (response_tx, response_rx) = oneshot::channel();
-
-        if self
-            .tx
-            .send(SchedulerMessage::TryStartParameterRetry {
-                response: response_tx,
-            })
-            .is_err()
-        {
-            return None;
-        }
-
-        response_rx.await.unwrap_or(None)
-    }
-
-    /// Get all due DistroResult retries.
     pub async fn get_due_distro_retries(&self) -> Vec<ReadyRetry> {
         let (response_tx, response_rx) = oneshot::channel();
 
@@ -166,25 +181,22 @@ impl DownloadSchedulerHandle {
     }
 }
 
-/// Internal actor state.
 struct DownloadSchedulerActor {
-    /// Current number of active downloads.
     active_downloads: usize,
-    /// Maximum concurrent downloads allowed.
     max_concurrent: usize,
-    /// Queue of callers waiting for capacity.
-    waiting_for_capacity: Vec<oneshot::Sender<()>>,
-    /// Downloads pending retry, keyed by hash.
-    pending_retries: HashMap<Hash, DownloadRetryInfo>,
+    waiting_for_capacity: VecDeque<oneshot::Sender<()>>,
+    retry_entries: HashMap<Hash, RetryEntry>,
+    retry_config: RetryConfig,
 }
 
 impl DownloadSchedulerActor {
-    fn new(max_concurrent: usize) -> Self {
+    fn new(max_concurrent: usize, retry_config: RetryConfig) -> Self {
         Self {
             active_downloads: 0,
             max_concurrent,
-            waiting_for_capacity: Vec::new(),
-            pending_retries: HashMap::new(),
+            waiting_for_capacity: VecDeque::new(),
+            retry_entries: HashMap::new(),
+            retry_config,
         }
     }
 
@@ -192,12 +204,10 @@ impl DownloadSchedulerActor {
         match message {
             SchedulerMessage::WaitForCapacity { response } => {
                 if self.active_downloads < self.max_concurrent {
-                    // Capacity available, grant immediately
                     self.active_downloads += 1;
                     let _ = response.send(());
                 } else {
-                    // At capacity, queue the waiter
-                    self.waiting_for_capacity.push(response);
+                    self.waiting_for_capacity.push_back(response);
                 }
             }
 
@@ -206,56 +216,93 @@ impl DownloadSchedulerActor {
                 self.notify_next_waiter();
             }
 
-            SchedulerMessage::QueueRetry { info } => {
-                let hash = info.ticket.hash();
-                self.pending_retries.insert(hash, info);
+            SchedulerMessage::QueueFailedDownload {
+                ticket,
+                tag,
+                download_type,
+                response,
+            } => {
+                let hash = ticket.hash();
+                let prev_retries = self
+                    .retry_entries
+                    .get(&hash)
+                    .map(|e| e.retries)
+                    .unwrap_or(0);
+
+                match &download_type {
+                    DownloadType::ModelSharing(_) => {
+                        self.retry_entries.insert(
+                            hash,
+                            RetryEntry {
+                                retries: prev_retries + 1,
+                                retry_time: None,
+                                ticket,
+                                tag,
+                                download_type,
+                            },
+                        );
+                        let _ = response.send(RetryQueueResult::Queued);
+                    }
+                    DownloadType::DistroResult(_) => {
+                        let new_retries = prev_retries + 1;
+                        if new_retries > self.retry_config.max_distro_retries {
+                            self.retry_entries.remove(&hash);
+                            let _ = response.send(RetryQueueResult::MaxRetriesExceeded);
+                        } else {
+                            let backoff = self
+                                .retry_config
+                                .backoff_base
+                                .mul_f32(2_f32.powi(prev_retries as i32));
+                            self.retry_entries.insert(
+                                hash,
+                                RetryEntry {
+                                    retries: new_retries,
+                                    retry_time: Some(Instant::now() + backoff),
+                                    ticket,
+                                    tag,
+                                    download_type,
+                                },
+                            );
+                            let _ = response.send(RetryQueueResult::Queued);
+                        }
+                    }
+                }
             }
 
             SchedulerMessage::RemoveRetry { hash, response } => {
-                let removed = self.pending_retries.remove(&hash);
+                let removed = self.retry_entries.remove(&hash).is_some();
                 let _ = response.send(removed);
             }
 
-            SchedulerMessage::GetRetryInfo { hash, response } => {
-                let info = self.pending_retries.get(&hash).cloned();
-                let _ = response.send(info);
-            }
-
-            SchedulerMessage::TryStartParameterRetry { response } => {
-                // Only proceed if we have capacity
+            SchedulerMessage::TryStartModelSharingRetry { response } => {
                 if self.active_downloads >= self.max_concurrent {
                     let _ = response.send(None);
                     return;
                 }
 
-                // Find a Parameter retry that is due
                 let now = Instant::now();
-                let due_retry = self
-                    .pending_retries
+                let due_entry = self
+                    .retry_entries
                     .iter()
-                    .find(|(_, info)| {
-                        matches!(
-                            &info.r#type,
-                            DownloadType::ModelSharing(ModelRequestType::Parameter(_))
-                        ) && info
-                            .retry_time
-                            .map(|retry_time| now >= retry_time)
-                            .unwrap_or(false)
+                    .find(|(_, entry)| {
+                        matches!(&entry.download_type, DownloadType::ModelSharing(_))
+                            && entry
+                                .retry_time
+                                .map(|retry_time| now >= retry_time)
+                                .unwrap_or(true)
                     })
-                    .map(|(hash, info)| (*hash, info.clone()));
+                    .map(|(hash, _)| *hash);
 
-                if let Some((hash, info)) = due_retry {
+                if let Some(hash) = due_entry {
                     self.active_downloads += 1;
-                    self.pending_retries.remove(&hash);
-
-                    let ready = ReadyRetry {
+                    let entry = self.retry_entries.remove(&hash).unwrap();
+                    let _ = response.send(Some(ReadyRetry {
                         hash,
-                        ticket: info.ticket,
-                        tag: info.tag,
-                        download_type: info.r#type,
-                        retries: info.retries,
-                    };
-                    let _ = response.send(Some(ready));
+                        ticket: entry.ticket,
+                        tag: entry.tag,
+                        download_type: entry.download_type,
+                        retries: entry.retries,
+                    }));
                 } else {
                     let _ = response.send(None);
                 }
@@ -263,41 +310,36 @@ impl DownloadSchedulerActor {
 
             SchedulerMessage::GetDueDistroRetries { response } => {
                 let now = Instant::now();
+                let mut ready_retries = Vec::new();
 
-                let due_hashes: Vec<Hash> = self
-                    .pending_retries
-                    .iter()
-                    .filter(|(_, info)| {
-                        matches!(&info.r#type, DownloadType::DistroResult(_))
-                            && info
-                                .retry_time
-                                .map(|retry_time| now >= retry_time)
-                                .unwrap_or(false)
-                    })
-                    .map(|(hash, _)| *hash)
-                    .collect();
+                self.retry_entries.retain(|hash, entry| {
+                    let is_due = matches!(&entry.download_type, DownloadType::DistroResult(_))
+                        && entry
+                            .retry_time
+                            .map(|retry_time| now >= retry_time)
+                            .unwrap_or(false);
 
-                let ready_retries: Vec<ReadyRetry> = due_hashes
-                    .into_iter()
-                    .filter_map(|hash| {
-                        self.pending_retries.remove(&hash).map(|info| ReadyRetry {
-                            hash,
-                            ticket: info.ticket,
-                            tag: info.tag,
-                            download_type: info.r#type,
-                            retries: info.retries,
-                        })
-                    })
-                    .collect();
+                    if is_due {
+                        ready_retries.push(ReadyRetry {
+                            hash: *hash,
+                            ticket: entry.ticket.clone(),
+                            tag: entry.tag.clone(),
+                            download_type: entry.download_type.clone(),
+                            retries: entry.retries,
+                        });
+                        false
+                    } else {
+                        true
+                    }
+                });
 
                 let _ = response.send(ready_retries);
             }
         }
     }
 
-    /// Notify the next waiter in queue that capacity is available.
     fn notify_next_waiter(&mut self) {
-        while let Some(waiter) = self.waiting_for_capacity.pop() {
+        while let Some(waiter) = self.waiting_for_capacity.pop_front() {
             if waiter.send(()).is_ok() {
                 self.active_downloads += 1;
                 info!(
@@ -313,10 +355,319 @@ impl DownloadSchedulerActor {
 async fn download_scheduler_actor(
     mut rx: mpsc::UnboundedReceiver<SchedulerMessage>,
     max_concurrent: usize,
+    retry_config: RetryConfig,
 ) {
-    let mut actor = DownloadSchedulerActor::new(max_concurrent);
+    let mut actor = DownloadSchedulerActor::new(max_concurrent, retry_config);
 
     while let Some(message) = rx.recv().await {
         actor.handle_message(message);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ModelRequestType;
+    use iroh::{EndpointAddr, SecretKey};
+    use iroh_blobs::BlobFormat;
+    use std::time::Duration;
+
+    fn default_config() -> RetryConfig {
+        RetryConfig::default()
+    }
+
+    fn fast_config() -> RetryConfig {
+        RetryConfig {
+            backoff_base: Duration::from_millis(10),
+            max_distro_retries: 3,
+        }
+    }
+
+    fn dummy_ticket(seed: u8) -> BlobTicket {
+        let key = SecretKey::from_bytes(&[seed; 32]);
+        let addr = EndpointAddr::from(key.public());
+        let hash = Hash::new(&[seed]);
+        BlobTicket::new(addr, hash, BlobFormat::Raw)
+    }
+
+    fn param_download_type(seed: u8) -> DownloadType {
+        DownloadType::ModelSharing(ModelRequestType::Parameter(format!("layer.{seed}")))
+    }
+
+    fn config_download_type() -> DownloadType {
+        DownloadType::ModelSharing(ModelRequestType::Config)
+    }
+
+    fn distro_download_type() -> DownloadType {
+        DownloadType::DistroResult(vec![])
+    }
+
+    #[tokio::test]
+    async fn test_capacity_grants_up_to_max() {
+        let scheduler = DownloadSchedulerHandle::new(2, default_config());
+
+        scheduler.wait_for_capacity().await.unwrap();
+        scheduler.wait_for_capacity().await.unwrap();
+
+        let result =
+            tokio::time::timeout(Duration::from_millis(50), scheduler.wait_for_capacity()).await;
+        assert!(result.is_err(), "Third request should have timed out");
+    }
+
+    #[tokio::test]
+    async fn test_release_unblocks_waiter() {
+        let scheduler = DownloadSchedulerHandle::new(1, default_config());
+        scheduler.wait_for_capacity().await.unwrap();
+
+        let scheduler_clone = scheduler.clone();
+        let waiter = tokio::spawn(async move { scheduler_clone.wait_for_capacity().await });
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        scheduler.release_capacity();
+
+        let result = tokio::time::timeout(Duration::from_millis(100), waiter).await;
+        assert!(result.is_ok(), "Waiter should have been unblocked");
+    }
+
+    #[tokio::test]
+    async fn test_waiters_are_served_fifo() {
+        let scheduler = DownloadSchedulerHandle::new(1, default_config());
+        scheduler.wait_for_capacity().await.unwrap();
+
+        let scheduler1 = scheduler.clone();
+        let scheduler2 = scheduler.clone();
+        let order = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let order1 = order.clone();
+        let order2 = order.clone();
+
+        let w1 = tokio::spawn(async move {
+            scheduler1.wait_for_capacity().await.unwrap();
+            order1.lock().unwrap().push(1);
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            scheduler1.release_capacity();
+        });
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        let w2 = tokio::spawn(async move {
+            scheduler2.wait_for_capacity().await.unwrap();
+            order2.lock().unwrap().push(2);
+            scheduler2.release_capacity();
+        });
+
+        scheduler.release_capacity();
+
+        tokio::time::timeout(Duration::from_millis(200), async {
+            w1.await.unwrap();
+            w2.await.unwrap();
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(
+            *order.lock().unwrap(),
+            vec![1, 2],
+            "Waiters should be served FIFO"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_model_sharing_retry_respects_capacity() {
+        let scheduler = DownloadSchedulerHandle::new(1, default_config());
+        scheduler.wait_for_capacity().await.unwrap();
+
+        let result = scheduler
+            .queue_failed_download(
+                dummy_ticket(1),
+                Tag::from("param-1"),
+                param_download_type(1),
+            )
+            .await;
+        assert_eq!(result, RetryQueueResult::Queued);
+
+        assert!(
+            scheduler.try_start_model_sharing_retry().await.is_none(),
+            "Should not return retry when at capacity"
+        );
+
+        scheduler.release_capacity();
+        tokio::task::yield_now().await;
+
+        assert!(
+            scheduler.try_start_model_sharing_retry().await.is_some(),
+            "Should return retry when capacity is available"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_model_sharing_retry_returns_config() {
+        let scheduler = DownloadSchedulerHandle::new(2, default_config());
+        scheduler
+            .queue_failed_download(dummy_ticket(1), Tag::from("config"), config_download_type())
+            .await;
+
+        let retry = scheduler.try_start_model_sharing_retry().await;
+        assert!(retry.is_some());
+        assert!(matches!(
+            retry.unwrap().download_type,
+            DownloadType::ModelSharing(ModelRequestType::Config)
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_model_sharing_retry_instant() {
+        let scheduler = DownloadSchedulerHandle::new(2, default_config());
+        scheduler
+            .queue_failed_download(
+                dummy_ticket(1),
+                Tag::from("param-1"),
+                param_download_type(1),
+            )
+            .await;
+
+        assert!(scheduler.try_start_model_sharing_retry().await.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_distro_retry_not_immediately_due() {
+        let scheduler = DownloadSchedulerHandle::new(2, fast_config());
+
+        let result = scheduler
+            .queue_failed_download(
+                dummy_ticket(1),
+                Tag::from("distro-1"),
+                distro_download_type(),
+            )
+            .await;
+        assert_eq!(result, RetryQueueResult::Queued);
+
+        assert!(
+            scheduler.get_due_distro_retries().await.is_empty(),
+            "DistroResult retry should not be immediately due"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_distro_retries_returned_and_removed() {
+        let scheduler = DownloadSchedulerHandle::new(2, fast_config());
+
+        let ticket1 = dummy_ticket(1);
+        let ticket2 = dummy_ticket(2);
+        let hash1 = ticket1.hash();
+        let hash2 = ticket2.hash();
+        scheduler
+            .queue_failed_download(ticket1, Tag::from("distro-1"), distro_download_type())
+            .await;
+        scheduler
+            .queue_failed_download(ticket2, Tag::from("distro-2"), distro_download_type())
+            .await;
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        assert_eq!(scheduler.get_due_distro_retries().await.len(), 2);
+        assert!(
+            scheduler.get_due_distro_retries().await.is_empty(),
+            "Retries should have been removed after first call"
+        );
+        assert!(!scheduler.remove_retry(hash1).await);
+        assert!(!scheduler.remove_retry(hash2).await);
+    }
+
+    #[tokio::test]
+    async fn test_distro_retries_dont_consume_capacity() {
+        let scheduler = DownloadSchedulerHandle::new(1, fast_config());
+        scheduler.wait_for_capacity().await.unwrap();
+
+        scheduler
+            .queue_failed_download(
+                dummy_ticket(1),
+                Tag::from("distro-1"),
+                distro_download_type(),
+            )
+            .await;
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(
+            scheduler.get_due_distro_retries().await.len(),
+            1,
+            "Distro retries should not be gated by capacity"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_remove_retry() {
+        let scheduler = DownloadSchedulerHandle::new(2, default_config());
+
+        let ticket = dummy_ticket(1);
+        let hash = ticket.hash();
+        scheduler
+            .queue_failed_download(ticket, Tag::from("param-1"), param_download_type(1))
+            .await;
+
+        assert!(scheduler.remove_retry(hash).await);
+        assert!(!scheduler.remove_retry(hash).await);
+    }
+
+    #[tokio::test]
+    async fn test_distro_max_retries_exceeded() {
+        let config = RetryConfig {
+            backoff_base: Duration::from_millis(1),
+            max_distro_retries: 2,
+        };
+        let scheduler = DownloadSchedulerHandle::new(2, config);
+
+        let ticket = dummy_ticket(1);
+        let tag = Tag::from("distro-1");
+        let dt = distro_download_type();
+
+        assert_eq!(
+            scheduler
+                .queue_failed_download(ticket.clone(), tag.clone(), dt.clone())
+                .await,
+            RetryQueueResult::Queued
+        );
+        assert_eq!(
+            scheduler
+                .queue_failed_download(ticket.clone(), tag.clone(), dt.clone())
+                .await,
+            RetryQueueResult::Queued
+        );
+        assert_eq!(
+            scheduler
+                .queue_failed_download(ticket.clone(), tag.clone(), dt.clone())
+                .await,
+            RetryQueueResult::MaxRetriesExceeded
+        );
+    }
+
+    #[tokio::test]
+    async fn test_model_sharing_never_exceeds_max_retries() {
+        let config = RetryConfig {
+            backoff_base: Duration::from_millis(1),
+            max_distro_retries: 1,
+        };
+        let scheduler = DownloadSchedulerHandle::new(10, config);
+
+        let ticket = dummy_ticket(1);
+        let tag = Tag::from("param-1");
+        let dt = param_download_type(1);
+
+        for _ in 0..10 {
+            assert_eq!(
+                scheduler
+                    .queue_failed_download(ticket.clone(), tag.clone(), dt.clone())
+                    .await,
+                RetryQueueResult::Queued
+            );
+            scheduler.try_start_model_sharing_retry().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_capacity_errors_on_actor_shutdown() {
+        let (tx, rx) = mpsc::unbounded_channel::<SchedulerMessage>();
+        drop(rx);
+
+        let dead_scheduler = DownloadSchedulerHandle { tx };
+        assert!(dead_scheduler.wait_for_capacity().await.is_err());
     }
 }

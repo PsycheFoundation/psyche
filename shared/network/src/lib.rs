@@ -74,8 +74,8 @@ mod test;
 
 pub use authenticable_identity::{AuthenticatableIdentity, FromSignedBytesError, raw_p2p_verify};
 pub use download::{
-    DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadSchedulerHandle, DownloadType,
-    MAX_DOWNLOAD_RETRIES, ReadyRetry, TransmittableDownload,
+    DownloadComplete, DownloadFailed, DownloadSchedulerHandle, DownloadType, ReadyRetry,
+    RetryConfig, RetryQueueResult, TransmittableDownload,
 };
 pub use iroh::{Endpoint, EndpointId, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayQuicConfig};

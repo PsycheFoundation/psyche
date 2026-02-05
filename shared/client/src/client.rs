@@ -9,9 +9,9 @@ use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::{IntegrationTestLogMarker, NodeIdentity};
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
-    AuthenticatableIdentity, DownloadComplete, DownloadRetryInfo, DownloadSchedulerHandle,
-    DownloadType, EndpointId, MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkEvent,
-    NetworkTUIState, PeerManagerHandle, SharableModel, TransmittableDownload, allowlist,
+    AuthenticatableIdentity, DownloadComplete, DownloadSchedulerHandle, DownloadType, EndpointId,
+    ModelRequestType, NetworkEvent, NetworkTUIState, PeerManagerHandle, RetryConfig,
+    RetryQueueResult, SharableModel, TransmittableDownload, allowlist,
     blob_ticket_param_request_task, raw_p2p_verify,
 };
 use psyche_watcher::{Backend, BackendWatcher};
@@ -45,7 +45,6 @@ pub struct Client<T: NodeIdentity, A: AuthenticatableIdentity, B: Backend<T> + '
 }
 
 const REBROADCAST_SHAREABLE: Duration = Duration::from_secs(10);
-const DOWNLOAD_RETRY_BACKOFF_BASE: Duration = Duration::from_secs(2);
 const DOWNLOAD_RETRY_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 const OPPROTUNISTIC_WITNESS_INTERVAL: Duration = Duration::from_millis(500);
 const CHECK_CONNECTION_INTERVAL: Duration = Duration::from_secs(10);
@@ -120,8 +119,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                     tx_broadcast_finished,
                 });
 
-                let download_scheduler =
-                    DownloadSchedulerHandle::new(max_concurrent_parameter_requests);
+                let download_scheduler = DownloadSchedulerHandle::new(
+                    max_concurrent_parameter_requests,
+                    RetryConfig::default(),
+                );
                 let mut sharable_model = SharableModel::empty();
                 let peer_manager = Arc::new(PeerManagerHandle::new(
                     MAX_ERRORS_PER_PEER,
@@ -272,7 +273,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         let _ = trace_span!("NetworkEvent::DownloadComplete", hash = %hash).entered();
                                         metrics.record_download_completed(hash, from);
                                         // Remove from retry queue if it was a retry
-                                        download_scheduler.remove_retry(hash).await;
+                                        if download_scheduler.remove_retry(hash).await {
+                                            info!("Successful download after retry for blob hash 0x{}", hex::encode(hash));
+                                        };
                                         match download_data {
                                             TransmittableDownload::DistroResult(distro_result) => {
                                                 debug!("Download complete: step {} batch id {}", distro_result.step, distro_result.batch_id);
@@ -304,27 +307,21 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                     NetworkEvent::DownloadFailed(dl) => {
                                         let _ = trace_span!("NetworkEvent::DownloadFailed", error=%dl.error).entered();
                                         let hash = dl.blob_ticket.hash();
-                                        let retries = download_scheduler.get_retry_info(hash).await.map(|i| i.retries).unwrap_or(0);
-                                        let download_type_clone = dl.download_type.clone();
 
                                         match dl.download_type {
                                             DownloadType::ModelSharing(request_type) => {
-                                                // Release capacity for parameter downloads
                                                 download_scheduler.release_capacity();
 
                                                 metrics.record_p2p_model_parameter_download_failed();
-                                                // We often get an error after some time in the iroh-blobs side so we use the base backoff to retry faster.
-                                                let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE;
-                                                let retry_time = Some(std::time::Instant::now() + backoff_duration);
                                                 peer_manager.report_blob_ticket_request_error(dl.blob_ticket.addr().id, Some(dl.blob_ticket.clone()));
 
                                                 info!(
-                                                    "Model Sharing download failed {} time/s with provider node {} (will retry in {:?}): {}",
-                                                    retries + 1,
+                                                    "Model Sharing download failed with provider node {} (will retry): {}",
                                                     dl.blob_ticket.addr().id,
-                                                    backoff_duration,
                                                     dl.error
                                                 );
+
+                                                let download_type = DownloadType::ModelSharing(request_type.clone());
                                                 let router = p2p.router().clone();
                                                 let peer_manager = peer_manager.clone();
                                                 let download_scheduler = download_scheduler.clone();
@@ -338,37 +335,32 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                         dl.blob_ticket
                                                     };
 
-                                                    download_scheduler.queue_retry(DownloadRetryInfo {
-                                                        retries: retries + 1,
-                                                        retry_time,
-                                                        tag: dl.tag,
-                                                        ticket: blob_ticket_to_retry,
-                                                        r#type: download_type_clone,
-                                                    });
+                                                    download_scheduler.queue_failed_download(
+                                                        blob_ticket_to_retry,
+                                                        dl.tag,
+                                                        download_type,
+                                                    ).await;
                                                 });
                                             }
                                             DownloadType::DistroResult(_) => {
-                                                if retries >= MAX_DOWNLOAD_RETRIES {
-                                                    metrics.record_download_perma_failed();
-                                                    warn!("Distro result download failed (not retrying): {}", dl.error);
-                                                    download_scheduler.remove_retry(hash).await;
-                                                } else {
-                                                    metrics.record_download_failed();
-                                                    let backoff_duration = DOWNLOAD_RETRY_BACKOFF_BASE.mul_f32(2_f32.powi(retries as i32));
-                                                    let retry_time = Some(std::time::Instant::now() + backoff_duration);
+                                                let result = download_scheduler.queue_failed_download(
+                                                    dl.blob_ticket,
+                                                    dl.tag,
+                                                    dl.download_type,
+                                                ).await;
 
-                                                    info!(
-                                                        "Distro result download failed (will retry in {:?}): {}",
-                                                        backoff_duration,
-                                                        dl.error
-                                                    );
-                                                    download_scheduler.queue_retry(DownloadRetryInfo {
-                                                        retries: retries + 1,
-                                                        retry_time,
-                                                        tag: dl.tag,
-                                                        ticket: dl.blob_ticket,
-                                                        r#type: dl.download_type,
-                                                    });
+                                                match result {
+                                                    RetryQueueResult::Queued => {
+                                                        metrics.record_download_failed();
+                                                        info!(
+                                                            "Distro result download failed (will retry with backoff): {}",
+                                                            dl.error
+                                                        );
+                                                    }
+                                                    RetryQueueResult::MaxRetriesExceeded => {
+                                                        metrics.record_download_perma_failed();
+                                                        warn!("Distro result download failed (not retrying): {}", dl.error);
+                                                    }
                                                 }
                                             }
                                         }
@@ -481,12 +473,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         }
 
                         _ = retry_check_interval.tick() => {
-                            let tx_request_download = tx_request_download.clone();
-                            let tx_params_download = tx_params_download.clone();
-                            let tx_config_download = tx_config_download.clone();
-                            let metrics = metrics.clone();
-                            let download_scheduler = download_scheduler.clone();
-
                             // Handle DistroResult retries (no rate limiting)
                             for retry in download_scheduler.get_due_distro_retries().await {
                                 metrics.record_download_retry(retry.hash);
@@ -494,9 +480,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 let _ = tx_request_download.send((retry.ticket, retry.tag));
                             }
 
-                            // Handle Parameter retries (with rate limiting via coordinator)
-                            // The coordinator checks capacity and only returns retries if slots are available
-                            while let Some(retry) = download_scheduler.try_start_parameter_retry().await {
+                            // Handle ModelSharing retries (Parameter + Config, with rate limiting via scheduler)
+                            // The scheduler checks capacity and only returns retries if slots are available
+                            while let Some(retry) = download_scheduler.try_start_model_sharing_retry().await {
                                 metrics.record_download_retry(retry.hash);
                                 match retry.download_type {
                                     DownloadType::ModelSharing(ModelRequestType::Parameter(ref parameter)) => {
@@ -507,7 +493,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                         info!("Retrying download for model config, (attempt {})", retry.retries);
                                         let _ = tx_config_download.send(retry.ticket);
                                     },
-                                    _ => {}
+                                    _ => unreachable!("We should only be retrying model sharing downloads here"),
                                 }
                             }
                         }
@@ -555,9 +541,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                             tokio::spawn(async move {
                                 for param_name in param_names {
-                                    // Wait for capacity - blocks until a slot is available
-                                    // When this returns, the slot has been reserved
-                                    download_scheduler.wait_for_capacity().await;
+                                    if let Err(e) = download_scheduler.wait_for_capacity().await {
+                                        error!("Download scheduler shut down, aborting parameter requests: {e}");
+                                        break;
+                                    }
 
                                     let router = router.clone();
 

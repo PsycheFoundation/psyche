@@ -12,24 +12,12 @@ use iroh_blobs::api::Tag;
 use iroh_blobs::api::downloader::DownloadProgressItem;
 use iroh_blobs::ticket::BlobTicket;
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, future::Future, marker::PhantomData, pin::Pin, sync::Arc, time::Instant};
+use std::{fmt::Debug, future::Future, marker::PhantomData, pin::Pin, sync::Arc};
 use tokio::{
     sync::{Mutex, mpsc, oneshot},
     task::JoinHandle,
 };
 use tracing::{error, info, trace, warn};
-
-pub const MAX_DOWNLOAD_RETRIES: usize = 3;
-
-/// Information about a download that needs to be retried.
-#[derive(Debug, Clone)]
-pub struct DownloadRetryInfo {
-    pub retries: usize,
-    pub retry_time: Option<Instant>,
-    pub ticket: BlobTicket,
-    pub tag: Tag,
-    pub r#type: DownloadType,
-}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum TransmittableDownload {
@@ -62,14 +50,14 @@ struct Download {
     download: mpsc::UnboundedReceiver<Result<DownloadProgressItem>>,
     last_offset: u64,
     total_size: u64,
-    r#type: DownloadType,
+    download_type: DownloadType,
 }
 
 struct ReadingFinishedDownload {
     blob_ticket: BlobTicket,
     tag: Tag,
     download: oneshot::Receiver<Bytes>,
-    r#type: DownloadType,
+    download_type: DownloadType,
 }
 
 impl Debug for ReadingFinishedDownload {
@@ -94,7 +82,7 @@ impl Download {
             download,
             last_offset: 0,
             total_size: 0,
-            r#type: download_type,
+            download_type,
         }
     }
 }
@@ -247,7 +235,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                 blob_ticket,
                 tag,
                 download,
-                r#type: download_type,
+                download_type,
             });
             if let Err(err) = sender.send(()) {
                 error!("{err:#}");
@@ -329,7 +317,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                     downloaded_size: 0,
                     total_size: 0,
                     all_done: false,
-                    download_type: download.r#type.clone(),
+                    download_type: download.download_type.clone(),
                 })),
                 DownloadProgressItem::Progress(bytes_amount) => {
                     Some(DownloadManagerEvent::Update(DownloadUpdate {
@@ -339,7 +327,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                         downloaded_size: bytes_amount,
                         total_size: download.total_size,
                         all_done: false,
-                        download_type: download.r#type.clone(),
+                        download_type: download.download_type.clone(),
                     }))
                 }
                 // We're using the Blob format so there's only one part for each blob
@@ -351,7 +339,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                         downloaded_size: download.last_offset,
                         total_size: download.total_size,
                         all_done: true,
-                        download_type: download.r#type.clone(),
+                        download_type: download.download_type.clone(),
                     }))
                 }
                 DownloadProgressItem::DownloadError => {
@@ -359,7 +347,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                         blob_ticket: download.blob_ticket.clone(),
                         error: anyhow!("Download error"),
                         tag,
-                        download_type: download.r#type.clone(),
+                        download_type: download.download_type.clone(),
                     }))
                 }
                 DownloadProgressItem::Error(e) => {
@@ -367,7 +355,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                         blob_ticket: download.blob_ticket.clone(),
                         error: e,
                         tag,
-                        download_type: download.r#type.clone(),
+                        download_type: download.download_type.clone(),
                     }))
                 }
                 DownloadProgressItem::ProviderFailed {
@@ -380,14 +368,14 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                     downloaded_size: download.last_offset,
                     total_size: download.total_size,
                     all_done: false,
-                    download_type: download.r#type.clone(),
+                    download_type: download.download_type.clone(),
                 })),
             },
             Err(err) => Some(DownloadManagerEvent::Failed(DownloadFailed {
                 blob_ticket: download.blob_ticket.clone(),
                 error: err,
                 tag,
-                download_type: download.r#type.clone(),
+                download_type: download.download_type.clone(),
             })),
         };
         match &event {
@@ -436,14 +424,14 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                     blob_ticket: downloader.blob_ticket,
                     tag: downloader.tag,
                     error: err.into(),
-                    download_type: downloader.r#type.clone(),
+                    download_type: downloader.download_type.clone(),
                 })),
             },
             Err(e) => Some(DownloadManagerEvent::Failed(DownloadFailed {
                 blob_ticket: downloader.blob_ticket,
                 tag: downloader.tag,
                 error: e,
-                download_type: downloader.r#type.clone(),
+                download_type: downloader.download_type.clone(),
             })),
         }
     }
