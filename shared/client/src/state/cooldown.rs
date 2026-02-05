@@ -1,10 +1,12 @@
 use crate::UploadInfo;
 use psyche_coordinator::{
-    Coordinator,
-    model::{self},
+    CheckpointerSelection, Coordinator,
+    model::{self, HubRepo, LLM, Model},
 };
 use psyche_core::NodeIdentity;
-use psyche_data_provider::{GcsManifestMetadata, UploadError, upload_to_gcs, upload_to_hub};
+use psyche_data_provider::{
+    GcsManifestMetadata, GcsUploadInfo, HubUploadInfo, UploadError, upload_to_gcs, upload_to_hub,
+};
 #[cfg(feature = "python")]
 use psyche_modeling::CausalLM;
 use psyche_modeling::{
@@ -14,7 +16,10 @@ use std::{
     cmp::Reverse,
     collections::{BinaryHeap, HashMap},
     path::PathBuf,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use tch::Tensor;
 use thiserror::Error;
@@ -22,7 +27,7 @@ use tokio::{
     sync::{Mutex, mpsc},
     task::JoinHandle,
 };
-use tracing::{Instrument, info, info_span, warn};
+use tracing::{Instrument, error, info, info_span, warn};
 
 use super::{
     CheckpointConfig,
@@ -39,12 +44,14 @@ pub enum CooldownError {
 
     #[error("error while checkpointing: {0}")]
     Checkpoint(#[from] CheckpointError),
+
+    #[error("error in cooldown step: {0}")]
+    CoordinatorError(#[from] psyche_coordinator::CoordinatorError),
 }
 
 pub struct CooldownStepMetadata {
-    tx_checkpoint: mpsc::UnboundedSender<model::Checkpoint>,
     tx_model: mpsc::UnboundedSender<HashMap<String, Tensor>>,
-    checkpoint_info: Option<CheckpointConfig>,
+    checkpoint_info: CheckpointConfig,
     checkpoint_extra_files: Vec<PathBuf>,
 
     model_task_runner: ModelTaskRunner,
@@ -59,14 +66,12 @@ pub struct CooldownStepMetadata {
 
 impl CooldownStepMetadata {
     pub fn new(
-        tx_checkpoint: mpsc::UnboundedSender<model::Checkpoint>,
         tx_model: mpsc::UnboundedSender<HashMap<String, Tensor>>,
-        checkpoint_info: Option<CheckpointConfig>,
+        checkpoint_info: CheckpointConfig,
         checkpoint_extra_files: Vec<PathBuf>,
         model_task_runner: ModelTaskRunner,
     ) -> Self {
         Self {
-            tx_checkpoint,
             tx_model,
             checkpoint_info,
             checkpoint_extra_files,
@@ -130,6 +135,7 @@ impl CooldownStepMetadata {
         &self,
         mut trainers: Vec<Trainer>,
         state: &Coordinator<T>,
+        client_index: u64,
     ) -> Result<CooldownStep, CooldownError> {
         let Some(mut trainer) = trainers.pop() else {
             return Err(CooldownError::NoTrainers);
@@ -140,59 +146,104 @@ impl CooldownStepMetadata {
         let epoch = state.progress.epoch as u32;
         let checkpoint_extra_files = self.checkpoint_extra_files.clone();
         let checkpoint_info = self.checkpoint_info.clone();
-        let tx_checkpoint = self.tx_checkpoint.clone();
+        let Model::LLM(LLM { checkpoint, .. }) = state.model;
         let tx_model = self.tx_model.clone();
         let model_task_runner = self.model_task_runner.clone();
         let delete_queue = self.delete_queue.clone();
+        let checkpointer_selection = CheckpointerSelection::from_coordinator(state, 0)?;
+        let is_checkpointer = checkpointer_selection
+            .is_checkpointer(client_index, state.epoch_state.clients.len() as u64);
+        let cancellation_token = tokio_util::sync::CancellationToken::new();
+        let checkpoint_completed = Arc::new(AtomicBool::new(false));
 
-        let checkpointing_and_evals: CheckpointAndEvalsHandle = tokio::task::spawn(
-            async move {
-                info!("Extracting full model...");
-                let (variables, trainer) =
-                    tokio::task::spawn_blocking::<_, Result<_, CheckpointError>>(|| {
-                        let variables = trainer.extract()?;
-                        info!("Model extracted; {} parameters", variables.len());
-                        Ok((variables, trainer))
-                    })
-                    .await
-                    .map_err(|_| CheckpointError::ExtractThreadCrashed)??;
+        let checkpointing_and_evals: JoinHandle<Result<RunningEvals, CheckpointError>> =
+            tokio::task::spawn({
+                let cancellation_token = cancellation_token.clone();
+                let checkpoint_completed = checkpoint_completed.clone();
+                async move {
+                    info!("Extracting full model...");
+                    let (variables, trainer) =
+                        tokio::task::spawn_blocking::<_, Result<_, CheckpointError>>(|| {
+                            let variables = trainer.extract()?;
+                            info!("Model extracted; {} parameters", variables.len());
+                            Ok((variables, trainer))
+                        })
+                        .await
+                        .map_err(|_| CheckpointError::ExtractThreadCrashed)??;
 
-                let variables_clone: HashMap<String, Tensor> = variables
-                    .iter()
-                    .map(|(name, var)| (name.clone(), var.shallow_clone()))
-                    .collect();
+                    let variables_clone: HashMap<String, Tensor> = variables
+                        .iter()
+                        .map(|(name, var)| (name.clone(), var.shallow_clone()))
+                        .collect();
 
-                // for p2p model sharing we use the native trainer shape
-                tx_model
-                    .send(variables_clone)
-                    .map_err(|_| CheckpointError::SendCheckpoint)?;
+                    // for p2p model sharing we use the native trainer shape
+                    tx_model
+                        .send(variables_clone)
+                        .map_err(|_| CheckpointError::SendCheckpoint)?;
 
-                // convert from internal shape to serialized shape (e.g. torchtitan to hf)
-                let (variables, trainer) = match trainer {
-                    #[cfg(feature = "python")]
-                    Trainer::PythonDistributed(_) => {
-                        info!("Converting distributed trainer variables for checkpointing...");
-                        tokio::task::spawn_blocking(|| (trainer.convert(Some(variables)), trainer))
-                            .await
-                            .map_err(|_| CheckpointError::ExtractThreadCrashed)?
+                    // convert from internal shape to serialized shape (e.g. torchtitan to hf)
+                    let (variables, trainer) = match trainer {
+                        #[cfg(feature = "python")]
+                        Trainer::PythonDistributed(_) => {
+                            info!("Converting distributed trainer variables for checkpointing...");
+                            tokio::task::spawn_blocking(|| (trainer.convert(Some(variables)), trainer))
+                                .await
+                                .map_err(|_| CheckpointError::ExtractThreadCrashed)?
+                        }
+                        _ => (variables, trainer),
+                    };
+
+                    trainers.push(trainer);
+                    let evals = model_task_runner.start(trainers);
+                    if !is_checkpointer {
+                        info!("Skipping checkpoint upload as this node is not the checkpointer for this epoch");
+                        return Ok(evals);
                     }
-                    _ => (variables, trainer),
-                };
 
-                trainers.push(trainer);
-                let evals = model_task_runner.start(trainers);
+                    let CheckpointConfig {
+                        checkpoint_dir,
+                        delete_old_steps,
+                        keep_steps,
+                        hub_token,
+                        skip_upload,
+                    } = checkpoint_info;
 
-                let Some(CheckpointConfig {
-                    upload_info,
-                    checkpoint_dir,
-                    delete_old_steps,
-                    keep_steps,
-                }) = checkpoint_info
-                else {
-                    return Ok((evals, None));
-                };
+                    // When skip_upload is true (testing), skip all checkpoint saving
+                    if skip_upload {
+                        info!("Skipping checkpoint save and upload (skip_upload flag is set)");
+                        checkpoint_completed.store(true, Ordering::SeqCst);
+                        return Ok(evals);
+                    }
 
-                let upload_handle = tokio::task::spawn(async move {
+                    let upload_info = match checkpoint {
+                        model::Checkpoint::Hub(HubRepo {
+                            repo_id,
+                            revision: _,
+                        })
+                        | model::Checkpoint::P2P(HubRepo {
+                            repo_id,
+                            revision: _,
+                        }) => {
+                            if let Some(token) = hub_token {
+                                Some(UploadInfo::Hub(HubUploadInfo {
+                                    hub_repo: repo_id.to_string(),
+                                    hub_token: token,
+                                }))
+                            } else {
+                                warn!("HF_TOKEN env not provided, skipping upload to HuggingFace Hub");
+                                None
+                            }
+                        }
+                        model::Checkpoint::Gcs(model::GcsRepo { bucket, prefix })
+                        | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, prefix }) => {
+                            Some(UploadInfo::Gcs(GcsUploadInfo {
+                                gcs_bucket: bucket.to_string(),
+                                gcs_prefix: prefix.as_ref().map(|p| p.to_string()),
+                            }))
+                        }
+                        _ => None,
+                    };
+
                     let path = checkpoint_dir.join(format!("{run_id}-step{step}"));
                     let local =
                         save_checkpoint_locally(path, variables, checkpoint_extra_files).await?;
@@ -202,14 +253,16 @@ impl CooldownStepMetadata {
                             epoch,
                             run_id: run_id.clone(),
                         };
-                        upload_checkpoint(
-                            upload_info,
-                            manifest_metadata,
-                            local.clone(),
-                            step as u64,
-                            tx_checkpoint,
-                        )
-                        .await?;
+                        let result = upload_checkpoint(upload_info, manifest_metadata, local.clone(), step as u64, cancellation_token.clone())
+                            .await;
+                        if let Err(err) = result {
+                            error!("Error uploading checkpoint: {}", err);
+                        } else {
+                            checkpoint_completed.store(true, Ordering::SeqCst);
+                        }
+                    } else {
+                        // No upload configured, but local save succeeded
+                        checkpoint_completed.store(true, Ordering::SeqCst);
                     }
 
                     cleanup_dirs(
@@ -222,16 +275,15 @@ impl CooldownStepMetadata {
                     )
                     .await;
 
-                    Ok(())
-                });
-
-                Ok((evals, Some(upload_handle)))
-            }
-            .instrument(info_span!("checkpointing")),
-        );
+                    Ok(evals)
+                }
+                .instrument(info_span!("checkpointing"))
+            });
 
         Ok(CooldownStep {
             checkpointing_and_evals,
+            cancellation_token,
+            checkpoint_completed,
         })
     }
 }
@@ -265,50 +317,50 @@ async fn upload_checkpoint(
     manifest_metadata: GcsManifestMetadata,
     local: Vec<PathBuf>,
     step: u64,
-    tx_checkpoint: mpsc::UnboundedSender<model::Checkpoint>,
+    cancellation_token: tokio_util::sync::CancellationToken,
 ) -> Result<(), CheckpointError> {
     match upload_info {
         UploadInfo::Gcs(gcs_info) => {
-            upload_to_gcs(gcs_info, manifest_metadata, local, step, tx_checkpoint)
+            upload_to_gcs(gcs_info, manifest_metadata, local, step, cancellation_token)
                 .await
                 .map_err(CheckpointError::UploadError)
         }
-        UploadInfo::Hub(hub_info) => upload_to_hub(hub_info, local, step, tx_checkpoint)
+        UploadInfo::Hub(hub_info) => upload_to_hub(hub_info, local, step, cancellation_token)
             .await
             .map_err(CheckpointError::UploadError),
+        UploadInfo::Dummy() => {
+            info!("Dummy upload info provided; skipping upload");
+            Ok(())
+        }
     }
 }
 
-type CheckpointAndEvalsHandle = JoinHandle<
-    Result<
-        (
-            RunningEvals,
-            Option<JoinHandle<Result<(), CheckpointError>>>,
-        ),
-        CheckpointError,
-    >,
->;
-
 #[derive(Debug)]
 pub struct CooldownStep {
-    checkpointing_and_evals: CheckpointAndEvalsHandle,
+    checkpointing_and_evals: JoinHandle<Result<RunningEvals, CheckpointError>>,
+    cancellation_token: tokio_util::sync::CancellationToken,
+    checkpoint_completed: Arc<AtomicBool>,
 }
 
 impl CooldownStep {
-    pub async fn finish(
-        self,
-    ) -> Result<
-        (
-            RunningEvals,
-            Option<JoinHandle<Result<(), CheckpointError>>>,
-        ),
-        CooldownError,
-    > {
-        let (running_evals, upload_handle) = self
+    pub async fn finish(self) -> Result<RunningEvals, CooldownError> {
+        let running_evals = self
             .checkpointing_and_evals
             .await
             .map_err(|_| CooldownError::CheckpointThreadCrashed)??;
 
-        Ok((running_evals, upload_handle))
+        Ok(running_evals)
+    }
+
+    pub fn cancel(&self) {
+        self.cancellation_token.cancel();
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self.checkpointing_and_evals.is_finished()
+    }
+
+    pub fn checkpoint_complete(&self) -> bool {
+        self.checkpoint_completed.load(Ordering::SeqCst)
     }
 }

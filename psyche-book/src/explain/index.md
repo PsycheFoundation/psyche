@@ -62,7 +62,7 @@ These three phases constitute a **round** of training and will be looping until 
 
 At the start of an **epoch**, all clients have a window of time to join the run by requesting to be added by coordinator, and then connecting to the other participating clients. This state will be known as the _Waiting for Members_ phase.
 
-Once a minimum threshold of clients has been met, the run will transition to the _Warmup_ phase and begin a countdown to allow connected clients to update their copy of the model. To obtain a copy of the model, the Coordinator will either direct clients to a checkpoint uploaded somewhere like HuggingFace and they will have to download it from there or direct clients to [download the model from other clients](./model-sharing.md) via the p2p network. In the first epoch, all clients will download the model from HuggingFace and after that every new epoch, clients will download the model from other clients via the p2p network.
+Once a minimum threshold of clients has been met, the run will transition to the _Warmup_ phase and begin a countdown to allow connected clients to update their copy of the model. To obtain a copy of the model, the Coordinator will either direct clients to a checkpoint uploaded somewhere like HuggingFace or Google Cloud Storage and they will have to download it from there or direct clients to [download the model from other clients](./model-sharing.md) via the p2p network. In the first epoch, all clients will download the model from the external storage and after that every new epoch, clients will download the model from other clients via the p2p network.
 
 After the _Warmup_ phase ends, it will enter the _Training_ phase.
 
@@ -84,7 +84,7 @@ At the start of each round, one or more clients are randomly selected as witness
 
 These bloom filters are sent to the coordinator, which then combines them into a provable consensus of which results to apply to the model.
 
-Once a witness quorum is reached, the coordinator advances to the _Training_ phase to allow all clients a brief window to download every training result of the previous round, clients are assigned new data, and the process repeats. After a fixed amount of time, a _Cooldown_ round occurs, marking the end of an **epoch**. This time is configurable in the run creation process that we'll explore in the other sections.
+Once a witness quorum is reached, the coordinator advances to the _Training_ phase to allow all clients a brief window to download every training result of the previous round, clients are assigned new data, and the process repeats. After a fixed amount of time, a _Cooldown_ round occurs, marking the end of an **epoch**. At this state, one third of the clients are randomly selected as checkpointers and all of them starts uploading the state of the model to an external storage. There's a maximum amount of time for staying in this state, this time is configurable in the run creation process that we'll explore in the other sections.
 
 ## The witness/train loop visualized
 

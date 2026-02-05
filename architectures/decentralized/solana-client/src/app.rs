@@ -11,9 +11,13 @@ use anchor_client::{
 };
 use anyhow::{Result, anyhow};
 use psyche_client::{
-    Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
+    Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, UploadCredentials,
+    read_identity_secret_key,
 };
-use psyche_coordinator::{ClientState, Coordinator, CoordinatorError, RunState};
+use psyche_coordinator::{
+    ClientState, Coordinator, CoordinatorError, RunState,
+    model::{self, GcsRepo, LLM, Model},
+};
 use psyche_core::sha256;
 use psyche_metrics::ClientMetrics;
 
@@ -228,6 +232,30 @@ impl App {
 
         let mut joined_run_this_epoch = None;
         let mut ever_joined_run = false;
+
+        // sanity checks — skip credential validation when checkpoint upload is disabled
+        if !self.state_options.checkpoint_config.skip_upload {
+            let Model::LLM(LLM { checkpoint, .. }) = start_coordinator_state.model;
+            let credentials = match checkpoint {
+                model::Checkpoint::Hub(_) | model::Checkpoint::P2P(_) => self
+                    .state_options
+                    .checkpoint_config
+                    .hub_token
+                    .as_ref()
+                    .map(|token| UploadCredentials::HubToken(token.clone())),
+                model::Checkpoint::Gcs(GcsRepo { bucket, .. })
+                | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, .. }) => {
+                    Some(UploadCredentials::GcsBucket(bucket.to_string()))
+                }
+                _ => None,
+            };
+            if let Some(ref creds) = credentials {
+                // Validate basic credentials
+                creds.validate().await?;
+                // For GCS, also validate bucket permissions
+                creds.validate_gcs_bucket_permissions().await?;
+            }
+        }
 
         // if we're already in "WaitingForMembers" we won't get an update saying that
         // (subscription is on change), so check if it's in that state right at boot

@@ -79,6 +79,7 @@ indicatif = "0.17.5"
 tokenizers = { version = "0.20.0", default-features = false, features = [
   "onig",
 ] }
+google-cloud-storage = "1.6.0"
 tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "dda507e05a776547a112b6854d1e611684f8c729" }
 torch-sys = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "dda507e05a776547a112b6854d1e611684f8c729" }
 pyo3-tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "dda507e05a776547a112b6854d1e611684f8c729" }
