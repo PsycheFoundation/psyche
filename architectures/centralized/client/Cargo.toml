@@ -26,6 +26,7 @@ bytemuck.workspace = true
 clap-markdown.workspace = true
 hex = "0.4.3"
 psyche-python-extension-impl = { workspace = true, optional = true }
+tikv-jemallocator.workspace = true
 
 [features]
 parallelism = ["psyche-client/parallelism"]

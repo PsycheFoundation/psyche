@@ -30,6 +30,7 @@ tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 psyche-python-extension-impl = { workspace = true, optional = true }
+tikv-jemallocator.workspace = true
 
 [features]
 parallelism = ["psyche-client/parallelism"]
