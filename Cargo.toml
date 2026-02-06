@@ -106,6 +106,10 @@ ts-rs = { git = "https://github.com/arilotter/ts-rs.git", rev = "92ce1752227fec9
 ] }
 rayon = "1.10.0"
 
+tikv-jemallocator = { version = "0.6.1", features = [
+  "unprefixed_malloc_on_supported_platforms",
+] }
+
 # dev only
 test-log = { version = "0.2.16", features = ["trace"] }
 pretty_assertions = "1.4.1"

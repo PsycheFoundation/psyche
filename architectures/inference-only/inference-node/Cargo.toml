@@ -33,3 +33,5 @@ iroh-blobs.workspace = true
 iroh-gossip.workspace = true
 
 serde_json.workspace = true
+
+tikv-jemallocator.workspace = true
