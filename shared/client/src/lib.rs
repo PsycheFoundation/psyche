@@ -1,6 +1,7 @@
 mod cli;
 mod client;
 mod fetch_data;
+pub mod parallelism_lookup;
 mod protocol;
 mod state;
 mod tui;
