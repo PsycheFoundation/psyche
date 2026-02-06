@@ -9,6 +9,7 @@ use psyche_core::{
 use psyche_data_provider::{
     DataProvider, DataProviderTcpClient, DummyDataProvider, PreprocessedDataProvider, Split,
     WeightedDataProvider, download_dataset_repo_async, download_model_repo_async,
+    hf_preprocessed::HuggingFacePreprocessedDataProvider,
     http::{FileURLs, HttpDataProvider},
 };
 use psyche_metrics::ClientMetrics;
@@ -259,6 +260,19 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         Some(Split::Train),
                         None,
                     )?)
+                }
+                LLMTrainingDataLocation::HuggingFacePreprocessed(location) => {
+                    DataProvider::HuggingFacePreprocessed(
+                        HuggingFacePreprocessedDataProvider::new(
+                            (&location.repo_id).into(),
+                            (&location.config).into(),
+                            (&location.split).into(),
+                            hub_read_token.clone(),
+                            llm.max_seq_len as usize,
+                            location.shuffle,
+                        )
+                        .await?,
+                    )
                 }
             };
             Ok(data_provider)
