@@ -26,6 +26,7 @@ use commands::run::{
     CommandSetFutureEpochRates, CommandSetPaused, CommandTick, CommandUpdateConfig,
 };
 use commands::treasury::{CommandTreasurerClaimRewards, CommandTreasurerTopUpRewards};
+use commands::wallet;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const GIT_HASH: &str = env!("GIT_HASH");
@@ -214,6 +215,12 @@ enum Commands {
         params: CommandCanJoin,
     },
 
+    // Solana key management
+    Solana {
+        #[command(subcommand)]
+        command: wallet::WalletCommands,
+    },
+
     // Docs generation
     #[clap(hide = true)]
     PrintAllHelp {
@@ -370,6 +377,7 @@ async fn async_main() -> Result<()> {
         Commands::CanJoin { cluster, params } => {
             params.execute(create_backend_readonly(cluster)?).await
         }
+        Commands::Solana { command } => wallet::execute(command),
         Commands::PrintAllHelp { markdown } => {
             assert!(markdown);
             clap_markdown::print_help_markdown::<CliArgs>();
