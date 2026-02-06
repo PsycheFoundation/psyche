@@ -73,6 +73,9 @@ iroh = { version = "0.96.0", features = ["metrics"] }
 iroh-relay = { version = "0.96.0", features = ["metrics"] }
 iroh-blobs = { version = "0.98", features = ["metrics"] }
 iroh-gossip = { version = "0.96.0" }
+axum = "0.7"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace"] }
 flume = "0.11.1"
 memmap2 = { version = "0.9.3", features = ["stable_deref_trait"] }
 indicatif = "0.17.5"
@@ -105,6 +108,10 @@ ts-rs = { git = "https://github.com/arilotter/ts-rs.git", rev = "92ce1752227fec9
   "psyche-impl",
 ] }
 rayon = "1.10.0"
+
+# with iroh update need to specify digest and crypto-common versions
+digest = { version = "=0.11.0-rc.10", default-features = false }
+crypto-common = "0.2"
 
 # dev only
 test-log = { version = "0.2.16", features = ["trace"] }
