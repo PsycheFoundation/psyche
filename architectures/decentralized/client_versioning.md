@@ -8,7 +8,7 @@ There are two ways to specify the client version for a run:
 ## Docker RepoId hash
 
 Once the client docker image is uploaded to DockerHub, a `RepoId` hash is associated with that image. This string is what should be used for
-setting the client version in a run, toguether with the "sha256" part. For example, "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb".
+setting the client version in a run, together with the "sha256" part. For example, "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb".
 
 ## Docker version tag
 
@@ -16,11 +16,11 @@ For setting a docker version tag, the image should be built with that tag set be
 
 ## Updating client docker version for a run
 
-Once the new docker image uploaded to DockerHub and some version selected, you can update the client version required
+Once the new docker image is uploaded to DockerHub and a version is selected, you can update the client version required
 for a particular run with the following command:
 
-[!] You should have the run owner solana key to successfully run this command
-[!] The run must be paused beforehand to do the client version update
+[!] You should have the run owner Solana key to successfully run this command.
+[!] The run must be paused beforehand to do the client version update.
 
 ```bash
 cargo run --release --bin run-manager -- \
