@@ -7,7 +7,7 @@ use anyhow::anyhow;
 use anyhow::{Error, Result, bail};
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::{IntegrationTestLogMarker, NodeIdentity};
-use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
+use psyche_metrics::{ClientMetrics, ClientRoleInRound, ConnectionType, PeerConnection};
 use psyche_network::{
     AuthenticatableIdentity, DownloadComplete, DownloadSchedulerHandle, DownloadType, EndpointId,
     ModelRequestType, NetworkEvent, NetworkTUIState, PeerManagerHandle, RetryConfig,
@@ -621,16 +621,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 let remote_infos: Vec<_> = p2p
                                     .remote_infos()
                                     .into_iter()
-                                    .filter(|info| !matches!(info.path, psyche_network::ConnectionType::None))
+
+                                    .filter(|info| !matches!(info.path, ConnectionType::None))
                                     .map(|info| {
                                         PeerConnection {
                                             endpoint_id: info.id.to_string(),
-                                            connection_type: match info.path {
-                                                psyche_network::ConnectionType::None => unreachable!(),
-                                                psyche_network::ConnectionType::Direct(..) => psyche_metrics::ConnectionType::Direct,
-                                                psyche_network::ConnectionType::Relay(..) => psyche_metrics::ConnectionType::Relay,
-                                                psyche_network::ConnectionType::Mixed(..) => psyche_metrics::ConnectionType::Mixed,
-                                            },
+                                            connection_type:info.path,
                                             latency: info.latency as f32
                                         }
                                     })
