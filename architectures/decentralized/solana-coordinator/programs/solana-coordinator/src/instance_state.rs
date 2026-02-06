@@ -1,28 +1,28 @@
 use anchor_lang::prelude::*;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
+use psyche_coordinator::model::HubRepo;
+use psyche_coordinator::model::Model;
 use psyche_coordinator::ClientState;
 use psyche_coordinator::Coordinator;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
 use psyche_coordinator::HealthChecks;
 use psyche_coordinator::RunState;
-use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_coordinator::TickResult;
 use psyche_coordinator::Witness;
-use psyche_coordinator::model::HubRepo;
-use psyche_coordinator::model::Model;
+use psyche_coordinator::SOLANA_MAX_STRING_LEN;
+use psyche_core::sha256v;
 use psyche_core::FixedString;
 use psyche_core::SmallBoolean;
-use psyche_core::sha256v;
 use serde::Deserialize;
 use serde::Serialize;
 use ts_rs::TS;
 
-use crate::ClientId;
-use crate::ProgramError;
 use crate::client::Client;
 use crate::clients_state::ClientsState;
+use crate::ClientId;
+use crate::ProgramError;
 
 #[derive(
     Debug,
@@ -323,7 +323,7 @@ impl CoordinatorInstanceState {
         Ok(())
     }
 
-    pub fn join_run(&mut self, id: ClientId) -> Result<()> {
+    pub fn join_run(&mut self, id: ClientId, claimer: Pubkey) -> Result<()> {
         let existing = match self
             .clients_state
             .clients
@@ -335,6 +335,7 @@ impl CoordinatorInstanceState {
                     return err!(ProgramError::ClientIdMismatch);
                 }
                 client.id = id; // IMPORTANT. Equality is on wallet key but includes ephemeral p2p key
+                client.claimer = claimer;
                 client.active = self.clients_state.next_active;
                 msg!("Existing client {} re-joined", id.signer);
                 true
@@ -352,6 +353,7 @@ impl CoordinatorInstanceState {
 
             let new_client = Client {
                 id,
+                claimer,
                 earned: 0,
                 slashed: 0,
                 active: self.clients_state.next_active,

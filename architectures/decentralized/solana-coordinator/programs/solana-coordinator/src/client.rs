@@ -25,6 +25,8 @@ use ts_rs::TS;
 #[ts(rename = "SolanaClient")]
 pub struct Client {
     pub id: ClientId,
+    #[ts(type = "number[]")]
+    pub claimer: Pubkey,
     pub _unused: [u8; 8],
     pub earned: u64,
     pub slashed: u64,

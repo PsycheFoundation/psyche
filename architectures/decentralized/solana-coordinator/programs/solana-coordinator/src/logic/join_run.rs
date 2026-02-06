@@ -1,11 +1,11 @@
 use anchor_lang::prelude::*;
 use psyche_solana_authorizer::state::Authorization;
 
+use crate::bytes_from_string;
+use crate::program_error::ProgramError;
 use crate::ClientId;
 use crate::CoordinatorAccount;
 use crate::CoordinatorInstance;
-use crate::bytes_from_string;
-use crate::program_error::ProgramError;
 
 pub const JOIN_RUN_AUTHORIZATION_SCOPE: &[u8] = b"CoordinatorJoinRun";
 
@@ -44,6 +44,7 @@ pub struct JoinRunAccounts<'info> {
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct JoinRunParams {
     pub client_id: ClientId,
+    pub claimer: Pubkey,
 }
 
 pub fn join_run_processor(
@@ -55,5 +56,5 @@ pub fn join_run_processor(
     }
     let mut account = context.accounts.coordinator_account.load_mut()?;
     account.increment_nonce();
-    account.state.join_run(params.client_id)
+    account.state.join_run(params.client_id, params.claimer)
 }
