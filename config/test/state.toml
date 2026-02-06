@@ -3,7 +3,7 @@ run_state = "WaitingForMembers"
 [config]
 warmup_time = 5
 cooldown_time = 5
-rounds_per_epoch = 20
+epoch_time = 60
 max_round_train_time = 5
 round_witness_time = 2
 min_clients = 2
@@ -20,10 +20,13 @@ waiting_for_members_extra_time = 3
 architecture = "HfLlama"
 data_type = "Pretraining"
 max_seq_len = 512
-checkpoint = "Dummy"
 optimizer = "Dummy"
 data_location = "Dummy"
 cold_start_warmup_steps = 0
+
+
+[model.LLM.checkpoint.Dummy]
+repo_id = ""
 
 
 [model.LLM.lr_schedule.Cosine]

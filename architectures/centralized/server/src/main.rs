@@ -157,7 +157,10 @@ async fn main() -> Result<()> {
             let _ = psyche_tui::logging::logging().init()?;
             match config {
                 Ok(_) => info!("Configs are OK!"),
-                Err(err) => error!("Error found in config: {err:#}"),
+                Err(err) => {
+                    error!("Error found in config: {err:#}");
+                    std::process::exit(1);
+                }
             }
         }
         Commands::Run { run_args } => {
