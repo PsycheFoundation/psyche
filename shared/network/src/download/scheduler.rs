@@ -30,6 +30,18 @@ struct RetryEntry {
     download_type: DownloadType,
 }
 
+impl RetryEntry {
+    fn into_ready_retry(self, hash: Hash) -> ReadyRetry {
+        ReadyRetry {
+            hash,
+            ticket: self.ticket,
+            tag: self.tag,
+            download_type: self.download_type,
+            retries: self.retries,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RetryQueueResult {
     Queued,
@@ -87,15 +99,27 @@ impl DownloadSchedulerHandle {
         Self { tx }
     }
 
+    /// Send a message to the actor and await the response via oneshot.
+    /// Returns `default` if the actor has shut down or the response channel is dropped.
+    async fn request<T>(
+        &self,
+        make_msg: impl FnOnce(oneshot::Sender<T>) -> SchedulerMessage,
+        default: T,
+    ) -> T {
+        let (tx, rx) = oneshot::channel();
+        if self.tx.send(make_msg(tx)).is_err() {
+            return default;
+        }
+        rx.await.unwrap_or(default)
+    }
+
     pub async fn wait_for_capacity(&self) -> anyhow::Result<()> {
         let (response_tx, response_rx) = oneshot::channel();
-
         self.tx
             .send(SchedulerMessage::WaitForCapacity {
                 response: response_tx,
             })
             .map_err(|_| anyhow::anyhow!("Download scheduler actor has shut down"))?;
-
         response_rx
             .await
             .map_err(|_| anyhow::anyhow!("Download scheduler actor dropped before responding"))
@@ -111,73 +135,40 @@ impl DownloadSchedulerHandle {
         tag: Tag,
         download_type: DownloadType,
     ) -> RetryQueueResult {
-        let (response_tx, response_rx) = oneshot::channel();
-
-        if self
-            .tx
-            .send(SchedulerMessage::QueueFailedDownload {
+        self.request(
+            |response| SchedulerMessage::QueueFailedDownload {
                 ticket,
                 tag,
                 download_type,
-                response: response_tx,
-            })
-            .is_err()
-        {
-            return RetryQueueResult::MaxRetriesExceeded;
-        }
-
-        response_rx
-            .await
-            .unwrap_or(RetryQueueResult::MaxRetriesExceeded)
+                response,
+            },
+            RetryQueueResult::MaxRetriesExceeded,
+        )
+        .await
     }
 
     pub async fn remove_retry(&self, hash: Hash) -> bool {
-        let (response_tx, response_rx) = oneshot::channel();
-
-        if self
-            .tx
-            .send(SchedulerMessage::RemoveRetry {
-                hash,
-                response: response_tx,
-            })
-            .is_err()
-        {
-            return false;
-        }
-
-        response_rx.await.unwrap_or(false)
+        self.request(
+            |response| SchedulerMessage::RemoveRetry { hash, response },
+            false,
+        )
+        .await
     }
 
     pub async fn try_start_model_sharing_retry(&self) -> Option<ReadyRetry> {
-        let (response_tx, response_rx) = oneshot::channel();
-
-        if self
-            .tx
-            .send(SchedulerMessage::TryStartModelSharingRetry {
-                response: response_tx,
-            })
-            .is_err()
-        {
-            return None;
-        }
-
-        response_rx.await.unwrap_or(None)
+        self.request(
+            |response| SchedulerMessage::TryStartModelSharingRetry { response },
+            None,
+        )
+        .await
     }
 
     pub async fn get_due_distro_retries(&self) -> Vec<ReadyRetry> {
-        let (response_tx, response_rx) = oneshot::channel();
-
-        if self
-            .tx
-            .send(SchedulerMessage::GetDueDistroRetries {
-                response: response_tx,
-            })
-            .is_err()
-        {
-            return Vec::new();
-        }
-
-        response_rx.await.unwrap_or_default()
+        self.request(
+            |response| SchedulerMessage::GetDueDistroRetries { response },
+            Vec::new(),
+        )
+        .await
     }
 }
 
@@ -296,13 +287,7 @@ impl DownloadSchedulerActor {
                 if let Some(hash) = due_entry {
                     self.active_downloads += 1;
                     let entry = self.retry_entries.remove(&hash).unwrap();
-                    let _ = response.send(Some(ReadyRetry {
-                        hash,
-                        ticket: entry.ticket,
-                        tag: entry.tag,
-                        download_type: entry.download_type,
-                        retries: entry.retries,
-                    }));
+                    let _ = response.send(Some(entry.into_ready_retry(hash)));
                 } else {
                     let _ = response.send(None);
                 }
@@ -312,26 +297,21 @@ impl DownloadSchedulerActor {
                 let now = Instant::now();
                 let mut ready_retries = Vec::new();
 
-                self.retry_entries.retain(|hash, entry| {
-                    let is_due = matches!(&entry.download_type, DownloadType::DistroResult(_))
-                        && entry
-                            .retry_time
-                            .map(|retry_time| now >= retry_time)
-                            .unwrap_or(false);
+                let due_hashes: Vec<Hash> = self
+                    .retry_entries
+                    .iter()
+                    .filter(|(_, entry)| {
+                        matches!(&entry.download_type, DownloadType::DistroResult(_))
+                            && entry.retry_time.map(|t| now >= t).unwrap_or(false)
+                    })
+                    .map(|(hash, _)| *hash)
+                    .collect();
 
-                    if is_due {
-                        ready_retries.push(ReadyRetry {
-                            hash: *hash,
-                            ticket: entry.ticket.clone(),
-                            tag: entry.tag.clone(),
-                            download_type: entry.download_type.clone(),
-                            retries: entry.retries,
-                        });
-                        false
-                    } else {
-                        true
+                for hash in due_hashes {
+                    if let Some(entry) = self.retry_entries.remove(&hash) {
+                        ready_retries.push(entry.into_ready_retry(hash));
                     }
-                });
+                }
 
                 let _ = response.send(ready_retries);
             }
@@ -372,10 +352,6 @@ mod tests {
     use iroh_blobs::BlobFormat;
     use std::time::Duration;
 
-    fn default_config() -> RetryConfig {
-        RetryConfig::default()
-    }
-
     fn fast_config() -> RetryConfig {
         RetryConfig {
             backoff_base: Duration::from_millis(10),
@@ -404,7 +380,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_capacity_grants_up_to_max() {
-        let scheduler = DownloadSchedulerHandle::new(2, default_config());
+        let scheduler = DownloadSchedulerHandle::new(2, RetryConfig::default());
 
         scheduler.wait_for_capacity().await.unwrap();
         scheduler.wait_for_capacity().await.unwrap();
@@ -416,7 +392,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_release_unblocks_waiter() {
-        let scheduler = DownloadSchedulerHandle::new(1, default_config());
+        let scheduler = DownloadSchedulerHandle::new(1, RetryConfig::default());
         scheduler.wait_for_capacity().await.unwrap();
 
         let scheduler_clone = scheduler.clone();
@@ -431,7 +407,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_waiters_are_served_fifo() {
-        let scheduler = DownloadSchedulerHandle::new(1, default_config());
+        let scheduler = DownloadSchedulerHandle::new(1, RetryConfig::default());
         scheduler.wait_for_capacity().await.unwrap();
 
         let scheduler1 = scheduler.clone();
@@ -472,7 +448,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_model_sharing_retry_respects_capacity() {
-        let scheduler = DownloadSchedulerHandle::new(1, default_config());
+        let scheduler = DownloadSchedulerHandle::new(1, RetryConfig::default());
         scheduler.wait_for_capacity().await.unwrap();
 
         let result = scheduler
@@ -499,23 +475,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_model_sharing_retry_returns_config() {
-        let scheduler = DownloadSchedulerHandle::new(2, default_config());
-        scheduler
-            .queue_failed_download(dummy_ticket(1), Tag::from("config"), config_download_type())
-            .await;
+    async fn test_model_sharing_retries_are_immediate() {
+        let scheduler = DownloadSchedulerHandle::new(2, RetryConfig::default());
 
-        let retry = scheduler.try_start_model_sharing_retry().await;
-        assert!(retry.is_some());
-        assert!(matches!(
-            retry.unwrap().download_type,
-            DownloadType::ModelSharing(ModelRequestType::Config)
-        ));
-    }
-
-    #[tokio::test]
-    async fn test_model_sharing_retry_instant() {
-        let scheduler = DownloadSchedulerHandle::new(2, default_config());
+        // Parameter retry is immediate
         scheduler
             .queue_failed_download(
                 dummy_ticket(1),
@@ -523,8 +486,17 @@ mod tests {
                 param_download_type(1),
             )
             .await;
-
         assert!(scheduler.try_start_model_sharing_retry().await.is_some());
+
+        // Config retry is immediate and preserves type
+        scheduler
+            .queue_failed_download(dummy_ticket(2), Tag::from("config"), config_download_type())
+            .await;
+        let retry = scheduler.try_start_model_sharing_retry().await.unwrap();
+        assert!(matches!(
+            retry.download_type,
+            DownloadType::ModelSharing(ModelRequestType::Config)
+        ));
     }
 
     #[tokio::test]
@@ -595,7 +567,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_remove_retry() {
-        let scheduler = DownloadSchedulerHandle::new(2, default_config());
+        let scheduler = DownloadSchedulerHandle::new(2, RetryConfig::default());
 
         let ticket = dummy_ticket(1);
         let hash = ticket.hash();
