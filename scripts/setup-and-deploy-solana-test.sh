@@ -40,13 +40,19 @@ sleep 3
 
 solana airdrop 10 --url ${RPC} --keypair ${WALLET_FILE}
 
-# Pass treasurer flag to deploy script if set
-if [[ "$DEPLOY_TREASURER" == "true"  && "$PERMISSIONLESS" == "true" ]]; then
+
+if [[ "$DEPLOY_TREASURER" == "true" ]]; then
     WALLET_FILE=${WALLET_FILE} ./scripts/deploy-solana-test.sh --treasurer "${EXTRA_ARGS[@]}"
-    CONFIG_FILE=${CONFIG_FILE} WALLET_FILE=${WALLET_FILE} ./scripts/create-permissionless-run.sh --treasurer "${EXTRA_ARGS[@]}"
-elif [[ "$PERMISSIONLESS" == "true"  ]]; then
+else
     WALLET_FILE=${WALLET_FILE} ./scripts/deploy-solana-test.sh "${EXTRA_ARGS[@]}"
-    CONFIG_FILE=${CONFIG_FILE} WALLET_FILE=${WALLET_FILE} ./scripts/create-permissionless-run.sh "${EXTRA_ARGS[@]}"
+fi
+
+if [[ "$PERMISSIONLESS" == "true" ]]; then
+    if [[ "$DEPLOY_TREASURER" == "true" ]]; then
+        CONFIG_FILE=${CONFIG_FILE} WALLET_FILE=${WALLET_FILE} ./scripts/create-permissionless-run.sh --treasurer "${EXTRA_ARGS[@]}"
+    else
+        CONFIG_FILE=${CONFIG_FILE} WALLET_FILE=${WALLET_FILE} ./scripts/create-permissionless-run.sh "${EXTRA_ARGS[@]}"
+    fi
 fi
 echo -e "\n[+] Testing Solana setup ready, starting Solana logs...\n"
 
