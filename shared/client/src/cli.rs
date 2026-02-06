@@ -173,7 +173,7 @@ pub struct TrainArgs {
     #[clap(long, env)]
     pub dummy_training_delay_secs: Option<u64>,
 
-    #[clap(long, default_value_t = 4, env)]
+    #[clap(long, default_value_t = 8, env)]
     pub max_concurrent_parameter_requests: usize,
 
     #[clap(long, default_value_t = 4, env)]
