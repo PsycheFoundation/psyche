@@ -8,7 +8,7 @@ Before starting, ensure you have:
 
 - [ ] Linux operating system (Ubuntu recommended)
 - [ ] NVIDIA GPU with sufficient VRAM for the model being trained
-- [ ] The `run-manager` binary
+- [ ] The `run-manager` binary, made executable if needed (`chmod +x ./run-manager`)
 - [ ] Run ID from the run administrator
 
 ---
@@ -75,50 +75,23 @@ You should see the same GPU information as running `nvidia-smi` directly.
 
 ---
 
-## Step 4: Install Solana CLI and Create Wallet
-
-### Install Solana CLI
-
-```bash
-sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
-```
-
-After installation, add Solana to your PATH by adding this line to your `~/.bashrc` or `~/.zshrc`:
-
-```bash
-export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
-```
-
-Then reload your shell:
-
-```bash
-source ~/.bashrc  # or source ~/.zshrc
-```
-
-Verify the installation:
-
-```bash
-solana --version
-```
-
-For more details, see the [Solana installation docs](https://solana.com/docs/intro/installation).
-
-### Generate a Keypair
+## Step 4: Create Wallet
 
 Create a new Solana keypair for your node:
 
 ```bash
-solana-keygen new --outfile ~/.config/solana/psyche-node.json
+./run-manager solana new-key ~/.config/solana/psyche-node.json
 ```
 
-You'll be prompted to set an optional passphrase. The keypair file will be created at the specified path.
+The keypair file will be created at the specified path.
 
 **Important:** Back up this keypair file securely. If you lose it, you lose access to any rewards earned.
 
-Get your public key (you'll need this):
+This command will also output the public key for the keypair (you'll need this).
+If you need to access the public key again later, you can run:
 
 ```bash
-solana-keygen pubkey ~/.config/solana/psyche-node.json
+./run-manager solana pubkey ~/.config/solana/psyche-node.json
 ```
 
 ---
@@ -133,33 +106,7 @@ NousNet runs are permissioned. To join, you need the run administrator to author
 
 ---
 
-## Step 6: Fund Your Wallet (Devnet)
-
-Your wallet needs SOL to pay for transaction fees when communicating with the Solana blockchain.
-
-First, configure Solana CLI to use devnet:
-
-```bash
-solana config set --url https://api.devnet.solana.com
-```
-
-Then request an airdrop from the devnet faucet:
-
-```bash
-solana airdrop 2 ~/.config/solana/psyche-node.json
-```
-
-Verify your balance:
-
-```bash
-solana balance ~/.config/solana/psyche-node.json
-```
-
-> **Note:** If the airdrop fails due to rate limiting, wait a few minutes and try again, or use the [Solana Faucet web interface](https://faucet.solana.com/).
-
----
-
-## Step 7: Create the Environment File
+## Step 6: Create the Environment File
 
 Create a `.env` file with your configuration. This file tells the run-manager how to connect and authenticate.
 
@@ -209,13 +156,27 @@ MICRO_BATCH_SIZE=4
 
 ---
 
-## Step 8: Run the Manager
+## Step 7: Fund Your Wallet (Devnet)
 
-Make the binary executable if needed:
+Your wallet needs SOL to pay for transaction fees when communicating with the Solana blockchain.
+
+You can request an airdrop from the devnet faucet to your node's wallet:
 
 ```bash
-chmod +x ./run-manager
+./run-manager solana airdrop 2 --env-file ~/.config/psyche/run.env
 ```
+
+Verify your balance:
+
+```bash
+./run-manager solana balance --env-file ~/.config/psyche/run.env
+```
+
+> **Note:** If the airdrop fails due to rate limiting, wait a few minutes and try again, or use the [Solana Faucet web interface](https://faucet.solana.com/).
+
+---
+
+## Step 8: Join the network via the Run Manager
 
 Open and enter a tmux window:
 
@@ -401,11 +362,11 @@ The `AUTHORIZER` should be your master key's public key (the one authorized by t
 
 ## Quick Reference
 
-| Command                                                       | Purpose                     |
-| ------------------------------------------------------------- | --------------------------- |
-| `nvidia-smi`                                                  | Verify GPU and drivers      |
-| `docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi` | Verify GPU access in Docker |
-| `solana-keygen pubkey ~/.config/solana/psyche-node.json`      | Get your public key         |
-| `solana balance ~/.config/solana/psyche-node.json`            | Check wallet balance        |
-| `./run-manager --env-file ~/.config/psyche/run.env`           | Start providing compute     |
-| `Ctrl+C`                                                      | Stop the client gracefully  |
+| Command                                                            | Purpose                     |
+| ------------------------------------------------------------------ | --------------------------- |
+| `nvidia-smi`                                                       | Verify GPU and drivers      |
+| `docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi`      | Verify GPU access in Docker |
+| `./run-manager solana pubkey ~/.config/solana/psyche-node.json`    | Get your public key         |
+| `./run-manager solana balance --env-file ~/.config/psyche/run.env` | Check wallet balance        |
+| `./run-manager --env-file ~/.config/psyche/run.env`                | Start providing compute     |
+| `Ctrl+C`                                                           | Stop the client gracefully  |
