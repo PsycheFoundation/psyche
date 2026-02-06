@@ -113,6 +113,10 @@ rayon = "1.10.0"
 digest = { version = "=0.11.0-rc.10", default-features = false }
 crypto-common = "0.2"
 
+tikv-jemallocator = { version = "0.6.1", features = [
+  "unprefixed_malloc_on_supported_platforms",
+] }
+
 # dev only
 test-log = { version = "0.2.16", features = ["trace"] }
 pretty_assertions = "1.4.1"
