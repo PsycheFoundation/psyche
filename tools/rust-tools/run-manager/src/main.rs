@@ -287,7 +287,7 @@ async fn async_main() -> Result<()> {
             None => None,
         };
 
-        let run_mgr = RunManager::new(args.coordinator_program_id, env_file, args.local)?;
+        let run_mgr = RunManager::new(args.coordinator_program_id, env_file, args.local).await?;
         let result = run_mgr.run(entrypoint).await;
         if let Err(e) = &result {
             error!("Error: {}", e);
