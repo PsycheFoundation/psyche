@@ -1,6 +1,6 @@
-{ psycheLib, ... }:
+{ buildRustPackage, ... }:
 
-psycheLib.buildRustPackage {
+buildRustPackage {
   needsPython = "optional";
   cratePath = ./.;
 }
