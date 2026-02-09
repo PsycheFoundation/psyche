@@ -1,9 +1,11 @@
 use anchor_lang::InstructionData;
 use anchor_lang::ToAccountMetas;
 use anyhow::Result;
-use psyche_coordinator::model::Model;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
+use psyche_coordinator::model::Model;
+use psyche_solana_coordinator::ClientId;
+use psyche_solana_coordinator::RunMetadata;
 use psyche_solana_coordinator::accounts::FreeCoordinatorAccounts;
 use psyche_solana_coordinator::accounts::InitCoordinatorAccounts;
 use psyche_solana_coordinator::accounts::JoinRunAccounts;
@@ -21,8 +23,6 @@ use psyche_solana_coordinator::instruction::Witness;
 use psyche_solana_coordinator::logic::FreeCoordinatorParams;
 use psyche_solana_coordinator::logic::InitCoordinatorParams;
 use psyche_solana_coordinator::logic::JoinRunParams;
-use psyche_solana_coordinator::ClientId;
-use psyche_solana_coordinator::RunMetadata;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
@@ -114,6 +114,7 @@ pub async fn process_update(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn process_coordinator_join_run(
     endpoint: &mut ToolboxEndpoint,
     payer: &Keypair,
@@ -171,7 +172,7 @@ pub async fn process_coordinator_set_paused(
     Ok(())
 }
 
-pub async fn process_coordiantor_set_future_epoch_rates(
+pub async fn process_coordinator_set_future_epoch_rates(
     endpoint: &mut ToolboxEndpoint,
     payer: &Keypair,
     authority: &Keypair,

@@ -1,30 +1,30 @@
-use psyche_coordinator::model::Checkpoint;
-use psyche_coordinator::model::HubRepo;
-use psyche_coordinator::model::LLMArchitecture;
-use psyche_coordinator::model::LLMTrainingDataLocation;
-use psyche_coordinator::model::LLMTrainingDataType;
-use psyche_coordinator::model::Model;
-use psyche_coordinator::model::LLM;
 use psyche_coordinator::CommitteeSelection;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::SOLANA_MAX_NUM_WITNESSES;
 use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
+use psyche_coordinator::model::Checkpoint;
+use psyche_coordinator::model::HubRepo;
+use psyche_coordinator::model::LLM;
+use psyche_coordinator::model::LLMArchitecture;
+use psyche_coordinator::model::LLMTrainingDataLocation;
+use psyche_coordinator::model::LLMTrainingDataType;
+use psyche_coordinator::model::Model;
 use psyche_core::ConstantLR;
 use psyche_core::LearningRateSchedule;
 use psyche_core::OptimizerDefinition;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
+use psyche_solana_coordinator::ClientId;
+use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::instruction::Witness;
 use psyche_solana_coordinator::logic::InitCoordinatorParams;
 use psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
-use psyche_solana_coordinator::ClientId;
-use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
 use psyche_solana_tooling::get_accounts::get_coordinator_account_state;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_create;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_grantor_update;
-use psyche_solana_tooling::process_coordinator_instructions::process_coordiantor_set_future_epoch_rates;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_init;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_join_run;
+use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_set_future_epoch_rates;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_set_paused;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_tick;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_witness;
@@ -132,7 +132,7 @@ pub async fn run() {
     .unwrap();
 
     // Set the reward rate for the epoch
-    process_coordiantor_set_future_epoch_rates(
+    process_coordinator_set_future_epoch_rates(
         &mut endpoint,
         &payer,
         &main_authority,

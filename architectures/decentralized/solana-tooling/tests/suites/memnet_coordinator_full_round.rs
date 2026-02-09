@@ -1,23 +1,23 @@
+use psyche_coordinator::CoordinatorConfig;
+use psyche_coordinator::RunState;
+use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
+use psyche_coordinator::WitnessProof;
 use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::model::HubRepo;
+use psyche_coordinator::model::LLM;
 use psyche_coordinator::model::LLMArchitecture;
 use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::LLMTrainingDataType;
 use psyche_coordinator::model::Model;
-use psyche_coordinator::model::LLM;
-use psyche_coordinator::CoordinatorConfig;
-use psyche_coordinator::RunState;
-use psyche_coordinator::WitnessProof;
-use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
 use psyche_core::ConstantLR;
 use psyche_core::LearningRateSchedule;
 use psyche_core::OptimizerDefinition;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
+use psyche_solana_coordinator::ClientId;
+use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::instruction::Witness;
 use psyche_solana_coordinator::logic::InitCoordinatorParams;
 use psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
-use psyche_solana_coordinator::ClientId;
-use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
 use psyche_solana_tooling::get_accounts::get_coordinator_account_state;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_create;
@@ -146,15 +146,17 @@ pub async fn run() {
     );
 
     // Can't tick yet because paused/uninitialized
-    assert!(process_coordinator_tick(
-        &mut endpoint,
-        &payer,
-        &ticker,
-        &coordinator_instance,
-        &coordinator_account,
-    )
-    .await
-    .is_err());
+    assert!(
+        process_coordinator_tick(
+            &mut endpoint,
+            &payer,
+            &ticker,
+            &coordinator_instance,
+            &coordinator_account,
+        )
+        .await
+        .is_err()
+    );
 
     // Generate the client key
     let client_id = ClientId::new(client.pubkey(), Default::default());

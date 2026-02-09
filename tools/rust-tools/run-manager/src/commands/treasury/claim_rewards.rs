@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use clap::Args;
 
-use crate::{instructions, SolanaBackend};
+use crate::{SolanaBackend, instructions};
 use psyche_solana_rpc::utils::native_amount_to_ui_amount;
 
 #[derive(Debug, Clone, Args)]

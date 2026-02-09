@@ -1,8 +1,8 @@
 use psyche_coordinator::CoordinatorConfig;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
-use psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
 use psyche_solana_coordinator::ClientId;
 use psyche_solana_coordinator::CoordinatorAccount;
+use psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_create;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_grantor_update;
