@@ -152,7 +152,7 @@ impl Command for CommandUploadData {
                 .body(file_contents)
                 .send()
                 .await
-                .with_context(|| format!("Failed to upload file to signed URL"))?;
+                .context("Failed to upload file to signed URL")?;
 
             if !upload_response.status().is_success() {
                 let status = upload_response.status();
