@@ -447,6 +447,11 @@ impl SolanaBackend {
         self.wallet.pubkey()
     }
 
+    pub fn sign_message(&self, message: &[u8]) -> Vec<u8> {
+        use anchor_client::solana_sdk::signature::Signer;
+        self.wallet.sign_message(message).as_ref().to_vec()
+    }
+
     pub fn get_commitment_config(&self) -> CommitmentConfig {
         self.program_coordinators[0].rpc().commitment()
     }
