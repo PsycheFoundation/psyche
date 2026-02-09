@@ -2,23 +2,23 @@ use crate::network_identity::NetworkIdentity;
 use psyche_solana_rpc::SolanaBackend;
 
 use anchor_client::{
-    Cluster,
     solana_sdk::{
         commitment_config::CommitmentConfig,
         pubkey::Pubkey,
         signature::{Keypair, Signer},
     },
+    Cluster,
 };
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use psyche_client::{
-    Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
+    read_identity_secret_key, Client, ClientTUI, ClientTUIState, RunInitConfig, TrainArgs, NC,
 };
 use psyche_coordinator::{ClientState, Coordinator, CoordinatorError, RunState};
 use psyche_core::sha256;
 use psyche_metrics::ClientMetrics;
 
-use psyche_network::{DiscoveryMode, NetworkTUIState, NetworkTui, SecretKey, allowlist};
-use psyche_tui::{CustomWidget, TabbedWidget, logging::LoggerWidget};
+use psyche_network::{allowlist, DiscoveryMode, NetworkTUIState, NetworkTui, SecretKey};
+use psyche_tui::{logging::LoggerWidget, CustomWidget, TabbedWidget};
 use psyche_watcher::CoordinatorTui;
 use rand::{Rng, RngCore, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -30,7 +30,7 @@ use std::{
 use tokio::{
     select,
     sync::mpsc::Sender,
-    time::{Interval, MissedTickBehavior, interval},
+    time::{interval, Interval, MissedTickBehavior},
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
@@ -61,6 +61,7 @@ pub struct AppParams {
     pub backup_clusters: Vec<Cluster>,
     pub tx_tui_state: Option<Sender<TabsData>>,
     pub authorizer: Option<Pubkey>,
+    pub claimer: Option<Pubkey>,
     pub train_args: TrainArgs,
 }
 
@@ -72,6 +73,7 @@ pub async fn build_app(
         backup_clusters,
         tx_tui_state,
         authorizer,
+        claimer,
         train_args: p,
     }: AppParams,
 ) -> Result<App> {
@@ -237,11 +239,12 @@ impl App {
                 .join_run(
                     coordinator_instance_pubkey,
                     coordinator_account,
+                    self.authorizer,
                     psyche_solana_coordinator::ClientId {
                         signer,
                         p2p_identity: *p2p_identity.as_bytes(),
                     },
-                    self.authorizer,
+                    self.claimer,
                 )
                 .await?;
             info!(
@@ -360,8 +363,9 @@ impl App {
                                     .join_run(
                                         coordinator_instance_pubkey,
                                         coordinator_account,
-                                        id,
                                         self.authorizer,
+                                        id,
+                                        self.claimer,
                                     )
                                     .await?;
                                 info!(
