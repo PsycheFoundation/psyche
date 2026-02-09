@@ -29,6 +29,7 @@ jobs:
           - test_solana_subscriptions
           - test_everybody_leaves_in_warmup
           - test_lost_only_peer_go_back_to_hub_checkpoint
+          - test_pause_and_resume_run
     permissions:
       contents: read
       packages: write

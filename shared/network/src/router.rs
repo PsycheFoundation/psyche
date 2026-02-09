@@ -56,7 +56,7 @@ mod tests {
     use std::time::Duration;
 
     use futures_util::future::join_all;
-    use iroh::{Endpoint, SecretKey, discovery::static_provider::StaticProvider};
+    use iroh::{Endpoint, SecretKey, address_lookup::memory::MemoryLookup};
     use iroh_blobs::store::mem::MemStore;
     use iroh_gossip::{
         api::{Event, Message},
@@ -131,40 +131,20 @@ mod tests {
             keys.into_iter()
                 .map(|k| async {
                     let allowlist = AllowDynamic::with_nodes(pubkeys.clone());
-                    let static_discovery = StaticProvider::new();
+                    let static_discovery = MemoryLookup::new();
                     let endpoint = Endpoint::builder()
                         .secret_key(k)
-                        .discovery(static_discovery.clone())
+                        .address_lookup(static_discovery.clone())
                         .bind()
                         .await?;
-                    let blobs = MemStore::new();
                     let gossip = Gossip::builder().spawn(endpoint.clone());
-                    let (tx_model_parameter_req, _rx_model_parameter_req) =
-                        tokio::sync::mpsc::unbounded_channel();
-                    let (tx_model_config_req, _rx_model_parameter_req) =
-                        tokio::sync::mpsc::unbounded_channel();
-                    let p2p_model_sharing =
-                        ModelSharing::new(tx_model_parameter_req, tx_model_config_req);
-                    let blobs_protocol = BlobsProtocol::new(&blobs.clone(), None);
 
-                    let allowlist_clone = allowlist.clone();
-                    let allowlisted_blobs = AccessLimit::new(blobs_protocol, move |endpoint_id| {
-                        allowlist_clone.allowed(endpoint_id)
-                    });
-                    let allowlist_clone_2 = allowlist.clone();
                     let allowlisted_gossip = AccessLimit::new(gossip.clone(), move |endpoint_id| {
-                        allowlist_clone_2.allowed(endpoint_id)
+                        allowlist.allowed(endpoint_id)
                     });
-                    let allowlist_clone_3 = allowlist.clone();
-                    let allowlisted_model_sharing =
-                        AccessLimit::new(p2p_model_sharing, move |endpoint_id| {
-                            allowlist_clone_3.allowed(endpoint_id)
-                        });
                     let router = Arc::new(
                         Router::builder(endpoint.clone())
-                            .accept(iroh_blobs::ALPN, allowlisted_blobs)
                             .accept(iroh_gossip::ALPN, allowlisted_gossip)
-                            .accept(p2p_model_sharing::ALPN, allowlisted_model_sharing)
                             .spawn(),
                     );
 

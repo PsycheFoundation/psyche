@@ -1,7 +1,10 @@
+run_id = "consilience-40b"
+run_state = "WaitingForMembers"
+
 [config]
 warmup_time = 3600
 cooldown_time = 120
-rounds_per_epoch = 500
+epoch_time = 100000
 max_round_train_time = 360
 round_witness_time = 5
 min_clients = 16

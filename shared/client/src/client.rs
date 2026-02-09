@@ -9,7 +9,7 @@ use futures::future::join_all;
 use iroh::protocol::Router;
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::{IntegrationTestLogMarker, NodeIdentity};
-use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
+use psyche_metrics::{ClientMetrics, ClientRoleInRound, ConnectionType, PeerConnection};
 use psyche_network::{
     AuthenticatableIdentity, BlobTicket, DownloadComplete, DownloadRetryInfo, DownloadType,
     EndpointId, MAX_DOWNLOAD_RETRIES, ModelRequestType, NetworkEvent, NetworkTUIState,
@@ -432,13 +432,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             let transmittable_distro_result = TransmittableDownload::DistroResult(distro_result.clone());
 
                             let tag_name = format!("distro-result_{step}");
-                            let ticket = p2p.add_downloadable(transmittable_distro_result, Tag::from(tag_name)).await?;
+                            let (ticket, size) = p2p.add_downloadable(transmittable_distro_result, Tag::from(tag_name)).await?;
 
                             let hash = ticket.hash();
                             info!(
                                 client_id = %identity, step = step,
-                                "Broadcasting payload batch id {batch_id} hash 0x{}",
+                                "Broadcasting payload batch id {batch_id} hash 0x{} ({:.3} MB)",
                                 hex::encode(hash),
+                                (size as f64 ) / 1_000_000f64
                             );
 
                             let signature = network_identity.raw_p2p_sign(&private_key, &commitment_data_hash);
@@ -652,16 +653,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 let remote_infos: Vec<_> = p2p
                                     .remote_infos()
                                     .into_iter()
-                                    .filter(|info| !matches!(info.path, psyche_network::ConnectionType::None))
+
+                                    .filter(|info| !matches!(info.path, ConnectionType::None))
                                     .map(|info| {
                                         PeerConnection {
                                             endpoint_id: info.id.to_string(),
-                                            connection_type: match info.path {
-                                                psyche_network::ConnectionType::None => unreachable!(),
-                                                psyche_network::ConnectionType::Direct(..) => psyche_metrics::ConnectionType::Direct,
-                                                psyche_network::ConnectionType::Relay(..) => psyche_metrics::ConnectionType::Relay,
-                                                psyche_network::ConnectionType::Mixed(..) => psyche_metrics::ConnectionType::Mixed,
-                                            },
+                                            connection_type:info.path,
                                             latency: info.latency as f32
                                         }
                                     })
