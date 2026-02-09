@@ -1,7 +1,8 @@
 use crate::commands::Command;
 use anchor_client::solana_sdk::pubkey::Pubkey;
-use anyhow::Result;
+use anchor_client::solana_sdk::system_program;
 use anyhow::bail;
+use anyhow::Result;
 use async_trait::async_trait;
 use clap::Args;
 use psyche_coordinator::RunState;
@@ -13,8 +14,11 @@ use psyche_solana_rpc::SolanaBackend;
 pub struct CommandCanJoin {
     #[clap(short, long, env)]
     pub run_id: String,
-    #[clap(long, env)]
+    #[clap(long, env, conflicts_with = "permissionless")]
     pub authorizer: Option<Pubkey>,
+    /// Check permissionless authorization (uses system program ID)
+    #[clap(long, conflicts_with = "authorizer")]
+    pub permissionless: bool,
     #[clap(long, env, alias = "wallet", alias = "user", value_name = "PUBKEY")]
     pub address: Pubkey,
 }
@@ -25,8 +29,15 @@ impl Command for CommandCanJoin {
         let Self {
             run_id,
             authorizer,
+            permissionless,
             address,
         } = self;
+
+        let authorizer = if permissionless {
+            Some(system_program::ID)
+        } else {
+            authorizer
+        };
 
         let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(&run_id);
         let coordinator_instance_state = backend
