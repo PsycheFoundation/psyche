@@ -99,6 +99,11 @@ pub struct TrainingStepMetadata<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub write_gradients_dir: Option<PathBuf>,
 
     pub model_task_runner: ModelTaskRunner,
+
+    /// Tracks whether this client has been through a cold start epoch (with LR warmup).
+    /// Once set, we skip the trainer nonce filtering for subsequent epochs since the
+    /// trainers were already warmed up via LR scaling during the cold start.
+    pub had_cold_start_warmup: bool,
 }
 
 #[derive(Debug)]
@@ -507,6 +512,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             model::Model::LLM(llm) => llm.cold_start_warmup_steps,
         };
         let warmup_lr_between = state.get_cold_start_warmup_bounds();
+        if warmup_lr_between.is_some() {
+            self.had_cold_start_warmup = true;
+        }
+        let had_cold_start_warmup = self.had_cold_start_warmup;
         let epoch = state.progress.epoch;
 
         // coordinator has already advanced to the next round (unless we're in cooldown) but we haven't started ours yet.
@@ -603,11 +612,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
 
                     match maybe_results {
                         Ok((results, trainer_nonce)) => {
-                            if trainer_nonce < cold_start_warmup_steps && epoch != 0 && warmup_lr_between.is_none()  {
+                            if trainer_nonce < cold_start_warmup_steps && epoch != 0 && warmup_lr_between.is_none() && !had_cold_start_warmup {
                                 // results are not actually applied for the first cold_start_warmup_steps of a trainer's lifetime
                                 // note, we are relying on honest communication of this value here -- will need to harden with verification.
-                                // the only exception is for the first steps of the first epoch
-                                // or when doing a cold start (warmup_lr_between.is_some())
+                                // the only exception is for the first steps of the first epoch,
+                                // when doing a cold start (warmup_lr_between.is_some()),
+                                // or when the trainer already went through a cold start epoch (LR warmup already applied)
                                 info!("Skipping apply of batch {batch_id}, trainer warming up ({trainer_nonce}/{cold_start_warmup_steps})");
                             } else {
                                 distro_results.push(results);

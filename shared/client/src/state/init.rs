@@ -815,6 +815,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
             tx_distro_result,
 
             model_task_runner: model_task_runner.clone(),
+            had_cold_start_warmup: false,
         };
 
         let witness = WitnessStepMetadata {
