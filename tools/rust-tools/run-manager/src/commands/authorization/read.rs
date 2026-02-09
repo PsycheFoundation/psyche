@@ -12,8 +12,11 @@ use psyche_solana_rpc::SolanaBackend;
 pub struct CommandJoinAuthorizationRead {
     #[clap(long, env)]
     pub join_authority: Pubkey,
-    #[clap(long, env)]
+    #[clap(long, env, conflicts_with = "permissionless")]
     pub authorizer: Option<Pubkey>,
+    /// Read permissionless authorization (uses system program ID)
+    #[clap(long, conflicts_with = "authorizer")]
+    pub permissionless: bool,
 }
 
 #[async_trait]
@@ -22,10 +25,15 @@ impl Command for CommandJoinAuthorizationRead {
         let Self {
             join_authority,
             authorizer,
+            permissionless,
         } = self;
 
         let grantor = join_authority;
-        let grantee = authorizer.unwrap_or(system_program::ID);
+        let grantee = if permissionless {
+            system_program::ID
+        } else {
+            authorizer.unwrap_or(system_program::ID)
+        };
         let scope = psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
 
         println!("Authorization Grantor: {}", grantor);
