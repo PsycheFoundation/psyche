@@ -507,14 +507,14 @@ fn select_best_run(
         bail!("No joinable runs found for user {}", user_pubkey);
     }
 
-    info!("Found {} available run(s):", authorized_candidates.len());
+    println!("Found {} available run(s):", authorized_candidates.len());
     let candidate_runs: Vec<_> = authorized_candidates.iter().map(|(r, _)| r).collect();
     for line in RunInfo::format_table(&candidate_runs) {
-        info!("{}", line);
+        println!("{}", line);
     }
 
     let (selected_run, grantee) = &authorized_candidates[0];
-    info!(
+    println!(
         "Selected run: {} ({}, {})",
         selected_run.run_id,
         selected_run.run_state,

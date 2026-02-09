@@ -12,6 +12,7 @@ use psyche_solana_coordinator::{
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
+use std::time::SystemTime;
 use tracing::{debug, info, warn};
 
 #[derive(Debug, Clone)]
@@ -22,14 +23,63 @@ pub struct RunInfo {
     pub run_state: RunState,
     pub num_clients: usize,
     pub min_clients: u16,
+    pub epoch_time_secs: u64,
+    pub epoch_start_timestamp: u64,
+}
+
+fn format_duration_secs(secs: u64) -> String {
+    let h = secs / 3600;
+    let m = (secs % 3600) / 60;
+    let s = secs % 60;
+
+    let mut parts = Vec::new();
+    if h > 0 {
+        parts.push(format!("{}h", h));
+    }
+    if m > 0 {
+        parts.push(format!("{}m", m));
+    }
+    if s > 0 || parts.is_empty() {
+        parts.push(format!("{}s", s));
+    }
+
+    parts.join(" ")
 }
 
 impl RunInfo {
-    pub fn clients_display(&self) -> String {
-        if (self.num_clients as u16) < self.min_clients {
-            format!("{}/{} waiting clients", self.num_clients, self.min_clients)
+    pub fn time_remaining_display(&self) -> String {
+        match self.run_state {
+            RunState::WaitingForMembers
+            | RunState::Finished
+            | RunState::Paused
+            | RunState::Uninitialized => return "-".to_string(),
+            _ => {}
+        }
+        if self.epoch_start_timestamp == 0 {
+            return "-".to_string();
+        }
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let elapsed = now.saturating_sub(self.epoch_start_timestamp);
+        if elapsed >= self.epoch_time_secs {
+            "overrun".to_string()
         } else {
-            format!("{} training clients", self.num_clients)
+            format_duration_secs(self.epoch_time_secs - elapsed)
+        }
+    }
+
+    pub fn clients_display(&self) -> String {
+        match self.run_state {
+            RunState::Paused | RunState::Uninitialized | RunState::Finished => "-".to_string(),
+            _ => {
+                if (self.num_clients as u16) < self.min_clients {
+                    format!("{}/{} waiting", self.num_clients, self.min_clients)
+                } else {
+                    format!("{} training", self.num_clients)
+                }
+            }
         }
     }
 
@@ -41,21 +91,54 @@ impl RunInfo {
                     r.run_id.as_str(),
                     r.run_state.to_string(),
                     r.clients_display(),
+                    format_duration_secs(r.epoch_time_secs),
+                    r.time_remaining_display(),
                 )
             })
             .collect();
-        // This is so we can nicely align the output of the runs list
-        let run_id_width = rows.iter().map(|(id, _, _)| id.len()).max().unwrap_or(0);
-        let state_width = rows.iter().map(|(_, st, _)| st.len()).max().unwrap_or(0);
 
-        rows.iter()
-            .map(|(run_id, state, clients)| {
-                format!(
-                    "  {:<run_id_width$}   {:<state_width$}   {}",
-                    run_id, state, clients
-                )
-            })
-            .collect()
+        // Header labels
+        let headers = ("run-id", "state", "clients", "epoch time", "time left");
+
+        // This is so we can nicely align the output of the runs list
+        let run_id_width = rows
+            .iter()
+            .map(|(id, ..)| id.len())
+            .max()
+            .unwrap_or(0)
+            .max(headers.0.len());
+        let state_width = rows
+            .iter()
+            .map(|(_, st, ..)| st.len())
+            .max()
+            .unwrap_or(0)
+            .max(headers.1.len());
+        let clients_width = rows
+            .iter()
+            .map(|(_, _, cl, ..)| cl.len())
+            .max()
+            .unwrap_or(0)
+            .max(headers.2.len());
+        let epoch_width = rows
+            .iter()
+            .map(|(_, _, _, ep, _)| ep.len())
+            .max()
+            .unwrap_or(0)
+            .max(headers.3.len());
+
+        let mut result = vec![format!(
+            "  {:<run_id_width$}   {:<state_width$}   {:<clients_width$}   {:<epoch_width$}   {}",
+            headers.0, headers.1, headers.2, headers.3, headers.4
+        )];
+
+        result.extend(rows.iter().map(|(run_id, state, clients, epoch, remaining)| {
+            format!(
+                "  {:<run_id_width$}   {:<state_width$}   {:<clients_width$}   {:<epoch_width$}   {}",
+                run_id, state, clients, epoch, remaining
+            )
+        }));
+
+        result
     }
 }
 
@@ -186,6 +269,8 @@ impl CoordinatorClient {
                 run_state: state.run_state,
                 num_clients: state.epoch_state.clients.len(),
                 min_clients: state.config.min_clients,
+                epoch_time_secs: state.config.epoch_time,
+                epoch_start_timestamp: state.epoch_state.start_timestamp,
             });
         }
 

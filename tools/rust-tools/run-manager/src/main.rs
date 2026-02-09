@@ -5,7 +5,7 @@ use anchor_client::{
         signature::{EncodableKey, Keypair},
     },
 };
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
 use psyche_solana_rpc::SolanaBackend;
 use run_manager::commands::{self, Command};
@@ -27,6 +27,10 @@ use commands::run::{
     CommandSetFutureEpochRates, CommandSetPaused, CommandTick, CommandUpdateConfig,
 };
 use commands::treasury::{CommandTreasurerClaimRewards, CommandTreasurerTopUpRewards};
+use run_manager::docker::coordinator_client::CoordinatorClient;
+use run_manager::docker::{
+    RunInfo, find_joinable_runs, parse_delegate_authorizer_from_env, parse_wallet_pubkey,
+};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const GIT_HASH: &str = env!("GIT_HASH");
@@ -417,12 +421,6 @@ fn list_runs(
     coordinator_program_id: String,
     authorizer: Option<String>,
 ) -> Result<()> {
-    use anyhow::Context;
-    use run_manager::docker::{
-        RunInfo, coordinator_client::CoordinatorClient, find_joinable_runs,
-        parse_delegate_authorizer_from_env, parse_wallet_pubkey,
-    };
-
     if let Some(env_file) = env_file {
         run_manager::load_and_apply_env_file(&env_file)?;
     }
