@@ -4,20 +4,20 @@
 mod common;
 
 use anchor_client::{
-    Cluster,
     solana_sdk::{commitment_config::CommitmentConfig, signature::Signer},
+    Cluster,
 };
-use common::{TestClient, TestValidator, create_test_keypair};
+use common::{create_test_keypair, TestClient, TestValidator};
 use psyche_coordinator::RunState;
 use psyche_solana_rpc::SolanaBackend;
 use run_manager::commands::{
-    Command,
     authorization::{
         CommandJoinAuthorizationCreate, CommandJoinAuthorizationDelete,
         CommandJoinAuthorizationRead,
     },
     can_join::CommandCanJoin,
     run::{CommandCloseRun, CommandCreateRun, CommandJsonDumpRun, CommandSetPaused},
+    Command,
 };
 use serial_test::serial;
 
@@ -263,7 +263,8 @@ async fn test_join_authorization_create_and_read() {
     .expect("Failed to create backend");
 
     let create_params = CommandJoinAuthorizationCreate {
-        authorizer: grantee_pubkey,
+        authorizer: Some(grantee_pubkey),
+        permissionless: false,
     };
 
     create_params
@@ -276,6 +277,7 @@ async fn test_join_authorization_create_and_read() {
     let read_params = CommandJoinAuthorizationRead {
         join_authority: grantor_arc.pubkey(),
         authorizer: Some(grantee_pubkey),
+        permissionless: false,
     };
 
     read_params
@@ -305,7 +307,8 @@ async fn test_join_authorization_delete() {
     .expect("Failed to create backend");
 
     let create_params = CommandJoinAuthorizationCreate {
-        authorizer: grantee_pubkey,
+        authorizer: Some(grantee_pubkey),
+        permissionless: false,
     };
 
     create_params
@@ -316,7 +319,8 @@ async fn test_join_authorization_delete() {
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     let delete_params = CommandJoinAuthorizationDelete {
-        authorizer: grantee_pubkey,
+        authorizer: Some(grantee_pubkey),
+        permissionless: false,
     };
 
     delete_params
@@ -375,6 +379,7 @@ async fn test_can_join_paused_run() {
     let can_join_params = CommandCanJoin {
         run_id: run_id.clone(),
         authorizer: None,
+        permissionless: false,
         address: wallet_arc.pubkey(),
     };
 
@@ -425,7 +430,8 @@ async fn test_full_authorization_workflow() {
 
     // 2. Create authorization for user
     let auth_params = CommandJoinAuthorizationCreate {
-        authorizer: user_pubkey,
+        authorizer: Some(user_pubkey),
+        permissionless: false,
     };
 
     auth_params
@@ -439,6 +445,7 @@ async fn test_full_authorization_workflow() {
     let can_join_params = CommandCanJoin {
         run_id: run_id.clone(),
         authorizer: Some(user_pubkey),
+        permissionless: false,
         address: user_pubkey,
     };
 
@@ -651,7 +658,8 @@ async fn test_join_authorization_delegate() {
     let grantee_pubkey = grantee_keypair.pubkey();
 
     let create_params = CommandJoinAuthorizationCreate {
-        authorizer: grantee_pubkey,
+        authorizer: Some(grantee_pubkey),
+        permissionless: false,
     };
 
     create_params
