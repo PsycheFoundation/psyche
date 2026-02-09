@@ -4,7 +4,6 @@ use anchor_client::solana_sdk::hash::hash;
 use anchor_client::solana_sdk::instruction::Instruction;
 use anchor_client::solana_sdk::program_pack::Pack;
 use anchor_client::{
-    Client, Cluster, Program,
     anchor_lang::system_program,
     solana_client::{
         nonblocking::pubsub_client::PubsubClient,
@@ -16,10 +15,11 @@ use anchor_client::{
         pubkey::Pubkey,
         signature::{Keypair, Signature, Signer},
     },
+    Client, Cluster, Program,
 };
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
-use psyche_coordinator::{CommitteeProof, Coordinator, HealthChecks, model::HubRepo};
+use psyche_coordinator::{model::HubRepo, CommitteeProof, Coordinator, HealthChecks};
 use psyche_core::IntegrationTestLogMarker;
 use psyche_watcher::{Backend as WatcherBackend, OpportunisticData};
 use solana_account_decoder_client_types::{UiAccount, UiAccountEncoding};
@@ -253,8 +253,9 @@ impl SolanaBackend {
         &self,
         coordinator_instance: Pubkey,
         coordinator_account: Pubkey,
-        id: psyche_solana_coordinator::ClientId,
         authorizer: Option<Pubkey>,
+        id: psyche_solana_coordinator::ClientId,
+        claimer: Option<Pubkey>,
     ) -> Result<Signature> {
         let coordinator_instance_state =
             self.get_coordinator_instance(&coordinator_instance).await?;
@@ -265,6 +266,7 @@ impl SolanaBackend {
             &coordinator_account,
             &authorization,
             id,
+            &claimer.unwrap_or(self.get_payer()),
         );
         // TODO (vbrunet) - what was the point of doing specifically a timeout here but not the other TXs ?
         // We timeout the transaction at 5s max, since internally send() polls Solana until the

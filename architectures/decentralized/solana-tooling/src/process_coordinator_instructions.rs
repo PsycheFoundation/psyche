@@ -1,11 +1,9 @@
 use anchor_lang::InstructionData;
 use anchor_lang::ToAccountMetas;
 use anyhow::Result;
+use psyche_coordinator::model::Model;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
-use psyche_coordinator::model::Model;
-use psyche_solana_coordinator::ClientId;
-use psyche_solana_coordinator::RunMetadata;
 use psyche_solana_coordinator::accounts::FreeCoordinatorAccounts;
 use psyche_solana_coordinator::accounts::InitCoordinatorAccounts;
 use psyche_solana_coordinator::accounts::JoinRunAccounts;
@@ -23,6 +21,8 @@ use psyche_solana_coordinator::instruction::Witness;
 use psyche_solana_coordinator::logic::FreeCoordinatorParams;
 use psyche_solana_coordinator::logic::InitCoordinatorParams;
 use psyche_solana_coordinator::logic::JoinRunParams;
+use psyche_solana_coordinator::ClientId;
+use psyche_solana_coordinator::RunMetadata;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
@@ -122,6 +122,7 @@ pub async fn process_coordinator_join_run(
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
     client_id: ClientId,
+    claimer: &Pubkey,
 ) -> Result<()> {
     let accounts = JoinRunAccounts {
         user: user.pubkey(),
@@ -132,7 +133,10 @@ pub async fn process_coordinator_join_run(
     let instruction = Instruction {
         accounts: accounts.to_account_metas(None),
         data: JoinRun {
-            params: JoinRunParams { client_id },
+            params: JoinRunParams {
+                client_id,
+                claimer: *claimer,
+            },
         }
         .data(),
         program_id: psyche_solana_coordinator::ID,
