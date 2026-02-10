@@ -561,7 +561,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                 DownloadProgressItem::Error(e) => {
                     Some(DownloadManagerEvent::Failed(DownloadFailed {
                         blob_ticket: download.blob_ticket.clone(),
-                        error: e,
+                        error: e.into(),
                         tag,
                         download_type: download.r#type.clone(),
                     }))

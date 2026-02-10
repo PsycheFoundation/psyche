@@ -3,7 +3,7 @@ run_state = "WaitingForMembers"
 [config]
 warmup_time = 30
 cooldown_time = 5
-rounds_per_epoch = 5
+epoch_time = 150
 max_round_train_time = 30
 round_witness_time = 2
 round_apply_time = 4
