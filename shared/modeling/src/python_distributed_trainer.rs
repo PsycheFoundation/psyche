@@ -313,9 +313,8 @@ impl PythonDistributedTrainer {
             self.broadcast_distro_results(distro_results.as_ref().unwrap())?;
         }
 
-        warn!(
-            "OPTIMIZE 7: step: {step}, warmup_lr_between: {warmup_lr_between:?}, distro_results: {distro_results:?}"
-        );
+        warn!("OPTIMIZE 7");
+
         let result = self.local.optimize(step, warmup_lr_between, distro_results);
         warn!("OPTIMIZE 8");
 
