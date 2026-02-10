@@ -27,7 +27,7 @@ trap cleanup EXIT
 
 # Start inference node
 echo "Starting inference node..."
-LIBTORCH_BYPASS_VERSION_CHECK=1 RUST_LOG=info nix run .#psyche-inference-node -- \
+RUST_LOG=info nix run .#psyche-inference-node -- \
     --model-name "$MODEL" \
     --discovery-mode local \
     > /tmp/psyche-inference-node.log 2>&1 &
