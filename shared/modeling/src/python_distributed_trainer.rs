@@ -17,7 +17,7 @@ use std::{
 use tch::{Device, Kind, Tensor};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 
 #[derive(Debug)]
 pub struct PythonDistributedTrainer {
