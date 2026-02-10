@@ -624,10 +624,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                             let distro_results = Some(distro_results.clone());
 
                             tokio::task::spawn_blocking(move || {
+                                warn!("BEFORE OPTIMIZE CALL...");
                                 trainer.optimize(step, warmup_lr_between, distro_results)
                             })
                         })
                         .collect::<Vec<_>>();
+
                 let trainers: Vec<_> = try_join_all(futures)
                     .await
                     .map_err(|_| ApplyDistroResultError::ThreadCrashed)?

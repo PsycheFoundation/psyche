@@ -343,9 +343,12 @@ impl Trainer {
                 .optimize(step, warmup_lr_between, distro_results)
                 .map(|x| x.into()),
             #[cfg(feature = "python")]
-            Trainer::PythonDistributed(python) => python
-                .optimize(step, warmup_lr_between, distro_results)
-                .map(|x| x.into()),
+            Trainer::PythonDistributed(python) => {
+                warn!("CALLING PYTHON OPTIMIZE...");
+                python
+                    .optimize(step, warmup_lr_between, distro_results)
+                    .map(|x| x.into())
+            }
         }
     }
 

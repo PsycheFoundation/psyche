@@ -281,6 +281,7 @@ impl PythonDistributedTrainer {
             None => 0,
         };
 
+        warn!("RESULTS LEN: {}", results_len);
         let operation = serde_json::json!({
             "operation": "optimize",
             "step": step,
@@ -289,27 +290,38 @@ impl PythonDistributedTrainer {
             "results_metadata": distro_results.as_ref().map(|r| Self::distro_results_metadata(r)),
         });
 
+        warn!("OPTIMIZE 1");
         let iteration = self.iteration.fetch_add(1, Ordering::Relaxed);
+        warn!("OPTIMIZE 2");
         trace!(
             "Sending optimize operation to Python clients, iteration = {}",
             iteration
         );
 
+        warn!("OPTIMIZE 3");
         self.comm
             .set(&iteration.to_string(), &operation.to_string())?;
 
+        warn!("OPTIMIZE 4");
         // barrier to ensure everyone has seen the broadcast
         let dummy = Tensor::zeros([], (Kind::Float, self.device));
         self.comm.all_reduce(&dummy, ReduceType::Sum)?;
 
+        warn!("OPTIMIZE 5");
         if results_len > 0 {
+            warn!("OPTIMIZE 6");
             self.broadcast_distro_results(distro_results.as_ref().unwrap())?;
         }
 
+        warn!(
+            "OPTIMIZE 7: step: {step}, warmup_lr_between: {warmup_lr_between:?}, distro_results: {distro_results:?}"
+        );
         let result = self.local.optimize(step, warmup_lr_between, distro_results);
+        warn!("OPTIMIZE 8");
 
         trace!("Optimize operation complete on all Python clients");
         self.comm.delete(&iteration.to_string())?;
+        warn!("OPTIMIZE 9");
 
         result.map(|x| Self {
             local: Box::new(x),
