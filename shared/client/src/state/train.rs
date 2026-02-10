@@ -635,7 +635,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                     .map_err(|_| ApplyDistroResultError::ThreadCrashed)?
                     .into_iter()
                     .collect::<Result<_, _>>()?;
-                trace!(
+                info!(
                     "Apply time: {:.1}s, {} trainers ready",
                     (Instant::now() - apply_start).as_secs_f32(),
                     trainers.len()

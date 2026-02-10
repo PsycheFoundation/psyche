@@ -218,6 +218,12 @@ pub struct PythonDistributedCausalLM {
 
 unsafe impl Send for PythonDistributedCausalLM {}
 
+impl Drop for PythonDistributedCausalLM {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
+
 impl PythonDistributedCausalLM {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
