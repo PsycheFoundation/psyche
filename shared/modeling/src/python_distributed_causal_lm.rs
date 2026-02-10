@@ -158,6 +158,15 @@ impl TorchDistributedCommunicator {
             let store = self.store.bind(py);
             let delete = store.getattr("delete_key")?;
             let _ = delete.call1((key,))?;
+            // Workaround: exercise the store after delete_key to prevent the TCPStore
+            // server daemon from dying. Without this, the server can shut down during
+            // idle periods after delete operations due to a PyTorch/pybind11 race condition.
+            let set = store.getattr("set")?;
+            set.call1(("__health_check__", "alive"))?;
+            let get = store.getattr("get")?;
+            let _val = get.call1(("__health_check__",))?;
+            let delete2 = store.getattr("delete_key")?;
+            let _ = delete2.call1(("__health_check__",))?;
             Ok(())
         })
     }
@@ -217,13 +226,6 @@ pub struct PythonDistributedCausalLM {
 }
 
 unsafe impl Send for PythonDistributedCausalLM {}
-
-impl Drop for PythonDistributedCausalLM {
-    fn drop(&mut self) {
-        eprintln!("!!! PythonDistributedCausalLM DROPPED !!!");
-        self.shutdown();
-    }
-}
 
 impl PythonDistributedCausalLM {
     #[allow(clippy::too_many_arguments)]

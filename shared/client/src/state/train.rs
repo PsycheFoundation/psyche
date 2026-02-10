@@ -290,22 +290,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                     .fetch_data(state, &data_assignments, &self.identity);
 
                 tokio::task::spawn(async move {
-                    struct DropGuard;
-                    impl Drop for DropGuard {
-                        fn drop(&mut self) {
-                            eprintln!("!!! APPLYING_AND_TRAINING TASK DROPPED !!!");
-                        }
-                    }
-                    let _guard = DropGuard;
                     let mut round_losses: Vec<f32> = Vec::new();
                     let mut optim_stats: HashMap<String, f64> = HashMap::new();
 
                     let mut available_trainers =
                         applying.await.map_err(|_| TrainError::ApplyCrashed)??;
-                    warn!("GOT TRAINERS FROM APPLY, entering training loop");
 
                     while let Some(data) = next_sample.recv().await {
-                        warn!("GOT DATA FROM FETCHER, dispatching train");
                         let mut in_progress = FuturesUnordered::new();
 
                         // reset the DP barriers
@@ -460,7 +451,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                         }
                     }
 
-                    warn!("TRAINING LOOP EXITED");
                     let evals = if cancel_training.is_cancelled() {
                         // we got timed out, don't bother starting evals
                         MaybeRunningEvals::NotRunning(available_trainers)
@@ -634,18 +624,16 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                             let distro_results = Some(distro_results.clone());
 
                             tokio::task::spawn_blocking(move || {
-                                warn!("BEFORE OPTIMIZE CALL...");
                                 trainer.optimize(step, warmup_lr_between, distro_results)
                             })
                         })
                         .collect::<Vec<_>>();
-
                 let trainers: Vec<_> = try_join_all(futures)
                     .await
                     .map_err(|_| ApplyDistroResultError::ThreadCrashed)?
                     .into_iter()
                     .collect::<Result<_, _>>()?;
-                info!(
+                trace!(
                     "Apply time: {:.1}s, {} trainers ready",
                     (Instant::now() - apply_start).as_secs_f32(),
                     trainers.len()
