@@ -123,14 +123,6 @@ async fn subscribe_to_account(
                         }
                     }
                 }
-                _ = tokio::time::sleep(Duration::from_secs(30)) => {
-                    warn!(
-                        integration_test_log_marker = %IntegrationTestLogMarker::SolanaSubscription,
-                        url = url,
-                        subscription_number = id,
-                        "Solana subscription timeout, no updates for 30s - reconnecting");
-                    break
-                }
             }
         }
     }
