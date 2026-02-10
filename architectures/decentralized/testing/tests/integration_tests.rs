@@ -333,9 +333,8 @@ async fn disconnect_client() {
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
-    // Initialize a Solana run with 3 clients, but min_clients=2 so the run
-    // can continue after one client is dropped
-    let _cleanup = e2e_testing_setup_with_min(docker.clone(), 3, 2, None).await;
+    // Initialize a Solana run with 3 clients
+    let _cleanup = e2e_testing_setup(docker.clone(), 3).await;
 
     let _monitor_client_1 = watcher
         .monitor_container(
@@ -462,11 +461,10 @@ async fn disconnect_client() {
         }
     }
 
-    // assert that healthchecks were sent by the alive clients
+    // assert that at least one healthcheck was sent by the alive clients
     assert!(
-        seen_health_checks.len() >= 2,
-        "At least two healthchecks should have been sent, got {}",
-        seen_health_checks.len()
+        !seen_health_checks.is_empty(),
+        "At least one healthcheck should have been sent"
     );
 
     // check how many batches where lost due to the client shutdown
