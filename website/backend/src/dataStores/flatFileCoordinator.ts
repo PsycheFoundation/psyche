@@ -656,10 +656,12 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 
 			const clients =
 				c.coordinator.run_state === 'WaitingForMembers'
-					? c.clients_state.clients.map((c) => ({
-							pubkey: new PublicKey(c.id.signer).toString(),
-							witness: false as const,
-						}))
+					? c.clients_state.clients
+							.filter((cl) => cl.active === c.clients_state.next_active)
+							.map((cl) => ({
+								pubkey: new PublicKey(cl.id.signer).toString(),
+								witness: false as const,
+							}))
 					: witnessStates
 			state = {
 				phase: c.coordinator.run_state,
