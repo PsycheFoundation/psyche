@@ -617,22 +617,27 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                     }
                 }
 
-                let futures: Vec<JoinHandle<std::result::Result<Trainer, ApplyDistroResultError>>> =
+                let trainers = if distro_results.is_empty() {
+                    trace!("No distro results to apply, skipping optimize");
                     trainers
-                        .into_iter()
-                        .map(|trainer| {
-                            let distro_results = Some(distro_results.clone());
+                } else {
+                    let futures: Vec<JoinHandle<std::result::Result<Trainer, ApplyDistroResultError>>> =
+                        trainers
+                            .into_iter()
+                            .map(|trainer| {
+                                let distro_results = Some(distro_results.clone());
 
-                            tokio::task::spawn_blocking(move || {
-                                trainer.optimize(step, warmup_lr_between, distro_results)
+                                tokio::task::spawn_blocking(move || {
+                                    trainer.optimize(step, warmup_lr_between, distro_results)
+                                })
                             })
-                        })
-                        .collect::<Vec<_>>();
-                let trainers: Vec<_> = try_join_all(futures)
-                    .await
-                    .map_err(|_| ApplyDistroResultError::ThreadCrashed)?
-                    .into_iter()
-                    .collect::<Result<_, _>>()?;
+                            .collect::<Vec<_>>();
+                    try_join_all(futures)
+                        .await
+                        .map_err(|_| ApplyDistroResultError::ThreadCrashed)?
+                        .into_iter()
+                        .collect::<Result<_, _>>()?
+                };
                 trace!(
                     "Apply time: {:.1}s, {} trainers ready",
                     (Instant::now() - apply_start).as_secs_f32(),
