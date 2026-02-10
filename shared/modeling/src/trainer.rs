@@ -790,7 +790,7 @@ impl LocalTrainer {
                     //     };
                     // }
 
-                    debug!(batch_id=%batch.id, "model thread training on batch {}", batch.id);
+                    tracing::info!(batch_id=%batch.id, "MODEL_THREAD: received Train for batch {}", batch.id);
 
                     let batch_size = batch.data.size();
 

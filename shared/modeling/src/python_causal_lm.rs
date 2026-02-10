@@ -256,6 +256,7 @@ impl CausalLM for PythonCausalLM {
         match result {
             Ok(result) => result,
             Err(err) => {
+                eprintln!("PYTHON_FORWARD_CRASH: {err}");
                 panic!("Error in python forward: {err}");
             }
         }
