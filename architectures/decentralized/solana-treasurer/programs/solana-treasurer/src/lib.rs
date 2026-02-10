@@ -64,8 +64,8 @@ pub enum ProgramError {
     #[msg("run_id must be 32 bytes or less")]
     RunIdInvalidLength,
 
-    #[msg("Participant not found")]
-    ParticipantNotFound,
+    #[msg("Participant's client not found")]
+    ParticipantClientNotFound,
 
     #[msg("Claimer signer does not match the expected signer")]
     ClaimerSignerMismatch,

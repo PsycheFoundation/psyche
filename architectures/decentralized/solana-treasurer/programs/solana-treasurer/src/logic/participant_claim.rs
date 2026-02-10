@@ -1,13 +1,13 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token::transfer;
 use anchor_spl::token::Token;
 use anchor_spl::token::TokenAccount;
 use anchor_spl::token::Transfer;
-use anchor_spl::token::transfer;
 use psyche_solana_coordinator::CoordinatorAccount;
 
-use crate::ProgramError;
 use crate::state::Participant;
 use crate::state::Run;
+use crate::ProgramError;
 
 #[derive(Accounts)]
 #[instruction(params: ParticipantClaimParams)]
@@ -75,10 +75,10 @@ pub fn participant_claim_processor(
         .find(|client| client.id.signer == params.user)
     {
         Some(info) => info,
-        None => return err!(ProgramError::ParticipantNotFound),
+        None => return err!(ProgramError::ParticipantClientNotFound),
     };
 
-    if client_state.claimer != context.accounts.claimer.key() {
+    if context.accounts.claimer.key() != client_state.claimer {
         return err!(ProgramError::ClaimerSignerMismatch);
     }
     let participant_earned_points = client_state.earned;
