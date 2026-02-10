@@ -233,7 +233,7 @@ impl App {
         // (subscription is on change), so check if it's in that state right at boot
         // and join the run if so
         if start_coordinator_state.run_state == RunState::WaitingForMembers {
-            let join_signature = backend
+            match backend
                 .join_run(
                     coordinator_instance_pubkey,
                     coordinator_account,
@@ -243,15 +243,27 @@ impl App {
                     },
                     self.authorizer,
                 )
-                .await?;
-            info!(
-                run_id = self.run_id,
-                from = %signer,
-                tx = %join_signature,
-                "Joined run",
-            );
-            joined_run_this_epoch = Some(join_signature);
-            ever_joined_run = true;
+                .await
+            {
+                Ok(join_signature) => {
+                    info!(
+                        run_id = self.run_id,
+                        from = %signer,
+                        tx = %join_signature,
+                        "Joined run",
+                    );
+                    joined_run_this_epoch = Some(join_signature);
+                    ever_joined_run = true;
+                }
+                Err(err) => {
+                    let error_msg = err.to_string();
+                    if error_msg.contains("Authorization account not initialized") {
+                        tracing::error!("{}", err);
+                        std::process::exit(11);
+                    }
+                    return Err(err);
+                }
+            }
         } else {
             info!("Waiting for the current epoch to end before joining");
         }
@@ -356,22 +368,36 @@ impl App {
                     match latest_update.run_state {
                         RunState::WaitingForMembers => {
                             if joined_run_this_epoch.is_none() {
-                                let join_signature = backend
+                                match backend
                                     .join_run(
                                         coordinator_instance_pubkey,
                                         coordinator_account,
                                         id,
                                         self.authorizer,
                                     )
-                                    .await?;
-                                info!(
-                                    run_id = self.run_id,
-                                    from = %signer,
-                                    tx = %join_signature,
-                                    "Joined run",
-                                );
-                                joined_run_this_epoch = Some(join_signature);
-                                ever_joined_run = true;
+                                    .await
+                                {
+                                    Ok(join_signature) => {
+                                        info!(
+                                            run_id = self.run_id,
+                                            from = %signer,
+                                            tx = %join_signature,
+                                            "Joined run",
+                                        );
+                                        joined_run_this_epoch = Some(join_signature);
+                                        ever_joined_run = true;
+                                    }
+                                    Err(err) => {
+                                        let error_msg = err.to_string();
+                                        if error_msg.contains("Authorization account not initialized") {
+                                            tracing::error!("{}", err);
+                                            client.shutdown();
+                                            let _ = client.finished().await;
+                                            std::process::exit(11);
+                                        }
+                                        return Err(err);
+                                    }
+                                }
                             }
                         }
                         _ => {
