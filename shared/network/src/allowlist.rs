@@ -5,6 +5,7 @@ use iroh::EndpointId;
 
 pub trait Allowlist: std::fmt::Debug + Clone {
     fn allowed(&self, addr: EndpointId) -> bool;
+    fn force_allow(&self, addr: EndpointId);
 }
 
 #[derive(Debug, Clone)]
@@ -14,23 +15,29 @@ impl Allowlist for AllowAll {
     fn allowed(&self, _addr: EndpointId) -> bool {
         true
     }
+    fn force_allow(&self, _addr: EndpointId) {
+        // all allowed!
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct AllowDynamic {
     allowed_nodes: Arc<RwLock<HashSet<EndpointId>>>,
+    force_allowed_nodes: Arc<RwLock<HashSet<EndpointId>>>,
 }
 
 impl AllowDynamic {
     pub fn new() -> Self {
         AllowDynamic {
             allowed_nodes: Arc::new(RwLock::new(HashSet::new())),
+            force_allowed_nodes: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 
     pub fn with_nodes(nodes: impl IntoIterator<Item = EndpointId>) -> Self {
         AllowDynamic {
             allowed_nodes: Arc::new(RwLock::new(nodes.into_iter().collect())),
+            force_allowed_nodes: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 
@@ -63,6 +70,17 @@ impl Allowlist for AllowDynamic {
             .read()
             .expect("RwLock poisoned")
             .contains(&addr)
+            || self
+                .force_allowed_nodes
+                .read()
+                .expect("RwLock poisoned")
+                .contains(&addr)
+    }
+    fn force_allow(&self, addr: EndpointId) {
+        self.force_allowed_nodes
+            .write()
+            .expect("RwLock poisoned")
+            .insert(addr);
     }
 }
 
