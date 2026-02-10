@@ -206,7 +206,7 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
     let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
 
     println!("Waiting for run to go on with the first client");
-    tokio::time::sleep(Duration::from_secs(30)).await;
+    tokio::time::sleep(Duration::from_secs(60)).await;
 
     println!("Adding new clients");
     for i in 1..=n_new_clients {
