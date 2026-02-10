@@ -223,7 +223,14 @@ def main():
     while True:
         try:
             operation = store.get(str(iteration))
-        except:
+        except Exception as e:
+            import traceback
+
+            traceback.print_exc()
+            print(
+                f"[Rank {args.rank}] store.get failed at iteration {iteration}: {e}",
+                flush=True,
+            )
             return
         operation = json.loads(operation.decode())
 
