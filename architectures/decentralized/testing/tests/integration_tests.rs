@@ -414,6 +414,9 @@ async fn disconnect_client() {
                     && old_state == RunState::RoundTrain.to_string()
                     && !killed_client
                 {
+                    let epoch_clients = solana_client.get_current_epoch_clients().await;
+                    assert_eq!(epoch_clients.len(), 3);
+
                     // Kill any client, since all are witnesses
                     watcher
                         .kill_container(&format!("{CLIENT_CONTAINER_PREFIX}-1"))
