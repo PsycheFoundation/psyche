@@ -530,9 +530,9 @@ impl Distro {
             let delta_var = &mut self.state.get_mut(index).unwrap().delta;
             let mut delta = delta_var.logical_tensor();
 
-            let _t = variable.g_add_(&delta.sign().multiply_scalar(prev_lr));
-
             if !prev_self_results.is_empty() {
+                // Undo error_correction lookahead (only when we had previous results)
+                let _t = variable.g_add_(&delta.sign().multiply_scalar(prev_lr));
                 let device = variable.device();
                 let indicies = prev_self_results
                     .iter()

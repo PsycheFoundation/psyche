@@ -883,7 +883,14 @@ impl LocalTrainer {
                                 tracing::info!("Zeroed optimizer states");
                             }
                             match &prev_self_distro_results {
-                                Some(_) => optimizer.error_correction(model.as_ref(), prev_lr),
+                                Some(results) if !results.is_empty() => {
+                                    optimizer.error_correction(model.as_ref(), prev_lr)
+                                }
+                                Some(_) => {
+                                    tracing::trace!(
+                                        "Skipping error_correction, no previous self distro results"
+                                    );
+                                }
                                 None => {
                                     error!(
                                         "Got DisTrO train assignment, but null previous results"
