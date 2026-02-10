@@ -622,7 +622,7 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
                     kill_all_clients(&docker, "SIGKILL").await;
 
                     // Wait a while before spawning a new client
-                    tokio::time::sleep(Duration::from_secs(20)).await;
+                    tokio::time::sleep(Duration::from_secs(5)).await;
                     // Spawn a new client, that should get the model with Hub
                     let joined_container_id = spawn_new_client_with_monitoring(docker.clone(), &watcher).await.unwrap();
                     println!("Spawned new client {joined_container_id} to test checkpoint change to Hub");
@@ -637,11 +637,12 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
                 if has_spawned_new_client_yet {
                     // Get checkpoint and check if it's Hub, in that case end gracefully
                     let checkpoint = solana_client.get_checkpoint().await;
+                    let run_state = solana_client.get_run_state().await;
                     if matches!(checkpoint, Checkpoint::Hub(_)) {
                         println!("Checkpoint is Hub, test succesful");
                         return;
                     } else {
-                        println!("Checkpoint is not Hub yet, waiting...");
+                        println!("Checkpoint is not Hub yet, waiting... (run_state: {run_state})");
                     }
                 }
             }
