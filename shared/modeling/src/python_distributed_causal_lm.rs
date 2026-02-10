@@ -220,6 +220,7 @@ unsafe impl Send for PythonDistributedCausalLM {}
 
 impl Drop for PythonDistributedCausalLM {
     fn drop(&mut self) {
+        eprintln!("!!! PythonDistributedCausalLM DROPPED !!!");
         self.shutdown();
     }
 }

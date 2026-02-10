@@ -1065,6 +1065,7 @@ impl LocalTrainer {
                     {
                         return;
                     }
+                    warn!("MODEL_THREAD: optimize done, waiting for next assignment");
                     if submission.send(ParallelResult::Optimize).is_err() {
                         return;
                     }

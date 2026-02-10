@@ -152,6 +152,10 @@ impl PythonDistributedTrainer {
         prev_self_distro_results: Option<Vec<DistroResults>>,
         cancel_training: CancellationToken,
     ) -> Result<TrainOutput, TrainerThreadCommunicationError> {
+        warn!(
+            "PYTHON_DISTRIBUTED_TRAINER::train() called for step {}",
+            step
+        );
         let world_size = self.comm.size();
         let original_batch_size = data.data.size();
 
