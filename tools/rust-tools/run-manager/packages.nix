@@ -1,5 +1,5 @@
-{ psycheLib, ... }:
+{ buildRustPackage, ... }:
 
-psycheLib.buildRustPackage {
+buildRustPackage {
   cratePath = ./.;
 }

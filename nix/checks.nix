@@ -10,9 +10,19 @@
       inherit (pkgs.psycheLib)
         craneLib
         rustWorkspaceArgs
-        rustWorkspaceArgsWithPython
+        mkRustWorkspaceArgsWithPython
+        mkPythonVenv
+        psychePythonExtension
+        allPythonDeps
         cargoArtifacts
         ;
+
+      rustWorkspaceArgsWithPython = mkRustWorkspaceArgsWithPython (mkPythonVenv {
+        extraPackages = {
+          psyche = psychePythonExtension;
+        };
+        additionalNixPackages = allPythonDeps;
+      });
     in
     {
       checks =
