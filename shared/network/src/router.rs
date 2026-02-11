@@ -134,6 +134,7 @@ mod tests {
                     let static_discovery = MemoryLookup::new();
                     let endpoint = Endpoint::builder()
                         .secret_key(k)
+                        .clear_address_lookup()
                         .address_lookup(static_discovery.clone())
                         .bind()
                         .await?;
@@ -181,6 +182,16 @@ mod tests {
                         router.endpoint().id()
                     );
                     sub.joined().await.unwrap();
+                    // long delay to ensure gossip is fully connected.
+                    // if we don't wait until we have a fully connected gossip, then we could broadcast while we only had unidirectional neighbor connections:
+                    // confirming a join takes one trip, so we can end in this situation when broadcasting starts:
+                    // a: neighbors = [b]
+                    // b: neighbors = [c]
+                    // c: neighbors = [b]
+                    // now c broadcasts, sends to b, and b drops the message because it does not have further neighbors
+                    // in a very short time after, it will receive the neighbor message from a, but too late, because iroh-gossip does not forward messages received before a join
+
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                     println!("gossip connections {i} ready");
                 }
                 let (gossip_tx, gossip_rx) = sub.split();
