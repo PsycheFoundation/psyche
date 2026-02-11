@@ -199,7 +199,7 @@ impl PythonDistributedTrainer {
             "warmup_lr_between": warmup_lr_between,
             "zero_optim": zero_optim,
             "results_len": results_len,
-            "results_metadata": prev_self_distro_results.as_ref().map(|r| Self::distro_results_metadata(r)),
+            "results_metadata": prev_self_distro_results.as_ref().and_then(|r| if r.is_empty() { None } else { Some(Self::distro_results_metadata(r)) }),
         });
 
         let iteration = self.iteration.fetch_add(1, Ordering::Relaxed);
@@ -273,13 +273,18 @@ impl PythonDistributedTrainer {
         warmup_lr_between: Option<(u32, u32)>,
         distro_results: Option<Vec<DistroResults>>,
     ) -> Result<Self, ApplyDistroResultError> {
-        let _no_grad = tch::no_grad_guard();
-
         let results_len = match &distro_results {
             // we assume (as we do else where) that each result is identically shaped
             Some(distro_results) => distro_results.len(),
             None => 0,
         };
+
+        if results_len == 0 {
+            trace!("Skipping optimize operation on Python clients, no distro results");
+            return Ok(self);
+        }
+
+        let _no_grad = tch::no_grad_guard();
 
         let operation = serde_json::json!({
             "operation": "optimize",
@@ -302,9 +307,7 @@ impl PythonDistributedTrainer {
         let dummy = Tensor::zeros([], (Kind::Float, self.device));
         self.comm.all_reduce(&dummy, ReduceType::Sum)?;
 
-        if results_len > 0 {
-            self.broadcast_distro_results(distro_results.as_ref().unwrap())?;
-        }
+        self.broadcast_distro_results(distro_results.as_ref().unwrap())?;
 
         let result = self.local.optimize(step, warmup_lr_between, distro_results);
 

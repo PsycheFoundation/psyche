@@ -1270,19 +1270,18 @@ fn optimize_step(
             optimizer.zero_grad().unwrap();
         }
         Optimizer::Distro { optimizer, .. } => match distro_results {
-            Some(results) => {
-                if !results.is_empty() {
-                    trace!("Applying {} DisTrO gradients", results.len());
-                    if barrier.wait().is_err() {
-                        return ControlFlow::Break(());
-                    }
-                    optimizer.apply(model.as_ref(), results, lr);
-                    if barrier.wait().is_err() {
-                        return ControlFlow::Break(());
-                    }
-                } else {
-                    warn!("Empty DisTrO gradients, model parameters will not be updated");
+            Some(results) if !results.is_empty() => {
+                trace!("Applying {} DisTrO gradients", results.len());
+                if barrier.wait().is_err() {
+                    return ControlFlow::Break(());
                 }
+                optimizer.apply(model.as_ref(), results, lr);
+                if barrier.wait().is_err() {
+                    return ControlFlow::Break(());
+                }
+            }
+            Some(_) => {
+                trace!("No DisTrO gradients to apply, skipping");
             }
             None => {
                 error!("Got DisTrO optimizer assignment, but no results");
