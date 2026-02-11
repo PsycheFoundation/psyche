@@ -206,7 +206,7 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
     let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
 
     println!("Waiting for run to go on with the first client");
-    tokio::time::sleep(Duration::from_secs(60)).await;
+    tokio::time::sleep(Duration::from_secs(90)).await;
 
     println!("Adding new clients");
     for i in 1..=n_new_clients {
@@ -589,7 +589,7 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
     let mut has_spawned_new_client_yet = false;
     let mut has_checked_p2p_checkpoint = false;
     let mut liveness_check_interval = time::interval(Duration::from_secs(10));
-    println!("starting loop test test");
+    println!("starting loop test 1 test 2");
     loop {
         tokio::select! {
             _ = liveness_check_interval.tick() => {
@@ -1039,10 +1039,12 @@ async fn test_pause_and_resume_run() {
                         .expect("Failed to pause run");
                     paused = true;
                     println!("Run paused! Waiting for Paused state...");
-                }
 
-                // When coordinator enters Paused state, kill client and resume
-                if paused && !client_killed && new_state == RunState::Paused.to_string() {
+                    // Wait here to see if we reach Paused
+                    assert!(
+                        solana_client.wait_for_run_state(RunState::Paused, 60).await,
+                        "Coordinator did not reach Paused state"
+                    );
                     println!("Coordinator is in Paused state. Killing client and resuming...");
 
                     // Kill the old container
