@@ -1030,8 +1030,8 @@ async fn test_pause_and_resume_run() {
             Some(Response::StateChange(_timestamp, _client, old_state, new_state, epoch, step)) => {
                 println!("epoch: {epoch} step: {step} state change: {old_state} => {new_state}");
 
-                // Wait until step 5 before pausing
-                if !paused && step >= 5 && new_state == RunState::RoundTrain.to_string() {
+                // Wait until step 2 before pausing
+                if !paused && step >= 2 && new_state == RunState::RoundTrain.to_string() {
                     println!("Pausing the run...");
                     solana_client
                         .set_paused(true)
