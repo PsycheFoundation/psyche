@@ -193,3 +193,98 @@ run_test_infra_with_proxies_validator num_clients="1":
 
 stop_test_infra:
     cd docker/test && docker compose -f docker-compose.yml -f subscriptions_test/docker-compose.yml down
+
+# Run inference node with a local model (requires Python venv with vLLM)
+inference-node model="gpt2":
+    RUST_LOG=info,psyche_network=debug nix run .#psyche-inference-node -- \
+        --model-name {{ model }} \
+        --discovery-mode n0 \
+        --relay-kind n0
+
+# Run gateway node (HTTP API for inference requests)
+gateway-node:
+    RUST_LOG=info,psyche_network=debug nix run .#bin-psyche-inference-node-gateway-node -- \
+        --discovery-mode n0 \
+        --relay-kind n0
+
+# Run full inference stack (gateway + inference node in tmux)
+inference-stack model="gpt2":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Check if tmux is available
+    if ! command -v tmux &> /dev/null; then
+        echo "Error: tmux is required but not installed"
+        exit 1
+    fi
+
+    SESSION="psyche-inference"
+    GATEWAY_PEER_FILE="/tmp/psyche-gateway-peer.json"
+
+    # Clean up old peer file
+    rm -f "$GATEWAY_PEER_FILE"
+
+    # Kill existing session if it exists
+    tmux kill-session -t $SESSION 2>/dev/null || true
+
+    echo "building gateway and inference node..."
+    nix build .#bin-psyche-inference-node-gateway-node .#psyche-inference-node
+
+    echo "Starting gateway node (bootstrap node)..."
+
+    # Create new session with gateway (starts first to be bootstrap node)
+    tmux new-session -d -s $SESSION -n gateway
+    tmux send-keys -t $SESSION:gateway "PSYCHE_GATEWAY_ENDPOINT_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#bin-psyche-inference-node-gateway-node -- --discovery-mode n0 --relay-kind n0" C-m
+
+    # Wait for gateway to start and write peer file
+    echo "Waiting for gateway to initialize and write endpoint..."
+    for i in $(seq 1 30); do
+        if [ -f "$GATEWAY_PEER_FILE" ]; then
+            echo "Gateway peer file created"
+            break
+        fi
+        sleep 1
+    done
+
+    if [ ! -f "$GATEWAY_PEER_FILE" ]; then
+        echo "Error: Gateway failed to create peer file"
+        exit 1
+    fi
+
+    # Wait a bit more for gateway HTTP server
+    sleep 2
+    echo "Gateway ready"
+    echo ""
+    echo "Starting inference node..."
+
+    # Create window for inference node (bootstraps from gateway)
+    tmux new-window -t $SESSION -n inference
+    tmux send-keys -t $SESSION:inference "PSYCHE_GATEWAY_BOOTSTRAP_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#psyche-inference-node -- --model-name {{ model }} --discovery-mode n0 --relay-kind n0" C-m
+
+    # Wait for inference node to start
+    sleep 3
+    echo "Inference node started"
+    echo ""
+
+    # Create window for testing
+    tmux new-window -t $SESSION -n test
+    tmux send-keys -t $SESSION:test "echo 'Test inference with:'; echo 'curl -X POST http://127.0.0.1:8000/v1/chat/completions -H \"Content-Type: application/json\" -d '\"'\"'{\"messages\": [{\"role\": \"user\", \"content\": \"Hello, world!\"}], \"max_tokens\": 50}'\"'\"''" C-m
+
+    # Attach to session
+    echo "Starting inference stack in tmux session '$SESSION'"
+    echo "Windows: inference (node), gateway (HTTP API), test (for curl commands)"
+    echo ""
+    echo "To attach: tmux attach -t $SESSION"
+    echo "To kill: tmux kill-session -t $SESSION"
+    echo ""
+    tmux attach -t $SESSION
+
+# Test inference via HTTP (requires inference stack to be running)
+test-inference prompt="Hello, world!" max_tokens="50":
+    curl -X POST http://127.0.0.1:8000/v1/chat/completions \
+        -H "Content-Type: application/json" \
+        -d '{"messages": [{"role": "user", "content": "{{ prompt }}"}], "max_tokens": {{ max_tokens }}}'
+
+# Run end-to-end test: start nodes, send request, verify response
+test-inference-e2e model="gpt2" prompt="Hello, world!":
+    ./scripts/test-inference-e2e.sh "{{ model }}" "{{ prompt }}"

@@ -6,7 +6,7 @@ use iroh_gossip::net::Gossip;
 
 use iroh::{
     Endpoint,
-    protocol::{AccessLimit, Router},
+    protocol::{AccessLimit, ProtocolHandler, Router},
 };
 
 use crate::{Allowlist, ModelSharing, p2p_model_sharing};
@@ -23,10 +23,14 @@ impl SupportedProtocols {
     }
 }
 
-pub(crate) fn spawn_router_with_allowlist<A: Allowlist + 'static + Send + std::marker::Sync>(
+pub(crate) fn spawn_router_with_allowlist<
+    A: Allowlist + 'static + Send + std::marker::Sync,
+    P: ProtocolHandler + Clone,
+>(
     allowlist: A,
     endpoint: Endpoint,
     protocols: SupportedProtocols,
+    additional_protocol: Option<(&'static [u8], P)>,
 ) -> Result<Arc<Router>> {
     let allowlist_clone = allowlist.clone();
     let allowlisted_blobs = AccessLimit::new(protocols.1, move |endpoint_id| {
@@ -40,13 +44,22 @@ pub(crate) fn spawn_router_with_allowlist<A: Allowlist + 'static + Send + std::m
     let allowlisted_model_sharing = AccessLimit::new(protocols.2.clone(), move |endpoint_id| {
         allowlist_clone_3.allowed(endpoint_id)
     });
-    let router = Arc::new(
-        Router::builder(endpoint.clone())
-            .accept(iroh_blobs::ALPN, allowlisted_blobs)
-            .accept(iroh_gossip::ALPN, allowlisted_gossip)
-            .accept(p2p_model_sharing::ALPN, allowlisted_model_sharing)
-            .spawn(),
-    );
+
+    let mut builder = Router::builder(endpoint.clone())
+        .accept(iroh_blobs::ALPN, allowlisted_blobs)
+        .accept(iroh_gossip::ALPN, allowlisted_gossip)
+        .accept(p2p_model_sharing::ALPN, allowlisted_model_sharing);
+
+    // add optional custom protocol if provided
+    if let Some((alpn, handler)) = additional_protocol {
+        let allowlist_clone = allowlist.clone();
+        let allowlisted_handler = AccessLimit::new(handler, move |endpoint_id| {
+            allowlist_clone.allowed(endpoint_id)
+        });
+        builder = builder.accept(alpn, allowlisted_handler);
+    }
+
+    let router = Arc::new(builder.spawn());
 
     Ok(router)
 }
@@ -56,7 +69,7 @@ mod tests {
     use std::time::Duration;
 
     use futures_util::future::join_all;
-    use iroh::{Endpoint, SecretKey, discovery::static_provider::StaticProvider};
+    use iroh::{Endpoint, SecretKey, address_lookup::memory::MemoryLookup};
     use iroh_blobs::store::mem::MemStore;
     use iroh_gossip::{
         api::{Event, Message},
@@ -81,10 +94,11 @@ mod tests {
         let p2p_model_sharing = ModelSharing::new(tx_model_parameter_req, tx_model_config_req);
         let allowlist = allowlist::AllowAll;
         let blobs_protocol = BlobsProtocol::new(&blobs, None);
-        let router = spawn_router_with_allowlist(
+        let router = spawn_router_with_allowlist::<_, iroh_gossip::net::Gossip>(
             allowlist.clone(),
             endpoint.clone(),
             SupportedProtocols::new(gossip.clone(), blobs_protocol, p2p_model_sharing),
+            None,
         )?;
 
         assert!(!router.is_shutdown());
@@ -131,40 +145,21 @@ mod tests {
             keys.into_iter()
                 .map(|k| async {
                     let allowlist = AllowDynamic::with_nodes(pubkeys.clone());
-                    let static_discovery = StaticProvider::new();
+                    let static_discovery = MemoryLookup::new();
                     let endpoint = Endpoint::builder()
                         .secret_key(k)
-                        .discovery(static_discovery.clone())
+                        .clear_address_lookup()
+                        .address_lookup(static_discovery.clone())
                         .bind()
                         .await?;
-                    let blobs = MemStore::new();
                     let gossip = Gossip::builder().spawn(endpoint.clone());
-                    let (tx_model_parameter_req, _rx_model_parameter_req) =
-                        tokio::sync::mpsc::unbounded_channel();
-                    let (tx_model_config_req, _rx_model_parameter_req) =
-                        tokio::sync::mpsc::unbounded_channel();
-                    let p2p_model_sharing =
-                        ModelSharing::new(tx_model_parameter_req, tx_model_config_req);
-                    let blobs_protocol = BlobsProtocol::new(&blobs.clone(), None);
 
-                    let allowlist_clone = allowlist.clone();
-                    let allowlisted_blobs = AccessLimit::new(blobs_protocol, move |endpoint_id| {
-                        allowlist_clone.allowed(endpoint_id)
-                    });
-                    let allowlist_clone_2 = allowlist.clone();
                     let allowlisted_gossip = AccessLimit::new(gossip.clone(), move |endpoint_id| {
-                        allowlist_clone_2.allowed(endpoint_id)
+                        allowlist.allowed(endpoint_id)
                     });
-                    let allowlist_clone_3 = allowlist.clone();
-                    let allowlisted_model_sharing =
-                        AccessLimit::new(p2p_model_sharing, move |endpoint_id| {
-                            allowlist_clone_3.allowed(endpoint_id)
-                        });
                     let router = Arc::new(
                         Router::builder(endpoint.clone())
-                            .accept(iroh_blobs::ALPN, allowlisted_blobs)
                             .accept(iroh_gossip::ALPN, allowlisted_gossip)
-                            .accept(p2p_model_sharing::ALPN, allowlisted_model_sharing)
                             .spawn(),
                     );
 
@@ -201,6 +196,16 @@ mod tests {
                         router.endpoint().id()
                     );
                     sub.joined().await.unwrap();
+                    // long delay to ensure gossip is fully connected.
+                    // if we don't wait until we have a fully connected gossip, then we could broadcast while we only had unidirectional neighbor connections:
+                    // confirming a join takes one trip, so we can end in this situation when broadcasting starts:
+                    // a: neighbors = [b]
+                    // b: neighbors = [c]
+                    // c: neighbors = [b]
+                    // now c broadcasts, sends to b, and b drops the message because it does not have further neighbors
+                    // in a very short time after, it will receive the neighbor message from a, but too late, because iroh-gossip does not forward messages received before a join
+
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                     println!("gossip connections {i} ready");
                 }
                 let (gossip_tx, gossip_rx) = sub.split();

@@ -19,28 +19,36 @@ RPC="http://127.0.0.1:8899"
 WS_RPC="ws://127.0.0.1:8900"
 RUN_ID=${RUN_ID:-"test"}
 
-# Create a temporary wallet for the run owner
-TEMP_DIR=$(mktemp -d)
-WALLET_FILE="${TEMP_DIR}/id.json"
+# Check if an owner keypair path was provided, otherwise create a temporary one
+if [ -n "${OWNER_KEYPAIR_PATH}" ] && [ -f "${OWNER_KEYPAIR_PATH}" ]; then
+    echo "[+] Using provided owner keypair: ${OWNER_KEYPAIR_PATH}"
+    WALLET_FILE="${OWNER_KEYPAIR_PATH}"
+    CLEANUP_WALLET=false
+else
+    # Create a temporary wallet for the run owner
+    TEMP_DIR=$(mktemp -d)
+    WALLET_FILE="${TEMP_DIR}/id.json"
+    CLEANUP_WALLET=true
+
+    echo "[+] Generating temporary wallet..."
+    solana-keygen new --no-bip39-passphrase --force --outfile "${WALLET_FILE}"
+fi
 
 echo "[+] Configuring solana CLI..."
 solana config set --url "${RPC}"
-
-echo "[+] Generating temporary wallet..."
-solana-keygen new --no-bip39-passphrase --force --outfile "${WALLET_FILE}"
 
 echo "[+] Airdropping SOL to wallet..."
 solana airdrop 10 "$(solana-keygen pubkey ${WALLET_FILE})" --url "${RPC}"
 
 echo "[+] Creating join authorization..."
-cargo run --release --bin run-manager -- \
+nix run .#run-manager -- \
     join-authorization-create \
     --wallet-private-key-path "${WALLET_FILE}" \
     --rpc "${RPC}" \
     --authorizer 11111111111111111111111111111111
 
 echo "[+] Creating run..."
-cargo run --release --bin run-manager -- \
+nix run .#run-manager -- \
     create-run \
     --wallet-private-key-path "${WALLET_FILE}" \
     --rpc "${RPC}" \
@@ -49,7 +57,7 @@ cargo run --release --bin run-manager -- \
     --client-version "latest"
 
 echo "[+] Updating config..."
-cargo run --release --bin run-manager -- \
+nix run .#run-manager -- \
     update-config \
     --wallet-private-key-path "${WALLET_FILE}" \
     --rpc "${RPC}" \
@@ -58,7 +66,7 @@ cargo run --release --bin run-manager -- \
     --config-path "config/solana-test/test-config.toml"
 
 echo "[+] Unpausing run..."
-cargo run --release --bin run-manager -- \
+nix run .#run-manager -- \
     set-paused \
     --wallet-private-key-path "${WALLET_FILE}" \
     --rpc "${RPC}" \
@@ -68,5 +76,7 @@ cargo run --release --bin run-manager -- \
 
 echo "[+] Test run setup complete!"
 
-# Clean up temporary wallet
-rm -rf "${TEMP_DIR}"
+# Clean up temporary wallet if we created one
+if [ "${CLEANUP_WALLET}" = true ]; then
+    rm -rf "${TEMP_DIR}"
+fi

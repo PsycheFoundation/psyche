@@ -3,8 +3,8 @@ use anyhow::{Context, Result, anyhow};
 use bytes::Bytes;
 use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
-use iroh::{EndpointAddr, RelayConfig, Watcher};
-use iroh::{endpoint::TransportConfig, protocol::Router};
+use iroh::{EndpointAddr, RelayConfig};
+use iroh::{endpoint::QuicTransportConfig, protocol::Router};
 use iroh_blobs::api::Tag;
 use iroh_blobs::store::GcConfig;
 use iroh_blobs::{
@@ -17,11 +17,12 @@ use iroh_gossip::{
     net::Gossip,
     proto::{HyparviewConfig, PlumtreeConfig},
 };
+use iroh_n0des::ApiSecret;
 pub use p2p_model_sharing::{
     MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
     PeerManagerHandle,
 };
-use psyche_metrics::{ClientMetrics, PeerConnection};
+use psyche_metrics::{ClientMetrics, ConnectionType, PeerConnection};
 use router::{SupportedProtocols, spawn_router_with_allowlist};
 use state::State;
 use std::str::FromStr;
@@ -49,11 +50,12 @@ use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
 use util::{fmt_relay_mode, gossip_topic};
 
 pub use ed25519_dalek::Signature;
-pub use iroh::{RelayMode, endpoint::ConnectionType};
+pub use iroh::RelayMode;
 pub use iroh_blobs::{BlobFormat, Hash, ticket::BlobTicket};
 
 pub mod allowlist;
 mod authenticable_identity;
+mod connection_monitor;
 mod download_manager;
 mod latency_sorted;
 mod local_discovery;
@@ -73,10 +75,12 @@ mod util;
 mod test;
 
 pub use authenticable_identity::{AuthenticatableIdentity, FromSignedBytesError, raw_p2p_verify};
+pub use connection_monitor::{ConnectionData, ConnectionMonitor};
 pub use download_manager::{
     DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, MAX_DOWNLOAD_RETRIES,
     RetriedDownloadsHandle, TransmittableDownload,
 };
+pub use iroh::protocol::ProtocolHandler;
 pub use iroh::{Endpoint, EndpointId, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayQuicConfig};
 pub use latency_sorted::LatencySorted;
@@ -163,12 +167,7 @@ impl From<P2PEndpointInfo> for PeerConnection {
     fn from(value: P2PEndpointInfo) -> Self {
         Self {
             endpoint_id: value.id.to_string(),
-            connection_type: match value.path {
-                ConnectionType::None => psyche_metrics::ConnectionType::None,
-                ConnectionType::Direct(..) => psyche_metrics::ConnectionType::Direct,
-                ConnectionType::Mixed(..) => psyche_metrics::ConnectionType::Mixed,
-                ConnectionType::Relay(..) => psyche_metrics::ConnectionType::Relay,
-            },
+            connection_type: value.path,
             latency: value.latency as f32,
         }
     }
@@ -193,6 +192,8 @@ where
     update_stats_interval: Interval,
     metrics: Arc<ClientMetrics>,
     endpoint: Endpoint,
+    connection_monitor: ConnectionMonitor,
+    _iroh_metrics: Option<iroh_n0des::Client>,
 }
 
 impl<B, D> Debug for NetworkConnection<B, D>
@@ -231,6 +232,72 @@ where
         metrics: Arc<ClientMetrics>,
         cancel: Option<CancellationToken>,
     ) -> Result<Self> {
+        Self::init_internal::<A, iroh_gossip::net::Gossip>(
+            run_id,
+            port,
+            interface,
+            discovery_mode,
+            relay_kind,
+            bootstrap_peers,
+            secret_key,
+            allowlist,
+            metrics,
+            cancel,
+            None,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn init_with_custom_protocol<
+        A: Allowlist + 'static + Send + std::marker::Sync,
+        P: ProtocolHandler + Clone,
+    >(
+        run_id: &str,
+        port: Option<u16>,
+        interface: Option<String>,
+        discovery_mode: DiscoveryMode,
+        relay_kind: RelayKind,
+        bootstrap_peers: Vec<EndpointAddr>,
+        secret_key: Option<SecretKey>,
+        allowlist: A,
+        metrics: Arc<ClientMetrics>,
+        cancel: Option<CancellationToken>,
+        additional_protocol: (&'static [u8], P),
+    ) -> Result<Self> {
+        Self::init_internal(
+            run_id,
+            port,
+            interface,
+            discovery_mode,
+            relay_kind,
+            bootstrap_peers,
+            secret_key,
+            allowlist,
+            metrics,
+            cancel,
+            Some(additional_protocol),
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn init_internal<
+        A: Allowlist + 'static + Send + std::marker::Sync,
+        P: ProtocolHandler + Clone,
+    >(
+        run_id: &str,
+        port: Option<u16>,
+        interface: Option<String>,
+        discovery_mode: DiscoveryMode,
+        relay_kind: RelayKind,
+        bootstrap_peers: Vec<EndpointAddr>,
+        secret_key: Option<SecretKey>,
+        allowlist: A,
+        metrics: Arc<ClientMetrics>,
+        cancel: Option<CancellationToken>,
+        additional_protocol: Option<(&'static [u8], P)>,
+    ) -> Result<Self> {
         let secret_key = match secret_key {
             None => SecretKey::generate(&mut rand::rng()),
             Some(key) => key,
@@ -267,11 +334,14 @@ where
 
         let bootstrap_endpoint_ids = bootstrap_peers.iter().map(|p| p.id).collect();
 
+        let connection_monitor = ConnectionMonitor::default();
+
         let endpoint = {
-            let mut transport_config = TransportConfig::default();
-            transport_config
+            let transport_config = QuicTransportConfig::builder()
                 .max_idle_timeout(Some(Duration::from_secs(10).try_into()?))
-                .keep_alive_interval(Some(Duration::from_secs(1)));
+                .keep_alive_interval(Duration::from_secs(1))
+                .set_max_remote_nat_traversal_addresses(50)
+                .build();
 
             let relay_mode = match relay_kind {
                 RelayKind::Disabled => RelayMode::Disabled,
@@ -284,18 +354,19 @@ where
                 .secret_key(secret_key)
                 .relay_mode(relay_mode)
                 .transport_config(transport_config)
-                .bind_addr_v4(SocketAddrV4::new(ipv4, port.unwrap_or(0)))
-                .clear_discovery();
+                .bind_addr(SocketAddrV4::new(ipv4, port.unwrap_or(0)))?
+                .clear_address_lookup()
+                .hooks(connection_monitor.clone());
 
             let endpoint = match discovery_mode {
                 DiscoveryMode::Local => {
-                    endpoint.discovery(local_discovery::LocalTestDiscovery::new(public_key))
+                    endpoint.address_lookup(local_discovery::LocalTestDiscovery::new(public_key))
                 }
                 DiscoveryMode::N0 => {
-                    let dns = iroh::discovery::dns::DnsDiscovery::n0_dns().build();
-                    let pkarr = iroh::discovery::pkarr::PkarrPublisher::n0_dns();
+                    let dns = iroh::address_lookup::dns::DnsAddressLookup::n0_dns().build();
+                    let pkarr = iroh::address_lookup::pkarr::PkarrPublisher::n0_dns();
 
-                    endpoint.discovery(dns).discovery(pkarr)
+                    endpoint.address_lookup(dns).address_lookup(pkarr)
                 }
             };
 
@@ -320,6 +391,35 @@ where
         let endpoint_addr = endpoint.addr();
 
         info!("Our endpoint ID: {}", endpoint_addr.id);
+
+        let iroh_metrics = {
+            let builder = iroh_n0des::Client::builder(&endpoint);
+            let allowlist = allowlist.clone();
+            (async move {
+                let client = builder.api_secret_from_env()?.build().await?;
+                const API_SECRET_ENV_VAR_NAME: &str = "N0DES_API_SECRET";
+
+                match std::env::var(API_SECRET_ENV_VAR_NAME) {
+                    Ok(ticket_string) => {
+                        let ticket = ApiSecret::from_str(&ticket_string)
+                            .context(format!("invalid {API_SECRET_ENV_VAR_NAME}"))?;
+                        let endpoint_id = ticket.remote.id;
+                        allowlist.force_allow(endpoint_id);
+                    }
+                    Err(e) => unreachable!("{e:?}"),
+                }
+                Ok(client)
+            })
+            .await as anyhow::Result<iroh_n0des::Client>
+        }
+        .map_or_else(
+            |e| {
+                info!("Iroh metrics not enabled: {e:?}");
+                None
+            },
+            Some,
+        );
+
         trace!("creating blobs store...");
 
         let gc_interval: u64 = std::env::var("BLOBS_GC_INTERVAL_MILLIS")
@@ -367,6 +467,7 @@ where
             allowlist.clone(),
             endpoint.clone(),
             SupportedProtocols::new(gossip.clone(), blobs_protocol, model_parameter_sharing),
+            additional_protocol,
         )?;
         trace!("router created!");
 
@@ -396,6 +497,8 @@ where
             _broadcast_message: Default::default(),
             _download: Default::default(),
             endpoint,
+            connection_monitor,
+            _iroh_metrics: iroh_metrics,
         })
     }
 
@@ -469,7 +572,7 @@ where
             std::iter::once(provider_endpoint_id.id)
                 .chain(additional_peers_to_try.iter().cloned())
                 .collect(),
-            self.endpoint.clone(),
+            self.connection_monitor.clone(),
         );
         let download = self.downloader.download(ticket_hash, latency_sorted);
         let blob_store_clone = self.blobs_store.clone();
@@ -490,7 +593,11 @@ where
         });
     }
 
-    pub async fn add_downloadable(&mut self, data: Download, tag: Tag) -> Result<BlobTicket> {
+    pub async fn add_downloadable(
+        &mut self,
+        data: Download,
+        tag: Tag,
+    ) -> Result<(BlobTicket, usize)> {
         let blob_data = postcard::to_allocvec(&data)?;
         let blob_res = self
             .blobs_store
@@ -509,7 +616,7 @@ where
             blob_data.len()
         );
 
-        Ok(blob_ticket)
+        Ok((blob_ticket, blob_data.len()))
     }
 
     /// Removes all the tags from the store that are lower than the target tag.
@@ -574,34 +681,31 @@ where
     }
 
     pub fn remote_infos(&self) -> Vec<P2PEndpointInfo> {
-        std::iter::once(P2PEndpointInfo {
+        // start with our own endpoint
+        let mut infos = vec![P2PEndpointInfo {
             id: self.endpoint.id(),
             bandwidth: 0.0,
             path: ConnectionType::None,
             latency: 0.0,
-        })
-        .chain(self.endpoint.connections().into_iter().map(|endpoint_id| {
+        }];
+
+        // add all tracked connections
+        for conn_data in self.connection_monitor.get_all_connections() {
             let bandwidth = self
                 .state
                 .bandwidth_tracker
-                .get_bandwidth_by_node(&endpoint_id)
+                .get_bandwidth_by_node(&conn_data.endpoint_id)
                 .unwrap_or_default();
-            P2PEndpointInfo {
-                id: endpoint_id,
-                path: self
-                    .endpoint
-                    .conn_type(endpoint_id)
-                    .map(|mut c| c.get())
-                    .unwrap_or(ConnectionType::None),
+
+            infos.push(P2PEndpointInfo {
+                id: conn_data.endpoint_id,
+                path: conn_data.connection_type,
                 bandwidth,
-                latency: self
-                    .endpoint
-                    .latency(endpoint_id)
-                    .unwrap_or(Duration::MAX)
-                    .as_secs_f64(),
-            }
-        }))
-        .collect()
+                latency: conn_data.latency.as_secs_f64(),
+            });
+        }
+
+        infos
     }
 
     pub async fn poll_next(&mut self) -> Result<Option<NetworkEvent<BroadcastMessage, Download>>> {

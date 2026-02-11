@@ -40,6 +40,9 @@
             packages =
               with pkgs;
               [
+                # to fix weird escapes
+                bashInteractive
+
                 # for local-testnet
                 tmux
                 nvtopPackages.full
@@ -82,6 +85,7 @@
               ++ rustWorkspaceArgs.nativeBuildInputs;
 
             shellHook = ''
+              export SHELL=${pkgs.bashInteractive}/bin/bash
               source ${lib.getExe config.agenix-shell.installationScript}
               ${config.pre-commit.installationScript}
             ''
@@ -101,10 +105,7 @@
               echo "Welcome to the Psyche development shell.";
             '';
           };
-        in
-        {
-          default = craneLib.devShell defaultShell;
-          dev-python = craneLib.devShell (
+          pythonShell = craneLib.devShell (
             defaultShell
             // {
               packages = defaultShell.packages ++ [
@@ -119,6 +120,11 @@
               '';
             }
           );
+        in
+        {
+          default = craneLib.devShell defaultShell;
+          python = pythonShell;
+          dev-python = pythonShell; # old name, kept for backwards compatibility
         };
     };
 }
