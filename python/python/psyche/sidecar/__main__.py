@@ -223,7 +223,12 @@ def main():
     while True:
         try:
             operation = store.get(str(iteration))
-        except:
+        except Exception as e:
+            print(
+                f"[Rank {args.rank}] store.get failed at iteration {iteration}: {e}",
+                flush=True,
+            )
+            dist.destroy_process_group()
             return
         operation = json.loads(operation.decode())
 
@@ -338,6 +343,7 @@ def main():
                     loss_scale=forward.loss_scale,
                 )
         elif operation["operation"] == "exit":
+            dist.destroy_process_group()
             return
 
         iteration += 1

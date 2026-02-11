@@ -522,10 +522,43 @@ impl CausalLM for PythonDistributedCausalLM {
 
         // barrier to ensure everyone has seen the broadcast
         self.comm.barrier(Some(self.device())).unwrap();
+
+        // Clean up the process group for rank 0
+        if let Err(e) = Python::with_gil(|py| -> PyResult<()> {
+            let distributed = Python::import(py, "torch.distributed")?;
+            let destroy = distributed.getattr("destroy_process_group")?;
+            destroy.call0()?;
+            Ok(())
+        }) {
+            error!("Failed to destroy process group: {}", e);
+        }
     }
 
     fn convert(&self, state_dict: Option<HashMap<String, Tensor>>) -> HashMap<String, Tensor> {
         self.local.convert(state_dict)
+    }
+}
+
+impl PythonDistributedCausalLM {
+    /// Check if all sidecar child processes are still alive.
+    /// Returns Err if any sidecar has exited.
+    pub fn check_sidecars_alive(&mut self) -> Result<(), String> {
+        for (i, child) in self.children.iter_mut().enumerate() {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    return Err(format!(
+                        "Sidecar rank {} exited with status: {}",
+                        i + 1,
+                        status
+                    ));
+                }
+                Ok(None) => {} // still running
+                Err(e) => {
+                    return Err(format!("Failed to check sidecar rank {}: {}", i + 1, e));
+                }
+            }
+        }
+        Ok(())
     }
 }
 
