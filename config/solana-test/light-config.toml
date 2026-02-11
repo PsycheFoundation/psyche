@@ -1,5 +1,5 @@
 [config]
-warmup_time = 100
+warmup_time = 200
 cooldown_time = 100
 epoch_time = 240
 max_round_train_time = 120
