@@ -82,14 +82,22 @@ impl From<ClientError> for RetryError<ClientError> {
                             } else if msg.contains("InvalidWitness") {
                                 error!("InvalidWitness. Fatal Error.");
                                 RetryError::Fatal(ClientError::SolanaClientError(e))
-                            } else if msg.contains("AccountNotInitialized") && msg.contains("authorization") {
-                                error!("Authorization account not initialized. Fatal Error - cannot retry.");
+                            } else if msg.contains("AccountNotInitialized")
+                                && msg.contains("authorization")
+                            {
+                                error!(
+                                    "Authorization account not initialized. Fatal Error - cannot retry."
+                                );
                                 RetryError::Fatal(ClientError::SolanaClientError(e))
-                            } else if msg.contains("AccountNotInitialized") && (msg.contains("Error Number: 3012") || msg.contains("0xbc4")) {
+                            } else if msg.contains("AccountNotInitialized")
+                                && (msg.contains("Error Number: 3012") || msg.contains("0xbc4"))
+                            {
                                 // Anchor error 3012 (0xbc4) is AccountNotInitialized
                                 // Check if it's in the context of join_run by checking for authorization-related context
                                 if msg.contains("JoinRun") || msg.contains("join_run") {
-                                    error!("Authorization account not initialized during join_run. Fatal Error - cannot retry.");
+                                    error!(
+                                        "Authorization account not initialized during join_run. Fatal Error - cannot retry."
+                                    );
                                     RetryError::Fatal(ClientError::SolanaClientError(e))
                                 } else {
                                     RetryError::NonRetryable(ClientError::SolanaClientError(e))

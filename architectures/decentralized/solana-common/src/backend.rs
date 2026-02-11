@@ -280,10 +280,11 @@ impl SolanaBackend {
             Ok(Err(error)) => {
                 let error_msg = error.to_string();
                 // Check if this is an authorization AccountNotInitialized error
-                if error_msg.contains("AccountNotInitialized") 
-                    && (error_msg.contains("authorization") 
+                if error_msg.contains("AccountNotInitialized")
+                    && (error_msg.contains("authorization")
                         || error_msg.contains("Error Number: 3012")
-                        || error_msg.contains("0xbc4")) {
+                        || error_msg.contains("0xbc4"))
+                {
                     let authorizer_str = authorizer
                         .map(|a| format!("{}", a))
                         .unwrap_or_else(|| "system_program::ID (permissionless)".to_string());
@@ -291,19 +292,23 @@ impl SolanaBackend {
                         "Authorization account not initialized. Cannot join run.\n\
                         \n\
                         The authorization account at {} does not exist on-chain.\n\
+                        Authorizer used: {}\n\
                         \n\
                         To fix this:\n\
                         1. For permissionless runs: Create authorization with:\n\
                            run-manager join-authorization-create --authorizer 11111111111111111111111111111111\n\
                         \n\
                         2. For permissioned runs: Create authorization with:\n\
-                           run-manager join-authorization-create --authorizer <YOUR_PUBKEY>\n\
+                           run-manager join-authorization-create --authorizer {}\n\
                         \n\
                         Then activate it with:\n\
-                           run-manager join-authorization-grantor-update --authorizer <AUTHORIZER> --active\n\
+                           run-manager join-authorization-grantor-update --authorizer {} --active\n\
                         \n\
                         Original error: {}",
                         authorization,
+                        authorizer_str,
+                        authorizer_str,
+                        authorizer_str,
                         error
                     ))
                 } else {
