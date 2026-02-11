@@ -127,6 +127,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let peer_manager = Arc::new(PeerManagerHandle::new(
                     MAX_ERRORS_PER_PEER,
                     param_requests_cancel_token.clone(),
+                    p2p.connection_monitor(),
                 ));
 
                 let mut broadcasts = vec![];

@@ -715,6 +715,10 @@ where
         }
         None
     }
+    pub fn connection_monitor(&self) -> ConnectionMonitor {
+        self.connection_monitor.clone()
+    }
+
     pub fn router(&self) -> Arc<Router> {
         self.router.clone()
     }
