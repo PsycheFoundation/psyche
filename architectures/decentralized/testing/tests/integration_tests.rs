@@ -589,7 +589,7 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
     let mut has_spawned_new_client_yet = false;
     let mut has_checked_p2p_checkpoint = false;
     let mut liveness_check_interval = time::interval(Duration::from_secs(10));
-    println!("starting loop");
+    println!("starting loop test test");
     loop {
         tokio::select! {
             _ = liveness_check_interval.tick() => {
