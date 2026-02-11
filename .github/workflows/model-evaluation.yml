@@ -1,0 +1,202 @@
+name: Model Evaluation Example
+
+on:
+  push:
+    branches:
+      - main
+      - dy/ci-run-evals-example
+    paths:
+      - 'shared/eval/**'
+      - 'shared/modeling/**'
+      - 'shared/core/**'
+      - 'shared/data-provider/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/model-evaluation.yml'
+  workflow_dispatch: # Allow manual triggering for testing
+
+jobs:
+  evaluate-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+
+      - name: Check initial disk space
+        run: df -h
+
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@v31
+        with:
+          nix_conf: |
+            download-buffer-size = 524288000
+            accept-flake-config = true
+            substituters = https://cache.nixos.org/ https://cache.garnix.io/ https://nix-community.cachix.org
+            trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs=
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-eval-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-eval-
+            ${{ runner.os }}-cargo-
+
+      - name: Cache HuggingFace models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface/
+          key: ${{ runner.os }}-huggingface-deepseek-v2-lite-v1
+          restore-keys: |
+            ${{ runner.os }}-huggingface-
+
+      - name: Build evaluation binary
+        run: |
+          echo "Building psyche-eval"
+          nix develop --command cargo build --release --example evaluate -p psyche-eval
+
+      - name: Check disk space after build
+        run: df -h
+
+      - name: Run model evaluation
+        id: eval
+        run: |
+          echo "Running evaluation on DeepSeek-V2-Lite with ARC-Easy"
+          nix develop --command cargo run --release --example evaluate -p psyche-eval -- \
+            --model deepseek-ai/DeepSeek-V2-Lite \
+            --tasks arc_easy \
+            --num-fewshot 3 \
+            --limit 10 \
+            --seed 42 | tee evaluation-results.txt
+
+          echo "Evaluation complete!"
+
+      - name: Parse and display results
+        if: always()
+        run: |
+          echo "=== Model Evaluation Results ==="
+          if [ -f evaluation-results.txt ]; then
+            cat evaluation-results.txt
+            echo ""
+
+            # Extract the JSON results line (look for line with JSON braces and acc field)
+            RESULTS_LINE=$(grep -E 'ARC-?Easy.*\{.*"acc"' evaluation-results.txt || echo "")
+
+            if [ -n "$RESULTS_LINE" ]; then
+              # Extract just the JSON part (everything after the colon)
+              JSON_RESULTS=$(echo "$RESULTS_LINE" | sed 's/^[^:]*: *//')
+
+              if echo "$JSON_RESULTS" | jq . > /dev/null 2>&1; then
+                # Extract each individual metric
+                ACC=$(echo "$JSON_RESULTS" | jq -r '.acc // "N/A"')
+                ACC_NORM=$(echo "$JSON_RESULTS" | jq -r '.acc_norm // "N/A"')
+                ACC_UNCOND=$(echo "$JSON_RESULTS" | jq -r '.acc_uncond // "N/A"')
+
+                echo ""
+                echo "Metrics Summary:"
+                echo "  • Accuracy:             $ACC"
+                echo "  • Accuracy (normalized): $ACC_NORM"
+                echo "  • Accuracy (unconditional): $ACC_UNCOND"
+
+                # Save for later comparison
+                cat > results.json <<EOF
+          {
+            "task": "arc_easy",
+            "model": "deepseek-ai/DeepSeek-V2-Lite",
+            "metrics": $JSON_RESULTS
+          }
+          EOF
+              else
+                echo "❌ Failed to parse JSON. Raw content:"
+                echo "$JSON_RESULTS" | od -c
+              fi
+            else
+              echo "❌ No results line found in evaluation output"
+            fi
+          else
+            echo "❌ No results file found"
+          fi
+
+      - name: Load reference results
+        if: always()
+        run: |
+          echo "=== Loading reference lm_eval results ==="
+
+          # Ensure we actually have the lm_eval results file
+          if [ -f .github/lm_eval_results.json ]; then
+            cat .github/lm_eval_results.json | jq '.'
+
+            # Extract the specific eval for this run
+            EVAL=$(cat .github/lm_eval_results.json | jq '.evals[] | select(.name == "arc_easy")')
+
+            if [ -n "$EVAL" ]; then
+              cat > lm_eval_results.json <<EOF
+          {
+            "task": "arc_easy",
+            "model": "deepseek-ai/DeepSeek-V2-Lite",
+            "metrics": {
+              "acc": $(echo "$EVAL" | jq '.acc'),
+              "acc_norm": $(echo "$EVAL" | jq '.acc_norm')
+            }
+          }
+          EOF
+
+              echo ""
+              echo "📊 Reference Metrics (arc_easy):"
+              cat lm_eval_results.json | jq '.metrics'
+              echo ""
+            else
+              echo "⚠️ No arc_easy results found in reference file"
+            fi
+          else
+            echo "⚠️ Reference results file not found at .github/lm_eval_results.json"
+          fi
+
+      - name: Compare results
+        if: always()
+        run: |
+          echo "=== Comparison: Psyche vs lm_eval ==="
+          echo ""
+
+          if [ -f results.json ] && [ -f lm_eval_results.json ]; then
+            # This script compares the two evals and reports if they're within 10% of each other
+            python3 .github/scripts/compare_metrics.py results.json lm_eval_results.json
+
+          else
+            echo "⚠️  Missing results files for comparison"
+          fi
+
+      #- name: Upload evaluation results
+      #  if: always()
+      #  uses: actions/upload-artifact@v4
+      #  with:
+      #    name: evaluation-results
+      #    path: |
+      #      evaluation-results.txt
+      #      results.json
+      #      lm_eval_results.json
+      #      lm_eval_out_*.json
+      #    retention-days: 30
+
+      - name: Clean up
+        if: always()
+        run: |
+          nix-collect-garbage -d || true
+          echo "Final disk usage:"
+          df -h
