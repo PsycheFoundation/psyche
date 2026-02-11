@@ -1,44 +1,87 @@
 [config]
-warmup_time = 30
-cooldown_time = 30
-epoch_time = 60
-max_round_train_time = 15
-round_witness_time = 5
+warmup_time = 100
+cooldown_time = 100
+epoch_time = 240
+max_round_train_time = 60
+round_witness_time = 3
 min_clients = 1
 init_min_clients = 1
 verification_percent = 0
 witness_nodes = 0
-global_batch_size_start = 8
-global_batch_size_end = 8
+global_batch_size_end = 1024
+global_batch_size_start = 1024
 global_batch_size_warmup_tokens = 0
-total_steps = 25000
-waiting_for_members_extra_time = 3
+total_steps = 125000
+waiting_for_members_extra_time = 5
 
 [model.LLM]
-architecture = "HfLlama"
+architecture = "Torchtitan"
 data_type = "Pretraining"
-max_seq_len = 2048
-cold_start_warmup_steps = 0
+max_seq_len = 8192
+cold_start_warmup_steps = 200
+data_location = { WeightedHttp = "https://storage.googleapis.com/nous-pretraining-public-us/fwedu-dclm-qwen3.json" }
 
 [model.LLM.checkpoint.Hub]
-repo_id = "emozilla/llama2-20m-init"
+repo_id = "PsycheFoundation/moe-10b-a1b-init"
 
-[model.LLM.data_location.Http]
-token_size_in_bytes = "TwoBytes"
-shuffle = "DontShuffle"
-[model.LLM.data_location.Http.location.Gcp]
-bucket_name = "nous-pretraining-public-us"
-filter_directory = "fineweb-edu-tokenized-llama2"
-
-[model.LLM.lr_schedule.Cosine]
-base_lr = 4.0e-4
-warmup_steps = 250
+[model.LLM.lr_schedule.WarmupStableDecay]
+base_lr = 3e-4
+warmup_steps = 2000
 warmup_init_lr = 0.0
-total_steps = 25000
-final_lr = 4.0e-5
+stable_steps = 110500
+cosine_decay_steps = 0
+cosine_decay_final_lr = 3e-4
+linear_decay_steps = 12500
+linear_decay_final_lr = 0.0
+
 [model.LLM.optimizer.Distro]
 clip_grad_norm = 1.0
 compression_decay = 0.999
 compression_chunk = 64
-compression_topk = 8
+compression_topk = 4
 quantize_1bit = true
+
+# [config]
+# warmup_time = 30
+# cooldown_time = 30
+# epoch_time = 60
+# max_round_train_time = 15
+# round_witness_time = 5
+# min_clients = 1
+# init_min_clients = 1
+# verification_percent = 0
+# witness_nodes = 0
+# global_batch_size_start = 8
+# global_batch_size_end = 8
+# global_batch_size_warmup_tokens = 0
+# total_steps = 25000
+# waiting_for_members_extra_time = 3
+
+# [model.LLM]
+# architecture = "HfLlama"
+# data_type = "Pretraining"
+# max_seq_len = 2048
+# cold_start_warmup_steps = 0
+
+# [model.LLM.checkpoint.Hub]
+# repo_id = "emozilla/llama2-20m-init"
+
+# [model.LLM.data_location.Http]
+# token_size_in_bytes = "TwoBytes"
+# shuffle = "DontShuffle"
+# [model.LLM.data_location.Http.location.Gcp]
+# bucket_name = "nous-pretraining-public-us"
+# filter_directory = "fineweb-edu-tokenized-llama2"
+
+# [model.LLM.lr_schedule.Cosine]
+# base_lr = 4.0e-4
+# warmup_steps = 250
+# warmup_init_lr = 0.0
+# total_steps = 25000
+# final_lr = 4.0e-5
+# [model.LLM.optimizer.Distro]
+# clip_grad_norm = 1.0
+# compression_decay = 0.999
+# compression_chunk = 64
+# compression_topk = 8
+# quantize_1bit = true
