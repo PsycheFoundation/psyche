@@ -5,6 +5,7 @@ use anchor_client::{
     solana_sdk::signature::Signature,
     solana_sdk::{
         commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair, signer::Signer,
+        system_program,
     },
 };
 use psyche_coordinator::{
@@ -78,6 +79,64 @@ impl SolanaTestClient {
         self.program.request().instruction(instruction).send().await
     }
 
+    /// Create a lightweight SolanaTestClient for joining a run.
+    /// Skips the initial sleep (validator is already running) and airdrops SOL for transactions.
+    pub async fn new_for_joining(run_id: String) -> Self {
+        let key_pair = Arc::new(Keypair::new());
+        let cluster = Cluster::Localnet;
+        let client = anchor_client::Client::new_with_options(
+            cluster.clone(),
+            key_pair.clone(),
+            CommitmentConfig::confirmed(),
+        );
+        let program = client.program(psyche_solana_coordinator::ID).unwrap();
+
+        let rpc = program.rpc();
+        let sig = rpc
+            .request_airdrop(&key_pair.pubkey(), 1_000_000_000)
+            .await
+            .unwrap();
+        loop {
+            if rpc.confirm_transaction(&sig).await.unwrap_or(false) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        let seeds = &[
+            psyche_solana_coordinator::CoordinatorInstance::SEEDS_PREFIX,
+            psyche_solana_coordinator::bytes_from_string(&run_id),
+        ];
+        let (instance, _) = Pubkey::find_program_address(seeds, &program.id());
+        let coordinator_instance: psyche_solana_coordinator::CoordinatorInstance =
+            program.account(instance).await.unwrap();
+        Self {
+            program,
+            instance,
+            account: coordinator_instance.coordinator_account,
+            run_id,
+            owner_keypair: key_pair,
+        }
+    }
+
+    pub async fn join_run(&self) -> Result<Signature, ClientError> {
+        let coordinator_instance: psyche_solana_coordinator::CoordinatorInstance =
+            self.program.account(self.instance).await.unwrap();
+        let authorization = psyche_solana_authorizer::find_authorization(
+            &coordinator_instance.join_authority,
+            &system_program::id(),
+            psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE,
+        );
+        let client_id = ClientId::new(self.owner_keypair.pubkey(), [0u8; 32]);
+        let instruction = psyche_solana_rpc::instructions::coordinator_join_run(
+            &self.instance,
+            &self.account,
+            &authorization,
+            client_id,
+        );
+        self.program.request().instruction(instruction).send().await
+    }
+
     /// Send a tick transaction to advance the coordinator state machine.
     pub async fn send_tick(&self) -> Result<Signature, ClientError> {
         let instruction = psyche_solana_rpc::instructions::coordinator_tick(
@@ -142,6 +201,10 @@ impl SolanaTestClient {
     pub async fn get_current_epoch(&self) -> u16 {
         let coordinator = self.get_coordinator_account().await;
         coordinator.state.coordinator.progress.epoch
+    }
+
+    pub fn run_id(&self) -> &str {
+        &self.run_id
     }
 
     pub async fn get_last_step(&self) -> u32 {

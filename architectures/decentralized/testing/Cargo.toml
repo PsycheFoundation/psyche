@@ -6,6 +6,7 @@ version.workspace = true
 [dependencies]
 psyche-solana-coordinator.workspace = true
 psyche-solana-rpc.workspace = true
+psyche-solana-authorizer.workspace = true
 psyche-coordinator.workspace = true
 tch.workspace = true
 anchor-client.workspace = true

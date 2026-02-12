@@ -623,15 +623,21 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
         }
     }
 
-    // Rejoin clients to meet the min_clients threshold
+    // Create two test clients that will join the run directly (no Docker needed).
+    // These have different keypairs from the killed clients, so the coordinator
+    // will detect all_prev_clients_disconnected and switch P2P -> Hub.
     tokio::time::sleep(Duration::from_secs(5)).await;
-    let id1 = spawn_new_client(docker.clone(), None).await.unwrap();
-    println!("Spawned new client {id1} to meet init_min_clients");
-    let id2 = spawn_new_client(docker.clone(), None).await.unwrap();
-    println!("Spawned new client {id2} to meet init_min_clients");
+    println!("Creating test clients to join the run...");
+    let run_id_clone = solana_client.run_id().to_string();
+    let (test_client_1, test_client_2) = tokio::join!(
+        SolanaTestClient::new_for_joining(run_id_clone.clone()),
+        SolanaTestClient::new_for_joining(run_id_clone),
+    );
+    println!("Test clients created and funded");
 
-    // Tick until we see that the checkpoint has reverted back to Hub, since clients weren't ticking
+    // Tick until the coordinator cycles to WaitingForMembers, join, and verify Hub checkpoint
     let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
+    let mut joined = false;
     loop {
         tokio::time::sleep(Duration::from_secs(2)).await;
         assert!(
@@ -644,13 +650,28 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
             Err(e) => println!("Tick failed (may be expected during transitions): {e}"),
         }
 
-        let checkpoint = solana_client.get_checkpoint().await;
         let run_state = solana_client.get_run_state().await;
-        println!("Checkpoint: {checkpoint:?}, run_state: {run_state}");
+        let checkpoint = solana_client.get_checkpoint().await;
+        println!("State: {run_state}, Checkpoint: {checkpoint:?}");
 
         if matches!(checkpoint, Checkpoint::Hub(_)) {
             println!("Checkpoint is Hub, test successful");
             return;
+        }
+
+        // Join when coordinator reaches WaitingForMembers so that init_min_clients is met
+        // and the all_prev_clients_disconnected check fires
+        if !joined && run_state == RunState::WaitingForMembers {
+            println!("WaitingForMembers reached, joining with test clients...");
+            match test_client_1.join_run().await {
+                Ok(_) => println!("Test client 1 joined"),
+                Err(e) => println!("Test client 1 join failed: {e}"),
+            }
+            match test_client_2.join_run().await {
+                Ok(_) => println!("Test client 2 joined"),
+                Err(e) => println!("Test client 2 join failed: {e}"),
+            }
+            joined = true;
         }
     }
 }
