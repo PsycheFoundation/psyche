@@ -241,6 +241,8 @@ pub struct ConfigBuilder {
     batch_size: u32,
     architecture: String,
     witness_nodes: Option<u32>,
+    round_witness_time: Option<u64>,
+    warmup_time: Option<u64>,
 }
 
 impl Default for ConfigBuilder {
@@ -270,6 +272,8 @@ impl ConfigBuilder {
             batch_size: 4,
             architecture: String::from("HfLlama"),
             witness_nodes: None,
+            round_witness_time: None,
+            warmup_time: None,
         }
     }
 
@@ -299,6 +303,16 @@ impl ConfigBuilder {
         self
     }
 
+    pub fn with_round_witness_time(mut self, round_witness_time: u64) -> Self {
+        self.round_witness_time = Some(round_witness_time);
+        self
+    }
+
+    pub fn with_warmup_time(mut self, warmup_time: u64) -> Self {
+        self.warmup_time = Some(warmup_time);
+        self
+    }
+
     pub fn build(mut self) -> PathBuf {
         // Use min_clients if set, otherwise default to num_clients
         let min_clients = self.min_clients.unwrap_or(self.num_clients);
@@ -309,6 +323,14 @@ impl ConfigBuilder {
 
         // witness_nodes = 0 means every client is a witness
         self.set_value("config.witness_nodes", self.witness_nodes.unwrap_or(0));
+
+        if let Some(round_witness_time) = self.round_witness_time {
+            self.set_value("config.round_witness_time", round_witness_time as i64);
+        }
+
+        if let Some(warmup_time) = self.warmup_time {
+            self.set_value("config.warmup_time", warmup_time as i64);
+        }
 
         self.set_value("model.LLM.architecture", self.architecture.clone());
         self.set_value("config.global_batch_size_start", self.batch_size);
