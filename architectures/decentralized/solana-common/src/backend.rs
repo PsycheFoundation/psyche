@@ -59,7 +59,7 @@ async fn subscribe_to_account(
     let mut retries: u64 = 0;
     loop {
         // wait a time before we try a reconnection
-        let sleep_time = min(600, retries.saturating_mul(5));
+        let sleep_time = min(30, retries.saturating_mul(2));
         tokio::time::sleep(Duration::from_secs(sleep_time)).await;
         retries += 1;
         let Ok(sub_client) = PubsubClient::new(&url).await else {
