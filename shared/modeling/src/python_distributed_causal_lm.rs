@@ -78,7 +78,7 @@ impl TorchDistributedCommunicator {
                         kwargs.set_item("world_size", world_size.unwrap()).unwrap();
                         kwargs.set_item("is_master", true).unwrap();
                         kwargs.set_item("timeout", timeout).unwrap();
-                        kwargs.set_item("use_libuv", false).unwrap();
+                        kwargs.set_item("use_libuv", true).unwrap();
                         Some(tcp_store.call((), Some(&kwargs))?)
                     } else {
                         None
@@ -465,8 +465,6 @@ impl CausalLM for PythonDistributedCausalLM {
             num_logits_to_keep,
             loss_scale,
         );
-
-        self.comm.delete(&iteration.to_string()).unwrap();
 
         (logits, loss)
     }
