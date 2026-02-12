@@ -159,6 +159,7 @@ pub struct ConfigBuilder {
     min_clients: Option<usize>,
     batch_size: u32,
     architecture: String,
+    witness_nodes: Option<u32>,
 }
 
 impl Default for ConfigBuilder {
@@ -187,6 +188,7 @@ impl ConfigBuilder {
             min_clients: None,
             batch_size: 4,
             architecture: String::from("HfLlama"),
+            witness_nodes: None,
         }
     }
 
@@ -211,6 +213,11 @@ impl ConfigBuilder {
         self
     }
 
+    pub fn with_witness_nodes(mut self, witness_nodes: u32) -> Self {
+        self.witness_nodes = Some(witness_nodes);
+        self
+    }
+
     pub fn build(mut self) -> PathBuf {
         // Use min_clients if set, otherwise default to num_clients
         let min_clients = self.min_clients.unwrap_or(self.num_clients);
@@ -219,8 +226,8 @@ impl ConfigBuilder {
         self.set_value("config.min_clients", min_clients as u32);
         self.set_value("config.init_min_clients", min_clients as u32);
 
-        // This means that every client is a witness
-        self.set_value("config.witness_nodes", 0_u32);
+        // witness_nodes = 0 means every client is a witness
+        self.set_value("config.witness_nodes", self.witness_nodes.unwrap_or(0));
 
         self.set_value("model.LLM.architecture", self.architecture.clone());
         self.set_value("config.global_batch_size_start", self.batch_size);

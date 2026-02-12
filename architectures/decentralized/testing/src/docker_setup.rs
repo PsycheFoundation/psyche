@@ -87,13 +87,17 @@ pub async fn e2e_testing_setup_subscription(
     init_num_clients: usize,
 ) -> DockerTestCleanup {
     remove_old_client_containers(docker_client).await;
+    // Use witness_nodes = 1 (quorum = 1) so health checks don't falsely drop
+    // clients due to P2P timing variability during proxy disruption.
     #[cfg(not(feature = "python"))]
     let config_file_path = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
+        .with_witness_nodes(1)
         .build();
     #[cfg(feature = "python")]
     let config_file_path = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
+        .with_witness_nodes(1)
         .with_architecture("HfAuto")
         .with_batch_size(8 * init_num_clients as u32)
         .build();
