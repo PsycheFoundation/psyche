@@ -407,6 +407,42 @@ impl SharableModel {
         Ok(())
     }
 
+    /// Eagerly creates blob downloadables for all parameters and logs their hashes.
+    /// Used to study whether different clients produce the same hash for the same parameters.
+    pub async fn eager_hash_all_parameters<B: Networkable>(
+        &mut self,
+        p2p: &mut NetworkConnection<B, TransmittableDownload>,
+    ) -> Result<(), SharableModelError> {
+        let Some(loading_parameters) = self.serializing_parameters.as_mut() else {
+            return Err(SharableModelError::ParametersNotInitialized);
+        };
+        let Some(loaded_parameters) = self.serialized_parameters.as_mut() else {
+            return Err(SharableModelError::ParametersNotInitialized);
+        };
+
+        let param_names: Vec<String> = loading_parameters.keys().cloned().collect();
+        for param_name in param_names {
+            if loaded_parameters.contains_key(&param_name) {
+                continue;
+            }
+            if let Some(loading) = loading_parameters.remove(&param_name) {
+                let transmittable_parameter = loading
+                    .await
+                    .map_err(|_| SharableModelError::LoadThreadCrashed)??;
+                let transmittable_download =
+                    TransmittableDownload::ModelParameter(transmittable_parameter);
+                let tag = Tag::from(format!("model-{param_name}"));
+                let (blob_ticket, _) = p2p
+                    .add_downloadable(transmittable_download, tag)
+                    .await
+                    .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
+                info!(parameter = %param_name, hash = %blob_ticket.hash(), "Eager parameter hash");
+                loaded_parameters.insert(param_name, blob_ticket);
+            }
+        }
+        Ok(())
+    }
+
     pub fn update_config(
         &mut self,
         model_config: String,
@@ -450,7 +486,7 @@ impl SharableModel {
                         .await
                         .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
                     loaded_parameters.insert(param_name.to_string(), blob_ticket.clone());
-                    info!("Finished adding parameter downloadable {param_name}");
+                    info!(parameter = param_name, hash = %blob_ticket.hash(), "Finished adding parameter downloadable");
                     Ok(blob_ticket)
                 }
                 None => Err(SharableModelError::ParameterUnknown(param_name.to_string())),

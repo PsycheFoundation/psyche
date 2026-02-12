@@ -282,7 +282,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                             },
                                             TransmittableDownload::ModelParameter(parameter) => {
                                                 current_downloaded_parameters += 1;
-                                                info!("Download complete: parameter {}", parameter.name()?);
+                                                info!(parameter = %parameter.name()?, hash = %hash, "Download complete: parameter");
                                                 if let Some(total_parameters) = total_parameters {
                                                     info!("Downloaded parameters total: {}/{}", current_downloaded_parameters, total_parameters);
                                                     metrics.update_model_sharing_total_params_downloaded(current_downloaded_parameters);
@@ -537,6 +537,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         }
                         Some(model) = rx_model.recv() => {
                             sharable_model.update_parameters(model)?;
+                            sharable_model.eager_hash_all_parameters(&mut p2p).await?;
                         },
                         Some((config_string, tokenizer_string)) = rx_config.recv() => {
                             let tokenizer: Tokenizer = serde_json::from_str(&tokenizer_string)?;
