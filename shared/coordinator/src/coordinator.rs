@@ -882,8 +882,10 @@ impl<T: NodeIdentity> Coordinator<T> {
         let estimated_training_rounds = self.config.epoch_time / self.config.max_round_train_time;
         if llm.cold_start_warmup_steps as u64 > estimated_training_rounds {
             msg!(
-                "cold_start_warmup_steps ({}) exceeds estimated training rounds per epoch ({})",
+                "cold_start_warmup_steps ({}) exceeds estimated training rounds per epoch (epoch_time={} / max_round_train_time={} = {})",
                 llm.cold_start_warmup_steps,
+                self.config.epoch_time,
+                self.config.max_round_train_time,
                 estimated_training_rounds
             );
             return false;
@@ -1186,7 +1188,9 @@ impl<T> CoordinatorEpochState<T> {
 
 impl CoordinatorConfig {
     pub fn check(&self) -> bool {
-        self.max_round_train_time != 0
+        self.epoch_time > 0
+            && self.max_round_train_time != 0
+            && self.max_round_train_time < self.epoch_time
             && self.round_witness_time != 0
             && self.min_clients != 0
             && self.init_min_clients >= self.min_clients
