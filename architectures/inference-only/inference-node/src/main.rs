@@ -298,6 +298,11 @@ async fn main() -> Result<()> {
                                             if let Err(e) = old_node.shutdown() {
                                                 error!("Error shutting down old model: {:#}", e);
                                             }
+                                            // Give vLLM time to release GPU memory before loading new model
+                                            // This prevents OOM when switching between large models
+                                            drop(node_guard);
+                                            info!("Waiting 5s for GPU memory to be released...");
+                                            tokio::time::sleep(Duration::from_secs(5)).await;
                                         }
                                     }
 

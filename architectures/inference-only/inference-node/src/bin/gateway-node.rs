@@ -140,8 +140,18 @@ async fn handle_inference(
     Json(req): Json<ChatCompletionRequest>,
 ) -> Result<Json<ChatCompletionResponse>, AppError> {
     let nodes = state.available_nodes.read().await;
-    let node = nodes.values().next().ok_or(AppError::NoNodesAvailable)?;
 
+    // Filter nodes that have a model loaded (not idle)
+    let nodes_with_model: Vec<_> = nodes.values().filter(|n| n.model_name.is_some()).collect();
+
+    if nodes_with_model.is_empty() {
+        // No nodes have models loaded yet
+        return Err(AppError::NoNodesAvailable);
+    }
+
+    // Select first available node with a model
+    // TODO: Add load balancing and model-specific routing in the future
+    let node = nodes_with_model[0];
     let target_peer_id = node.peer_id;
 
     let model_name = req
