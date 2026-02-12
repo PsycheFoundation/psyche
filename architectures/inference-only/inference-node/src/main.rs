@@ -9,8 +9,7 @@
 //! - Supports dynamic checkpoint reloading
 
 use anyhow::{Context, Result};
-use clap::Parser;
-use iroh::EndpointAddr;
+use clap::{Args as ClapArgs, Parser, Subcommand};
 use psyche_inference::{
     INFERENCE_ALPN, InferenceGossipMessage, InferenceNode, InferenceProtocol, ModelSource,
 };
@@ -106,10 +105,12 @@ async fn main() -> Result<()> {
         None => cli.run_args,
     };
 
-    let model_name = run_args.model_name.context("--model-name is required")?;
-
     info!("Starting Psyche Inference Node");
-    info!("Model: {}", model_name);
+    if let Some(ref model) = run_args.model_name {
+        info!("Model: {}", model);
+    } else {
+        info!("Model: <idle - will load on request>");
+    }
     info!("Tensor Parallel Size: {}", run_args.tensor_parallel_size);
     info!(
         "GPU Memory Utilization: {}",
@@ -141,7 +142,7 @@ async fn main() -> Result<()> {
     pyo3::prepare_freethreaded_python();
     info!("Python interpreter initialized");
 
-    let inference_node_shared = if let Some(ref model_name) = args.model_name {
+    let inference_node_shared = if let Some(ref model_name) = run_args.model_name {
         info!("Initializing vLLM engine with model: {}...", model_name);
         let mut inference_node = InferenceNode::new(
             model_name.clone(),
@@ -151,8 +152,8 @@ async fn main() -> Result<()> {
 
         inference_node
             .initialize(
-                Some(args.tensor_parallel_size),
-                Some(args.gpu_memory_utilization),
+                Some(run_args.tensor_parallel_size),
+                Some(run_args.gpu_memory_utilization),
             )
             .context("Failed to initialize vLLM engine")?;
 
@@ -163,9 +164,9 @@ async fn main() -> Result<()> {
         Arc::new(RwLock::new(None))
     };
 
-    let current_model_name = Arc::new(RwLock::new(args.model_name.clone()));
-    let tensor_parallel_size = args.tensor_parallel_size;
-    let gpu_memory_utilization = args.gpu_memory_utilization;
+    let current_model_name = Arc::new(RwLock::new(run_args.model_name.clone()));
+    let tensor_parallel_size = run_args.tensor_parallel_size;
+    let gpu_memory_utilization = run_args.gpu_memory_utilization;
 
     info!("Initializing P2P network...");
 
@@ -206,15 +207,6 @@ async fn main() -> Result<()> {
     }
 
     tokio::time::sleep(Duration::from_secs(2)).await;
-
-    info!("Registering inference protocol handler...");
-    let inference_protocol = InferenceProtocol::new(inference_node_shared.clone());
-    network
-        .router()
-        .endpoint()
-        .add_protocol(INFERENCE_ALPN, inference_protocol.into())
-        .await?;
-    info!("Protocol handler registered");
 
     // announce availability via gossip
     let model_name_for_broadcast = current_model_name.read().await.clone();
