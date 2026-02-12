@@ -315,10 +315,10 @@ impl CoordinatorInstanceState {
             let _ = std::mem::replace(&mut self.coordinator.model, model);
         }
 
-        if config.is_some() || model.is_some() {
-            if !self.coordinator.check_cold_start_warmup_steps() {
-                return err!(ProgramError::ConfigSanityCheckFailed);
-            }
+        if (config.is_some() || model.is_some())
+            && !self.coordinator.check_cold_start_warmup_steps()
+        {
+            return err!(ProgramError::ConfigSanityCheckFailed);
         }
 
         if let Some(progress) = progress {

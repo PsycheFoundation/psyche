@@ -876,10 +876,7 @@ impl<T: NodeIdentity> Coordinator<T> {
     /// Check that cold_start_warmup_steps can be completed within a single epoch.
     pub fn check_cold_start_warmup_steps(&self) -> bool {
         let Model::LLM(llm) = &self.model;
-        if llm.cold_start_warmup_steps == 0
-            || self.config.max_round_train_time == 0
-            || self.config.max_round_train_time >= self.config.epoch_time
-        {
+        if llm.cold_start_warmup_steps == 0 {
             return true;
         }
         let estimated_training_rounds = self.config.epoch_time / self.config.max_round_train_time;
