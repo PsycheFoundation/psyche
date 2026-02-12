@@ -507,7 +507,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             model::Model::LLM(llm) => llm.cold_start_warmup_steps,
         };
         let warmup_lr_between = state.get_cold_start_warmup_bounds();
-        let epoch = state.progress.epoch;
+        let checkpoint_is_p2p = match &state.model {
+            model::Model::LLM(llm) => matches!(llm.checkpoint, model::Checkpoint::P2P(_)),
+        };
 
         // coordinator has already advanced to the next round (unless we're in cooldown) but we haven't started ours yet.
         // so our current_round corresponds to the coordinator's previous_round
@@ -603,8 +605,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
 
                     match maybe_results {
                         Ok((results, trainer_nonce)) => {
-                            if trainer_nonce < cold_start_warmup_steps && epoch != 0 && warmup_lr_between.is_none()  {
-                                // results are not actually applied for the first cold_start_warmup_steps of a trainer's lifetime
+                            if trainer_nonce < cold_start_warmup_steps && checkpoint_is_p2p && warmup_lr_between.is_none() {
+                                // Only filter results from trainers that are still warming up their optimizer,
+                                // and only when the checkpoint is P2P (meaning other clients exist from a previous epoch).
                                 // note, we are relying on honest communication of this value here -- will need to harden with verification.
                                 // the only exception is for the first steps of the first epoch
                                 // or when doing a cold start (warmup_lr_between.is_some())

@@ -3,7 +3,10 @@ use crate::{
     model::{Checkpoint, HubRepo, Model},
 };
 
-use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
+use anchor_lang::{
+    AnchorDeserialize, AnchorSerialize, InitSpace,
+    prelude::{borsh, msg},
+};
 use bytemuck::{Pod, Zeroable};
 use psyche_core::{Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean, sha256};
 use serde::{Deserialize, Serialize};
@@ -868,6 +871,27 @@ impl<T: NodeIdentity> Coordinator<T> {
             self.epoch_state.start_step,
             self.epoch_state.start_step + cold_start_warmup_steps,
         ))
+    }
+
+    /// Check that cold_start_warmup_steps can be completed within a single epoch.
+    pub fn check_cold_start_warmup_steps(&self) -> bool {
+        let Model::LLM(llm) = &self.model;
+        if llm.cold_start_warmup_steps == 0
+            || self.config.max_round_train_time == 0
+            || self.config.max_round_train_time >= self.config.epoch_time
+        {
+            return true;
+        }
+        let estimated_training_rounds = self.config.epoch_time / self.config.max_round_train_time;
+        if llm.cold_start_warmup_steps as u64 > estimated_training_rounds {
+            msg!(
+                "cold_start_warmup_steps ({}) exceeds estimated training rounds per epoch ({})",
+                llm.cold_start_warmup_steps,
+                estimated_training_rounds
+            );
+            return false;
+        }
+        true
     }
 
     fn get_global_batch_size_for_tokens(&self, tokens_processed: u64) -> u16 {
