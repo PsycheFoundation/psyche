@@ -17,7 +17,7 @@ use std::{
 use tch::{Device, Kind, Tensor};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 
 #[derive(Debug)]
 pub struct PythonDistributedTrainer {
@@ -280,7 +280,7 @@ impl PythonDistributedTrainer {
         };
 
         if results_len == 0 {
-            trace!("Skipping optimize operation on Python clients, no distro results");
+            warn!("Empty DisTrO results, skipping optimize on Python clients");
             return Ok(self);
         }
 

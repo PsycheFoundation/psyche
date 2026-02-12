@@ -618,7 +618,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                 }
 
                 let trainers = if distro_results.is_empty() {
-                    trace!("No distro results to apply, skipping optimize");
+                    warn!("Empty DisTrO results, skipping optimize");
                     trainers
                 } else {
                     let futures: Vec<JoinHandle<std::result::Result<Trainer, ApplyDistroResultError>>> =

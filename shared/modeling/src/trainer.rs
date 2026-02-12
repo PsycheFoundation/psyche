@@ -887,8 +887,8 @@ impl LocalTrainer {
                                     optimizer.error_correction(model.as_ref(), prev_lr)
                                 }
                                 Some(_) => {
-                                    tracing::trace!(
-                                        "Skipping error_correction, no previous self distro results"
+                                    tracing::warn!(
+                                        "Empty DisTrO results, skipping error_correction"
                                     );
                                 }
                                 None => {
@@ -1281,7 +1281,7 @@ fn optimize_step(
                 }
             }
             Some(_) => {
-                trace!("No DisTrO gradients to apply, skipping");
+                warn!("Empty DisTrO gradients, model parameters will not be updated");
             }
             None => {
                 error!("Got DisTrO optimizer assignment, but no results");
