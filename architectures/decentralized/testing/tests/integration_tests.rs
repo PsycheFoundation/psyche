@@ -623,7 +623,14 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
         }
     }
 
-    // Tick until we see that the checkpoint has reverted back to Hub since there's no more clients
+    // Rejoin clients to meet the min_clients threshold
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    let id1 = spawn_new_client(docker.clone(), None).await.unwrap();
+    println!("Spawned new client {id1} to meet init_min_clients");
+    let id2 = spawn_new_client(docker.clone(), None).await.unwrap();
+    println!("Spawned new client {id2} to meet init_min_clients");
+
+    // Tick until we see that the checkpoint has reverted back to Hub, since clients weren't ticking
     let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
     loop {
         tokio::time::sleep(Duration::from_secs(2)).await;
