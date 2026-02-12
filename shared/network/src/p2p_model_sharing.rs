@@ -6,7 +6,6 @@ use iroh_blobs::api::Tag;
 use iroh_blobs::ticket::BlobTicket;
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet, hash_map::Entry};
-use std::hash::{Hash, Hasher};
 use std::io::{Cursor, Write};
 use tch::Tensor;
 use thiserror::Error;
@@ -392,20 +391,20 @@ impl SharableModel {
                     let mut param_name_buffer = Vec::new();
                     let mut param_value_buffer = Vec::new();
 
-                    // Hash raw tensor bytes to check if tensor values are identical across clients
-                    let numel = parameter.numel();
-                    let elt_size = parameter.kind().elt_size_in_bytes();
-                    let contiguous = parameter.contiguous();
-                    let mut raw_bytes = vec![0u8; numel * elt_size];
-                    contiguous.copy_data_u8(&mut raw_bytes, numel);
-                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                    raw_bytes.hash(&mut hasher);
-                    let raw_hash = hasher.finish();
+                    // Log tensor stats so we can compare across clients
+                    let float_param = parameter.to_kind(tch::Kind::Double);
+                    let sum: f64 = float_param.sum(tch::Kind::Double).double_value(&[]);
+                    let norm: f64 = float_param.norm().double_value(&[]);
+                    let mean: f64 = float_param.mean(tch::Kind::Double).double_value(&[]);
+                    let absmax: f64 = float_param.abs().max().double_value(&[]);
                     info!(
                         parameter = %param_name,
-                        raw_data_hash = %format!("{raw_hash:016x}"),
-                        size = raw_bytes.len(),
-                        "Raw tensor data hash before serialization"
+                        sum = %sum,
+                        l2_norm = %norm,
+                        mean = %mean,
+                        abs_max = %absmax,
+                        numel = parameter.numel(),
+                        "Parameter stats for cross-client comparison"
                     );
 
                     param_name_buffer.write_all(param_name.as_bytes())?;
