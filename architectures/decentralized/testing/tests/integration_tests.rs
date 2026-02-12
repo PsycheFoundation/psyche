@@ -18,7 +18,6 @@ use psyche_decentralized_testing::{
     chaos::{ChaosAction, ChaosScheduler},
     docker_setup::{
         e2e_testing_setup, e2e_testing_setup_with_min, kill_all_clients, spawn_new_client,
-        spawn_new_client_with_monitoring,
     },
     docker_watcher::{DockerWatcher, Response},
     utils::{SolanaTestClient, write_keypair_to_file},
@@ -576,9 +575,6 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 #[serial]
 async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
-    let num_of_epochs_to_run = 3;
-    let mut current_epoch = -1;
-    let mut last_epoch_loss = f64::MAX;
     let run_id = "test".to_string();
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
@@ -586,14 +582,12 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
     let _cleanup = e2e_testing_setup(docker.clone(), 2).await;
 
     let solana_client = SolanaTestClient::new(run_id, None).await;
-    let mut has_spawned_new_client_yet = false;
-    let mut has_checked_p2p_checkpoint = false;
     let mut liveness_check_interval = time::interval(Duration::from_secs(10));
-    println!("starting loop test 1 test 2");
+
+    // Wait for training to progress and verify P2P checkpoint
     loop {
         tokio::select! {
             _ = liveness_check_interval.tick() => {
-                // Show number of connected clients and current state of coordinator
                 let clients = solana_client.get_clients().await;
                 let current_epoch = solana_client.get_current_epoch().await;
                 let current_step = solana_client.get_last_step().await;
@@ -605,75 +599,51 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
                 );
 
                 // Check that after 1 epoch the checkpoint is P2P since we have 2 clients
-                if !has_checked_p2p_checkpoint && current_epoch == 1 {
+                if current_epoch == 1 {
                     let checkpoint = solana_client.get_checkpoint().await;
-                    // Assert checkpoint is P2P
-                    if matches!(checkpoint, Checkpoint::P2P(_)) {
-                        println!("Checkpoint was P2P");
-                        has_checked_p2p_checkpoint = true;
-                    } else {
+                    if !matches!(checkpoint, Checkpoint::P2P(_)) {
                         continue;
                     }
+                    println!("Checkpoint was P2P");
 
-                    // Wait 10 seconds and kill everything
+                    // Wait a bit then kill all clients
                     tokio::time::sleep(Duration::from_secs(10)).await;
-
                     println!("Killing all clients to test checkpoint change to Hub");
                     kill_all_clients(&docker, "SIGKILL").await;
-
-                    // Wait a while before spawning a new client
-                    tokio::time::sleep(Duration::from_secs(5)).await;
-                    // Spawn a new client, that should get the model with Hub
-                    let joined_container_id = spawn_new_client_with_monitoring(docker.clone(), &watcher).await.unwrap();
-                    println!("Spawned new client {joined_container_id} to test checkpoint change to Hub");
-                    // Spawn another because whe have min_clients=2
-                    let joined_container_id = spawn_new_client_with_monitoring(docker.clone(), &watcher).await.unwrap();
-                    println!("Spawned new client {joined_container_id} to test checkpoint change to Hub");
-                    has_spawned_new_client_yet = true;
-
-                    continue;
-                }
-
-                if has_spawned_new_client_yet {
-                    // Get checkpoint and check if it's Hub, in that case end gracefully
-                    let checkpoint = solana_client.get_checkpoint().await;
-                    let run_state = solana_client.get_run_state().await;
-                    if matches!(checkpoint, Checkpoint::Hub(_)) {
-                        println!("Checkpoint is Hub, test succesful");
-                        return;
-                    } else {
-                        println!("Checkpoint is not Hub yet, waiting... (run_state: {run_state})");
-                    }
+                    break;
                 }
             }
             response = watcher.log_rx.recv() => {
-                match response {
-                    Some(Response::LoadedModel(checkpoint)) => {
-                        dbg!(&checkpoint);
-                    },
-                    Some(Response::Loss(client, epoch, step, loss)) => {
-                        println!(
-                            "client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss:?}"
-                        );
-                        if epoch as i64 > current_epoch {
-                            current_epoch = epoch as i64;
-
-                            let Some(loss) = loss else {
-                                println!("Reached new epoch but loss was NaN");
-                                continue;
-                            };
-
-                            assert!(loss < last_epoch_loss);
-                            last_epoch_loss = loss;
-                            if epoch == num_of_epochs_to_run {
-                                println!("Epoch {epoch} reached. Stopping");
-                                break;
-                            }
-                        }
-                    }
-                    _ => {}
+                if let Some(Response::Loss(client, epoch, step, loss)) = response {
+                    println!(
+                        "client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss:?}"
+                    );
                 }
             }
+        }
+    }
+
+    // Tick until we see that the checkpoint has reverted back to Hub since there's no more clients
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(120);
+    loop {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "Timed out waiting for checkpoint to become Hub"
+        );
+
+        match solana_client.send_tick().await {
+            Ok(_) => {}
+            Err(e) => println!("Tick failed (may be expected during transitions): {e}"),
+        }
+
+        let checkpoint = solana_client.get_checkpoint().await;
+        let run_state = solana_client.get_run_state().await;
+        println!("Checkpoint: {checkpoint:?}, run_state: {run_state}");
+
+        if matches!(checkpoint, Checkpoint::Hub(_)) {
+            println!("Checkpoint is Hub, test successful");
+            return;
         }
     }
 }

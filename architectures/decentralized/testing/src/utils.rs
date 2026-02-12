@@ -25,6 +25,7 @@ pub fn write_keypair_to_file(keypair: &Keypair, path: &Path) -> std::io::Result<
 
 pub struct SolanaTestClient {
     program: Program<Arc<Keypair>>,
+    instance: Pubkey,
     account: Pubkey,
     run_id: String,
     owner_keypair: Arc<Keypair>,
@@ -51,8 +52,15 @@ impl SolanaTestClient {
         let (instance, _) = Pubkey::find_program_address(seeds, &program.id());
         let coordinator_instance: psyche_solana_coordinator::CoordinatorInstance =
             program.account(instance).await.unwrap();
+        // Airdrop SOL so this client can send transactions (e.g. ticks)
+        program
+            .rpc()
+            .request_airdrop(&key_pair.pubkey(), 1_000_000_000)
+            .await
+            .unwrap();
         Self {
             program,
+            instance,
             account: coordinator_instance.coordinator_account,
             run_id,
             owner_keypair: key_pair,
@@ -66,6 +74,16 @@ impl SolanaTestClient {
             &self.account,
             &self.owner_keypair.pubkey(),
             paused,
+        );
+        self.program.request().instruction(instruction).send().await
+    }
+
+    /// Send a tick transaction to advance the coordinator state machine.
+    pub async fn send_tick(&self) -> Result<Signature, ClientError> {
+        let instruction = psyche_solana_rpc::instructions::coordinator_tick(
+            &self.instance,
+            &self.account,
+            &self.owner_keypair.pubkey(),
         );
         self.program.request().instruction(instruction).send().await
     }
