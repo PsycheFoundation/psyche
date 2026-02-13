@@ -77,9 +77,6 @@ pub enum ProgramError {
 
     #[msg("run_id must be 32 bytes or less")]
     RunIdInvalidLength,
-
-    #[msg("Another client is already using this p2p identity")]
-    DuplicateP2pIdentity,
 }
 
 impl From<CoordinatorError> for ProgramError {

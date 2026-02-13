@@ -225,22 +225,38 @@ impl App {
             .await?
             .state;
 
-        // Check if a *different* signer is already using our p2p identity (iroh key).
-        // Two iroh nodes with the same key cause relay connection conflicts.
-        // Same signer is allowed — that's a legitimate client restart.
-        let our_p2p_identity = *p2p_identity.as_bytes();
-        if let Some(existing) = start_account_state
+        if let Some(existing_client) = start_account_state
             .clients_state
             .clients
             .iter()
-            .find(|c| c.id.p2p_identity == our_p2p_identity && c.id.signer != signer)
+            .find(|c| c.id.signer == signer)
         {
-            anyhow::bail!(
-                "Another client (signer: {}) is already using the same p2p identity (iroh key). \
-                 This causes relay connection conflicts. \
-                 Use a different wallet or provide a unique identity key via --identity-secret-key-path.",
-                existing.id.signer,
-            );
+            if existing_client.last_seen > 0 {
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as i64;
+                let elapsed = now - existing_client.last_seen;
+                const STALENESS_THRESHOLD_SECS: i64 = 60;
+                if elapsed < STALENESS_THRESHOLD_SECS {
+                    anyhow::bail!(
+                        "Another client with wallet {} was active {} seconds ago (last_seen={}). \
+                         Running two clients with the same Solana private key causes iroh relay conflicts. \
+                         Wait at least {} seconds after the previous client stopped before restarting.",
+                        signer,
+                        elapsed,
+                        existing_client.last_seen,
+                        STALENESS_THRESHOLD_SECS
+                    );
+                } else {
+                    info!(
+                        wallet = %signer,
+                        last_seen = existing_client.last_seen,
+                        elapsed_secs = elapsed,
+                        "Re-joining after a previous session (last_seen is stale)"
+                    );
+                }
+            }
         }
 
         let start_coordinator_state = start_account_state.coordinator;
@@ -280,18 +296,6 @@ impl App {
             .get_coordinator_account(&coordinator_account)
             .await?
             .state;
-
-        // Verify relay connectivity. If another node with the same iroh identity key
-        // is already connected, the relay will reject us within a couple seconds.
-        // Wait briefly to let the relay conflict manifest, then check.
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        if !self.p2p.has_relay_connection() {
-            anyhow::bail!(
-                "Lost relay connection shortly after startup. \
-                 This usually means another client is already running with the same iroh identity key. \
-                 Use a different wallet or provide a unique identity key via --identity-secret-key-path."
-            );
-        }
 
         let mut latest_update = coordinator_state.coordinator;
         let mut updates = backend_runner.updates();

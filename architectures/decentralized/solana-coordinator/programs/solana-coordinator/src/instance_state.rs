@@ -223,11 +223,13 @@ impl CoordinatorInstanceState {
     }
 
     pub fn witness(&mut self, payer: &Pubkey, witness: Witness) -> Result<()> {
-        let id = self.clients_state.find_signer(payer)?;
+        let id = *self.clients_state.find_signer(payer)?;
 
         let clock: Clock = Clock::get()?;
+        self.clients_state
+            .update_last_seen(payer, clock.unix_timestamp);
         self.coordinator
-            .witness(id, witness, clock.unix_timestamp as u64)
+            .witness(&id, witness, clock.unix_timestamp as u64)
             .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
 
         self.tick()
@@ -238,12 +240,14 @@ impl CoordinatorInstanceState {
         payer: &Pubkey,
         witness: Witness,
     ) -> Result<()> {
-        let id = self.clients_state.find_signer(payer)?;
+        let id = *self.clients_state.find_signer(payer)?;
 
         let clock: Clock = Clock::get()?;
+        self.clients_state
+            .update_last_seen(payer, clock.unix_timestamp);
         self.coordinator
             .warmup_witness(
-                id,
+                &id,
                 witness,
                 clock.unix_timestamp as u64,
                 Self::get_random_seed(&clock),
@@ -324,13 +328,7 @@ impl CoordinatorInstanceState {
     }
 
     pub fn join_run(&mut self, id: ClientId) -> Result<()> {
-        // Reject if another client (different signer) is already using this p2p identity
-        if self.clients_state.clients.iter().any(|c| {
-            c.id.p2p_identity == id.p2p_identity && c.id.signer != id.signer
-        }) {
-            return err!(ProgramError::DuplicateP2pIdentity);
-        }
-
+        let timestamp = Clock::get()?.unix_timestamp;
         let existing = match self
             .clients_state
             .clients
@@ -343,6 +341,7 @@ impl CoordinatorInstanceState {
                 }
                 client.id = id; // IMPORTANT. Equality is on wallet key but includes ephemeral p2p key
                 client.active = self.clients_state.next_active;
+                client.last_seen = timestamp;
                 msg!("Existing client {} re-joined", id.signer);
                 true
             },
@@ -362,7 +361,7 @@ impl CoordinatorInstanceState {
                 earned: 0,
                 slashed: 0,
                 active: self.clients_state.next_active,
-                _unused: Default::default(),
+                last_seen: timestamp,
             };
 
             if self.clients_state.clients.push(new_client).is_err() {
@@ -388,27 +387,32 @@ impl CoordinatorInstanceState {
         checks: HealthChecks<ClientId>,
     ) -> Result<()> {
         // O(n) on clients, reconsider
-        let id = self.clients_state.find_signer(payer)?;
+        let id = *self.clients_state.find_signer(payer)?;
 
+        self.clients_state
+            .update_last_seen(payer, Clock::get()?.unix_timestamp);
         self.coordinator
-            .health_check(id, checks)
+            .health_check(&id, checks)
             .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
         self.tick()
     }
 
     pub fn checkpoint(&mut self, payer: &Pubkey, repo: HubRepo) -> Result<()> {
         // O(n) on clients, reconsider
-        let id = self.clients_state.find_signer(payer)?;
+        let id = *self.clients_state.find_signer(payer)?;
+
+        self.clients_state
+            .update_last_seen(payer, Clock::get()?.unix_timestamp);
         let index = self
             .coordinator
             .epoch_state
             .clients
             .iter()
-            .position(|x| x.id == *id)
+            .position(|x| x.id == id)
             .ok_or(ProgramError::SignerNotAClient)?;
 
         self.coordinator
-            .checkpoint(id, index as u64, repo)
+            .checkpoint(&id, index as u64, repo)
             .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
 
         // Only tick if not halted (Paused/Uninitialized/Finished)

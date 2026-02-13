@@ -75,4 +75,12 @@ impl ClientsState {
             None => err!(ProgramError::SignerNotAClient),
         }
     }
+
+    pub fn update_last_seen(&mut self, signer: &Pubkey, timestamp: i64) {
+        if let Some(client) =
+            self.clients.iter_mut().find(|x| x.id.signer == *signer)
+        {
+            client.last_seen = timestamp;
+        }
+    }
 }

@@ -25,7 +25,7 @@ use ts_rs::TS;
 #[ts(rename = "SolanaClient")]
 pub struct Client {
     pub id: ClientId,
-    pub _unused: [u8; 8],
+    pub last_seen: i64,
     pub earned: u64,
     pub slashed: u64,
     pub active: u64,
@@ -35,6 +35,7 @@ impl Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
             .field("id", &self.id)
+            .field("last_seen", &self.last_seen)
             .field("earned", &self.earned)
             .field("slashed", &self.slashed)
             .field("active", &self.active)
