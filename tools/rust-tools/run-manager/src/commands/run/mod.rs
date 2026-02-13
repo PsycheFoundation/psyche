@@ -4,6 +4,7 @@ pub mod create_run;
 pub mod download_results;
 pub mod json_dump_run;
 pub mod json_dump_user;
+pub mod run_down_service;
 pub mod set_future_epoch_rates;
 pub mod set_paused;
 pub mod tick;

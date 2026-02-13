@@ -8353,6 +8353,7 @@ dependencies = [
  "chrono",
  "clap",
  "clap-markdown",
+ "futures",
  "psyche-coordinator",
  "psyche-core",
  "psyche-solana-authorizer",
@@ -8368,9 +8369,11 @@ dependencies = [
  "solana-client",
  "time",
  "tokio",
+ "tokio-util 0.7.16",
  "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
+ "walkdir",
 ]
 
 [[package]]

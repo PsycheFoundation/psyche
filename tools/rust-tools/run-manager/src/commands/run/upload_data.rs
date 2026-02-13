@@ -3,18 +3,13 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use clap::Args;
-use serde::{Deserialize, Serialize};
-use tokio::fs;
+use tokio::fs::File;
+use walkdir::WalkDir;
 
 use crate::commands::Command;
 use psyche_solana_rpc::SolanaBackend;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct UploadUrlResponse {
-    url: String,
-    #[serde(rename = "expiresAt")]
-    expires_at: String,
-}
+use super::run_down_service;
 
 #[derive(Debug, Clone, Args)]
 #[command()]
@@ -90,66 +85,38 @@ impl Command for CommandUploadData {
             // Generate a random nonce for this file
             let nonce: u64 = rand::random();
 
-            // Create the message to sign: ${runId}:${expiresInSeconds}:${nonce}
-            let message = format!("{}:{}:{}", run_id, expires_in_seconds, nonce);
-            let message_bytes = message.as_bytes();
-
-            // Sign the message using the backend's wallet
-            let signature = backend.sign_message(message_bytes);
-
-            // Encode the signature in base58
-            let signature_b58 = bs58::encode(&signature).into_string();
-
-            // Create the request body
-            #[derive(Serialize)]
-            struct RequestBody {
-                filename: String,
-                #[serde(rename = "expiresInSeconds")]
-                expires_in_seconds: u64,
-                nonce: String,
-            }
-
-            let request_body = RequestBody {
-                filename: relative_path.to_string(),
-                expires_in_seconds,
-                nonce: nonce.to_string(),
-            };
+            // Generate signature for the run-down service
+            let signature_b58 =
+                run_down_service::generate_signature(&backend, &run_id, expires_in_seconds, nonce);
 
             // Make POST request to get upload URL
-            let api_url = format!("https://run-down.nousresearch.com/v1/upload/{}", run_id);
+            let upload_response = run_down_service::get_upload_url(
+                &client,
+                &run_id,
+                &signature_b58,
+                relative_path,
+                expires_in_seconds,
+                nonce,
+            )
+            .await?;
 
-            let response = client
-                .post(&api_url)
-                .header("X-Solana-Signature", signature_b58)
-                .json(&request_body)
-                .send()
-                .await
-                .context("Failed to request upload URL")?;
-
-            if !response.status().is_success() {
-                let status = response.status();
-                let error_text = response.text().await.unwrap_or_default();
-                bail!("API request failed with status {}: {}", status, error_text);
-            }
-
-            let upload_response: UploadUrlResponse = response
-                .json()
-                .await
-                .context("Failed to parse upload URL response")?;
-
-            // Read the file contents
-            let file_contents = fs::read(file_path)
+            // Stream the file contents
+            let file = File::open(file_path)
                 .await
                 .with_context(|| format!("Failed to read file: {:?}", file_path))?;
 
-            let file_size = file_contents.len();
+            let file_metadata = file
+                .metadata()
+                .await
+                .with_context(|| format!("Failed to read file metadata: {:?}", file))?;
+            let file_size = file_metadata.len();
             println!("  Uploading {} bytes...", file_size);
 
             // Upload the file to the signed URL
             let upload_response = client
                 .put(&upload_response.url)
                 .header("Content-Type", "application/octet-stream")
-                .body(file_contents)
+                .body(file)
                 .send()
                 .await
                 .context("Failed to upload file to signed URL")?;
@@ -174,21 +141,12 @@ impl Command for CommandUploadData {
 
 /// Recursively collect all files from a directory
 async fn collect_files_from_dir(dir: &PathBuf) -> Result<Vec<PathBuf>> {
-    let mut files = Vec::new();
-    let mut entries = fs::read_dir(dir)
-        .await
-        .with_context(|| format!("Failed to read directory: {:?}", dir))?;
-
-    while let Some(entry) = entries.next_entry().await? {
-        let path = entry.path();
-
-        if path.is_file() {
-            files.push(path);
-        } else if path.is_dir() {
-            let mut sub_files = Box::pin(collect_files_from_dir(&path)).await?;
-            files.append(&mut sub_files);
-        }
-    }
+    let files: Vec<PathBuf> = WalkDir::new(dir)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_type().is_file())
+        .map(|entry| entry.path().to_path_buf())
+        .collect();
 
     Ok(files)
 }

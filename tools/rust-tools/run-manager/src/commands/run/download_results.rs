@@ -1,25 +1,15 @@
 use std::path::PathBuf;
 
+use crate::commands::Command;
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use clap::Args;
-use serde::{Deserialize, Serialize};
-
-use crate::commands::Command;
+use futures::TryStreamExt;
 use psyche_solana_rpc::SolanaBackend;
+use tokio::fs::File;
+use tokio_util::io::StreamReader;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct DownloadUrlEntry {
-    path: String,
-    url: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct DownloadUrlsResponse {
-    urls: Vec<DownloadUrlEntry>,
-    #[serde(rename = "expiresAt")]
-    expires_at: String,
-}
+use super::run_down_service;
 
 #[derive(Debug, Clone, Args)]
 #[command()]
@@ -32,6 +22,9 @@ pub struct CommandDownloadResults {
 
     #[clap(long, env, default_value = "3600")]
     pub expires_in_seconds: u64,
+
+    #[clap(long)]
+    pub overwrite: bool,
 }
 
 #[async_trait]
@@ -41,63 +34,58 @@ impl Command for CommandDownloadResults {
             run_id,
             output_dir,
             expires_in_seconds,
+            overwrite,
         } = self;
 
-        // Generate a random nonce
-        let nonce: u64 = rand::random();
+        // Check if output directory exists and is not empty
+        if output_dir.exists() && !overwrite {
+            let mut entries = tokio::fs::read_dir(&output_dir)
+                .await
+                .context("Failed to read output directory")?;
 
-        // Create the message to sign: ${runId}:${expiresInSeconds}:${nonce}
-        let message = format!("{}:{}:{}", run_id, expires_in_seconds, nonce);
-        let message_bytes = message.as_bytes();
+            if entries.next_entry().await?.is_some() {
+                println!(
+                    "Warning: Output directory {:?} already exists and contains files.",
+                    output_dir
+                );
+                println!("Files may be overwritten during download.");
+                print!("Continue? [y/N]: ");
+                std::io::Write::flush(&mut std::io::stdout())?;
 
-        // Sign the message using the backend's wallet
-        let signature = backend.sign_message(message_bytes);
+                let mut response = String::new();
+                std::io::stdin().read_line(&mut response)?;
 
-        // Encode the signature in base58
-        let signature_b58 = bs58::encode(&signature).into_string();
-
-        // Create the request body
-        #[derive(Serialize)]
-        struct RequestBody {
-            #[serde(rename = "expiresInSeconds")]
-            expires_in_seconds: u64,
-            nonce: String,
+                if !response.trim().eq_ignore_ascii_case("y") {
+                    println!("Download cancelled.");
+                    return Ok(());
+                }
+            }
         }
-
-        let request_body = RequestBody {
-            expires_in_seconds,
-            nonce: nonce.to_string(),
-        };
-
-        // Make POST request to the API
-        let api_url = format!("https://run-down.nousresearch.com/v1/download/{}", run_id);
-
-        let client = reqwest::Client::new();
-        let response = client
-            .post(&api_url)
-            .header("X-Solana-Signature", signature_b58)
-            .json(&request_body)
-            .send()
-            .await
-            .context("Failed to fetch download URLs")?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_default();
-            bail!("API request failed with status {}: {}", status, error_text);
-        }
-
-        let urls_response: DownloadUrlsResponse = response
-            .json()
-            .await
-            .context("Failed to parse response JSON")?;
-
-        println!("Found {} files to download", urls_response.urls.len());
 
         // Create output directory if it doesn't exist
         tokio::fs::create_dir_all(&output_dir)
             .await
             .context("Failed to create output directory")?;
+
+        // Generate a random nonce
+        let nonce: u64 = rand::random();
+
+        // Generate signature for the run-down service
+        let signature_b58 =
+            run_down_service::generate_signature(&backend, &run_id, expires_in_seconds, nonce);
+
+        // Make POST request to the API
+        let client = reqwest::Client::new();
+        let urls_response = run_down_service::get_download_urls(
+            &client,
+            &run_id,
+            &signature_b58,
+            expires_in_seconds,
+            nonce,
+        )
+        .await?;
+
+        println!("Found {} files to download", urls_response.urls.len());
 
         // Download each file
         for (idx, entry) in urls_response.urls.iter().enumerate() {
@@ -132,14 +120,14 @@ impl Command for CommandDownloadResults {
                     .with_context(|| format!("Failed to create directory {:?}", parent))?;
             }
 
-            let bytes = file_response
-                .bytes()
+            let mut file = File::create(&file_path)
                 .await
-                .with_context(|| format!("Failed to read bytes from {}", entry.url))?;
+                .with_context(|| format!("Failed to create file {file_path:?}"))?;
+            let stream = file_response.bytes_stream().map_err(std::io::Error::other);
 
-            tokio::fs::write(&file_path, bytes)
+            tokio::io::copy(&mut StreamReader::new(stream), &mut file)
                 .await
-                .with_context(|| format!("Failed to write file to {:?}", file_path))?;
+                .with_context(|| format!("Failed to download to file {file_path:?}"))?;
 
             println!("  Saved to: {:?}", file_path);
         }
