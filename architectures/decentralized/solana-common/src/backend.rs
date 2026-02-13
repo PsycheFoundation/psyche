@@ -147,6 +147,7 @@ impl SolanaBackend {
 
         let backup_program_coordinators: Result<Vec<_>, _> = backup_clusters
             .iter()
+            .filter(|backup| backup.url() != cluster.url())
             .map(|cluster| {
                 Client::new_with_options(cluster.clone(), payer.clone(), commitment)
                     .program(psyche_solana_coordinator::ID)
