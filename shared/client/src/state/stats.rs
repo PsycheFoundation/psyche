@@ -144,14 +144,18 @@ impl StatsLogger {
             .map(
                 |P2PEndpointInfo {
                      id: endpoint_id,
-                     path,
+                     selected_path,
                      bandwidth,
                      latency,
                  }| {
+                    let path_str = selected_path
+                        .as_ref()
+                        .map(|p| p.to_string())
+                        .unwrap_or_else(|| "none".to_string());
                     (
                         endpoint_id.to_string(),
                         HashMap::from([
-                            ("path", DataValue::from(path.to_string())),
+                            ("path", DataValue::from(path_str)),
                             ("bandwidth", DataValue::from(*bandwidth)),
                             ("latency", DataValue::from(*latency)),
                         ])
