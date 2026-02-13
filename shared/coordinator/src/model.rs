@@ -97,6 +97,7 @@ pub enum LLMTrainingDataLocation {
     /// link to a JSON file that deserializes to a Vec<LLMTrainingDataLocationAndWeight>
     WeightedHttp(FixedString<{ SOLANA_MAX_URL_STRING_LEN }>),
     Preprocessed(FixedString<{ SOLANA_MAX_URL_STRING_LEN }>),
+    HuggingFacePreprocessed(HuggingFacePreprocessedDataLocation),
 }
 
 #[derive(
@@ -116,6 +117,26 @@ pub enum LLMTrainingDataLocation {
 pub struct HttpLLMTrainingDataLocation {
     pub location: HttpTrainingDataLocation,
     pub token_size_in_bytes: TokenSize,
+    pub shuffle: Shuffle,
+}
+
+#[derive(
+    AnchorSerialize,
+    AnchorDeserialize,
+    InitSpace,
+    Serialize,
+    Deserialize,
+    Clone,
+    Debug,
+    Zeroable,
+    Copy,
+    TS,
+)]
+#[repr(C)]
+pub struct HuggingFacePreprocessedDataLocation {
+    pub repo_id: FixedString<{ SOLANA_MAX_STRING_LEN }>,
+    pub config: FixedString<{ SOLANA_MAX_STRING_LEN }>,
+    pub split: FixedString<{ SOLANA_MAX_STRING_LEN }>,
     pub shuffle: Shuffle,
 }
 
@@ -298,6 +319,11 @@ impl Model {
                     },
                     LLMTrainingDataLocation::WeightedHttp(url) => url.is_empty(),
                     LLMTrainingDataLocation::Preprocessed(url) => url.is_empty(),
+                    LLMTrainingDataLocation::HuggingFacePreprocessed(location) => {
+                        location.repo_id.is_empty()
+                            || location.config.is_empty()
+                            || location.split.is_empty()
+                    }
                 };
                 if bad_data_location {
                     msg!("model check failed: bad LLM training data location.");
