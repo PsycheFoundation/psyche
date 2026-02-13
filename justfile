@@ -348,7 +348,7 @@ test-model-loading initial_model="gpt2":
 
     sleep 5
     echo ""
-    echo "✓ All nodes started"
+    echo "All nodes started"
     echo ""
 
     # Create test window with instructions

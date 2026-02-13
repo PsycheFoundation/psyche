@@ -6,10 +6,7 @@ use serde::{Deserialize, Serialize};
 pub enum ModelSource {
     HuggingFace(String),
     Local(String),
-    // /// S3 or object storage URI - should be GCP
-    // S3(String),
-    // /// Iroh blob hash
-    // IrohBlob(String),
+    // See test case below for additional future source types
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
