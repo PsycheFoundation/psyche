@@ -1,11 +1,13 @@
 use anyhow::{Context, Result};
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use psyche_core::{
     Barrier, BatchId, CancellableBarrier, ClosedInterval, CosineLR, OptimizerDefinition, Shuffle,
 };
 use psyche_data_provider::{
     DataProvider, LengthKnownDataProvider, LocalDataProvider, PreprocessedDataProvider, Split,
-    TokenizedDataProvider, download_model_repo_sync,
+    TokenizedDataProvider, WeightedDataProvider, WeightedHttpProvidersConfig,
+    download_model_repo_sync,
+    http::{FileURLs, HttpDataProvider},
 };
 use psyche_modeling::{
     AttentionImplementation, Batch, BatchData, BatchDataCPU, CausalLM, CommunicatorId,
@@ -91,13 +93,67 @@ enum Commands {
     },
 }
 
+#[derive(Subcommand, Debug, Clone)]
+enum DataSource {
+    /// Local directory with .ds files
+    Local {
+        #[arg(long, default_value = "data")]
+        path: String,
+    },
+    /// Local directory with .parquet files
+    LocalPreprocessed {
+        #[arg(long, default_value = "data")]
+        path: String,
+    },
+    /// HTTP with URL template
+    HttpTemplate {
+        /// URL template with {} placeholder (e.g., "http://example.com/{}.ds")
+        #[arg(long)]
+        template: String,
+        /// Start index
+        #[arg(long, default_value = "0")]
+        start: u32,
+        /// End index
+        #[arg(long)]
+        end: u32,
+        /// Number of zeros to left-pad to
+        #[arg(long, default_value = "0")]
+        left_pad_zeros: u8,
+    },
+    /// HTTP with explicit URLs
+    Urls {
+        /// List of data URLs
+        urls: Vec<String>,
+    },
+    /// HTTP from GCP bucket
+    Gcp {
+        /// The name of the GCP bucket
+        #[arg(long)]
+        bucket_name: String,
+        /// An optional directory to filter by
+        #[arg(long)]
+        directory: Option<String>,
+    },
+    /// Weighted HTTP config (JSON file or URL)
+    WeightedConfig {
+        /// Path or URL to WeightedHttpProvidersConfig JSON file
+        #[arg(long)]
+        config: String,
+    },
+}
+
 #[derive(Args, Debug, Clone)]
 struct RunArgs {
     #[arg(long, default_value = "emozilla/llama2-215m-init")]
     model: String,
 
+    /// Path to local data directory (used when no data source subcommand is specified)
     #[arg(long, default_value = "data")]
     data_path: String,
+
+    /// Data source subcommand (defaults to local .ds files from --data-path)
+    #[command(subcommand)]
+    data_source: Option<DataSource>,
 
     #[arg(long, default_value_t = 2048)]
     sequence_length: usize,
@@ -233,27 +289,41 @@ async fn main() -> Result<()> {
         None => Shuffle::DontShuffle,
     };
 
-    let mut dataset: DataProvider<DummyNodeIdentity> = match LocalDataProvider::new_from_directory(
-        &args.data_path,
-        args.token_size.try_into()?,
-        args.sequence_length,
-        shuffle,
-    )
-    .with_context(|| "Failed to load data with local data provider.")
-    {
-        Ok(dataset) => {
+    let token_size = args.token_size.try_into()?;
+
+    let mut dataset: DataProvider<DummyNodeIdentity> = match &args.data_source {
+        None | Some(DataSource::Local { .. }) => {
+            // Use data_path from Local subcommand or fallback to args.data_path
+            let data_path = match &args.data_source {
+                Some(DataSource::Local { path }) => path,
+                _ => &args.data_path,
+            };
+            if !std::path::Path::new(data_path).exists() {
+                eprintln!("Error: Data directory '{}' does not exist.\n", data_path);
+                CliArgs::command().print_long_help()?;
+                std::process::exit(1);
+            }
+            let dataset = LocalDataProvider::new_from_directory(
+                data_path,
+                token_size,
+                args.sequence_length,
+                shuffle,
+            )
+            .with_context(|| format!("Failed to load local .ds data from '{}'", data_path))?;
             info!(
                 "Loaded local dataset with {} samples",
                 dataset.num_sequences()
             );
             DataProvider::Local(dataset)
         }
-        Err(err) => {
-            println!(
-                "Failed to load with local data provider. {err:?} Trying preprocessed data provider instead"
-            );
+        Some(DataSource::LocalPreprocessed { path }) => {
+            if !std::path::Path::new(path).exists() {
+                eprintln!("Error: Data directory '{}' does not exist.\n", path);
+                CliArgs::command().print_long_help()?;
+                std::process::exit(1);
+            }
             let dataset = PreprocessedDataProvider::new_from_directory(
-                &args.data_path,
+                path,
                 args.sequence_length,
                 shuffle,
                 Some(Split::Train),
@@ -265,6 +335,69 @@ async fn main() -> Result<()> {
                 dataset.num_sequences()
             );
             DataProvider::Preprocessed(dataset)
+        }
+        Some(DataSource::HttpTemplate {
+            template,
+            start,
+            end,
+            left_pad_zeros,
+        }) => {
+            if end <= start {
+                anyhow::bail!("end ({}) must be greater than start ({})", end, start);
+            }
+            let urls = FileURLs::from_template(template, *start, *left_pad_zeros, end - start)
+                .await
+                .with_context(|| format!("Failed to load URLs from template: {}", template))?;
+            let provider =
+                HttpDataProvider::new(urls, token_size, args.sequence_length as u32, shuffle)
+                    .with_context(|| "Failed to create HTTP data provider from template")?;
+            info!("Loaded HTTP template dataset");
+            DataProvider::Http(provider)
+        }
+        Some(DataSource::Urls { urls }) => {
+            if urls.is_empty() {
+                anyhow::bail!("At least one URL must be provided");
+            }
+            let urls = FileURLs::from_list(urls)
+                .await
+                .with_context(|| "Failed to load URLs from list")?;
+            let provider =
+                HttpDataProvider::new(urls, token_size, args.sequence_length as u32, shuffle)
+                    .with_context(|| "Failed to create HTTP data provider from URLs")?;
+            info!("Loaded HTTP URLs dataset");
+            DataProvider::Http(provider)
+        }
+        Some(DataSource::Gcp {
+            bucket_name,
+            directory,
+        }) => {
+            let urls = FileURLs::from_gcp_bucket(bucket_name, directory.clone())
+                .await
+                .with_context(|| format!("Failed to load URLs from GCP bucket: {}", bucket_name))?;
+            let provider =
+                HttpDataProvider::new(urls, token_size, args.sequence_length as u32, shuffle)
+                    .with_context(|| "Failed to create HTTP data provider from GCP bucket")?;
+            info!("Loaded GCP bucket dataset");
+            DataProvider::Http(provider)
+        }
+        Some(DataSource::WeightedConfig { config }) => {
+            let provider = if config.starts_with("http://") || config.starts_with("https://") {
+                WeightedDataProvider::from_config_url(config, args.sequence_length as u32)
+                    .await
+                    .with_context(|| {
+                        format!("Failed to load weighted config from URL: {}", config)
+                    })?
+            } else {
+                let content = std::fs::read_to_string(config)
+                    .with_context(|| format!("Failed to read config file: {}", config))?;
+                let cfg: WeightedHttpProvidersConfig = serde_json::from_str(&content)
+                    .with_context(|| format!("Failed to parse config JSON: {}", config))?;
+                WeightedDataProvider::from_config(cfg, args.sequence_length as u32)
+                    .await
+                    .with_context(|| "Failed to create weighted data provider")?
+            };
+            info!("Loaded weighted HTTP dataset");
+            DataProvider::WeightedHttp(provider)
         }
     };
 
