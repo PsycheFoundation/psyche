@@ -1,10 +1,11 @@
 use crate::instructions::{self, coordinator_tick};
+use crate::retry::{RetryError, retry_function_with_params};
 use anchor_client::anchor_lang::AccountDeserialize;
 use anchor_client::solana_sdk::hash::hash;
 use anchor_client::solana_sdk::instruction::Instruction;
 use anchor_client::solana_sdk::program_pack::Pack;
 use anchor_client::{
-    Client, Cluster, Program,
+    Client, ClientError, Cluster, Program,
     anchor_lang::system_program,
     solana_client::{
         nonblocking::pubsub_client::PubsubClient,
@@ -24,6 +25,7 @@ use psyche_core::IntegrationTestLogMarker;
 use psyche_watcher::{Backend as WatcherBackend, OpportunisticData};
 use solana_account_decoder_client_types::{UiAccount, UiAccountEncoding};
 use solana_transaction_status_client_types::UiTransactionEncoding;
+use std::future::Future;
 use std::{cmp::min, sync::Arc, time::Duration};
 use tokio::{
     sync::{broadcast, mpsc},
@@ -31,7 +33,9 @@ use tokio::{
 };
 use tracing::{error, info, trace, warn};
 
-const SEND_RETRIES: usize = 3;
+const RPC_RETRY_ATTEMPTS: usize = 3;
+const RPC_INITIAL_BACKOFF_MS: u64 = 500;
+const RPC_MAX_BACKOFF_MS: u64 = 10_000;
 
 #[derive(Clone)]
 pub struct SolanaBackend {
@@ -143,6 +147,7 @@ impl SolanaBackend {
 
         let backup_program_coordinators: Result<Vec<_>, _> = backup_clusters
             .iter()
+            .filter(|backup| backup.url() != cluster.url())
             .map(|cluster| {
                 Client::new_with_options(cluster.clone(), payer.clone(), commitment)
                     .program(psyche_solana_coordinator::ID)
@@ -452,48 +457,71 @@ impl SolanaBackend {
     }
 
     pub async fn get_minimum_balance_for_rent_exemption(&self, space: usize) -> Result<u64> {
-        // TODO (vbrunet) - should there be a retry mechanism here
-        self.program_coordinators[0]
-            .rpc()
-            .get_minimum_balance_for_rent_exemption(space)
-            .await
-            .with_context(|| {
-                format!("Unable to get minimum balance for rent exemption for {space}")
-            })
+        Self::rpc_with_fallback(
+            &self.program_coordinators,
+            "get_minimum_balance_for_rent_exemption",
+            |coord| async move {
+                coord
+                    .rpc()
+                    .get_minimum_balance_for_rent_exemption(space)
+                    .await
+                    .map_err(RetryError::from)
+            },
+        )
+        .await
     }
 
     pub async fn get_balance(&self, address: &Pubkey) -> Result<u64> {
-        // TODO (vbrunet) - should there be a retry mechanism here
-        self.program_coordinators[0]
-            .rpc()
-            .get_balance(address)
-            .await
-            .with_context(|| format!("Unable to get balance for {address}"))
+        let address = *address;
+        Self::rpc_with_fallback(
+            &self.program_coordinators,
+            "get_balance",
+            |coord| async move {
+                coord
+                    .rpc()
+                    .get_balance(&address)
+                    .await
+                    .map_err(RetryError::from)
+            },
+        )
+        .await
     }
 
     pub async fn get_data(&self, address: &Pubkey) -> Result<Vec<u8>> {
-        // TODO (vbrunet) - should there be a retry mechanism here
-        self.program_coordinators[0]
-            .rpc()
-            .get_account_data(address)
-            .await
-            .with_context(|| format!("Unable to get account data for {address}"))
+        let address = *address;
+        Self::rpc_with_fallback(
+            &self.program_coordinators,
+            "get_account_data",
+            |coord| async move {
+                coord
+                    .rpc()
+                    .get_account_data(&address)
+                    .await
+                    .map_err(RetryError::from)
+            },
+        )
+        .await
     }
 
     pub async fn get_logs(&self, tx: &Signature) -> Result<Vec<String>> {
-        // TODO (vbrunet) - should there be a retry mechanism here
-        let tx = self.program_coordinators[0]
-            .rpc()
-            .get_transaction_with_config(
-                tx,
-                RpcTransactionConfig {
-                    encoding: Some(UiTransactionEncoding::Json),
-                    commitment: Some(CommitmentConfig::confirmed()),
-                    max_supported_transaction_version: None,
-                },
-            )
+        let tx_sig = *tx;
+        let response =
+            Self::rpc_with_fallback(&self.program_coordinators, "get_logs", |coord| async move {
+                coord
+                    .rpc()
+                    .get_transaction_with_config(
+                        &tx_sig,
+                        RpcTransactionConfig {
+                            encoding: Some(UiTransactionEncoding::Json),
+                            commitment: Some(CommitmentConfig::confirmed()),
+                            max_supported_transaction_version: None,
+                        },
+                    )
+                    .await
+                    .map_err(RetryError::from)
+            })
             .await?;
-        Ok(tx
+        Ok(response
             .transaction
             .meta
             .context("Transaction has no meta information")?
@@ -534,41 +562,78 @@ impl SolanaBackend {
         });
     }
 
+    async fn rpc_with_fallback<T, F, Fut>(
+        program_coordinators: &[Arc<Program<Arc<Keypair>>>],
+        name: &str,
+        f: F,
+    ) -> Result<T>
+    where
+        F: Fn(Arc<Program<Arc<Keypair>>>) -> Fut,
+        Fut: Future<Output = Result<T, RetryError<ClientError>>>,
+    {
+        let mut last_error = None;
+        for (i, coordinator) in program_coordinators.iter().enumerate() {
+            let coordinator = coordinator.clone();
+            let result = retry_function_with_params(
+                &format!("{name} (RPC {i})"),
+                || {
+                    let coord = coordinator.clone();
+                    f(coord)
+                },
+                RPC_INITIAL_BACKOFF_MS,
+                1.5,
+                RPC_RETRY_ATTEMPTS,
+                RPC_MAX_BACKOFF_MS,
+            )
+            .await;
+
+            match result {
+                Ok(value) => return Ok(value),
+                Err(RetryError::Retryable(e)) => {
+                    warn!("{name}: RPC {i} exhausted retries, trying next: {e}");
+                    last_error = Some(e);
+                }
+                Err(RetryError::NonRetryable(e)) => {
+                    return Err(anyhow!("{name}: non-retryable error: {e}"));
+                }
+                Err(RetryError::Fatal(e)) => {
+                    return Err(anyhow!("{name}: fatal error: {e}"));
+                }
+            }
+        }
+
+        Err(anyhow!(
+            "{name}: all RPCs exhausted: {}",
+            last_error.map(|e| e.to_string()).unwrap_or_default()
+        ))
+    }
+
     async fn send_and_retry_with(
         program_coordinators: &[Arc<Program<Arc<Keypair>>>],
         name: &str,
         instructions: &[Instruction],
         signers: &[Arc<Keypair>],
     ) -> Result<Signature> {
-        // TODO (vbrunet) - can we improve the retry mechanism here
-        let mut retries = 0;
-        loop {
-            for program_coordinator in program_coordinators {
-                let mut request = program_coordinator.request();
-                for instruction in instructions {
-                    request = request.instruction((*instruction).clone());
+        info!("Sending transaction: {name}");
+        let instructions = instructions.to_vec();
+        let signers = signers.to_vec();
+        let signature = Self::rpc_with_fallback(program_coordinators, name, |coord| {
+            let instructions = instructions.clone();
+            let signers = signers.clone();
+            async move {
+                let mut request = coord.request();
+                for instruction in &instructions {
+                    request = request.instruction(instruction.clone());
                 }
-                for signer in signers {
+                for signer in &signers {
                     request = request.signer(signer.clone());
                 }
-                info!("Sending transaction: {name}");
-                match request.send().await {
-                    Ok(signature) => {
-                        info!("Transaction success: {name}, {signature}");
-                        return Ok(signature);
-                    }
-                    Err(error) => {
-                        retries += 1;
-                        if retries >= SEND_RETRIES {
-                            return Err(anyhow!(
-                                "Could not send transaction: {name}, after {retries} retries: {error}"
-                            ));
-                        }
-                        warn!("Error sending transaction: {name}: {error}, retrying");
-                    }
-                }
+                request.send().await.map_err(RetryError::from)
             }
-        }
+        })
+        .await?;
+        info!("Transaction success: {name}, {signature}");
+        Ok(signature)
     }
 }
 
