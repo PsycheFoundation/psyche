@@ -33,13 +33,9 @@ use tokio::{
 };
 use tracing::{error, info, trace, warn};
 
-const FALLBACK_RETRY_ATTEMPTS: usize = 2;
-const FALLBACK_INITIAL_BACKOFF_MS: u64 = 300;
-const FALLBACK_MAX_BACKOFF_MS: u64 = 3000;
-const SINGLE_RPC_RETRY_ATTEMPTS: usize = 5;
-const SINGLE_RPC_INITIAL_BACKOFF_MS: u64 = 500;
-const SINGLE_RPC_MAX_BACKOFF_MS: u64 = 10000;
-const BACKOFF_FACTOR: f32 = 1.5;
+const RPC_RETRY_ATTEMPTS: usize = 3;
+const RPC_INITIAL_BACKOFF_MS: u64 = 500;
+const RPC_MAX_BACKOFF_MS: u64 = 10_000;
 
 #[derive(Clone)]
 pub struct SolanaBackend {
@@ -574,21 +570,6 @@ impl SolanaBackend {
         F: Fn(Arc<Program<Arc<Keypair>>>) -> Fut,
         Fut: Future<Output = Result<T, RetryError<ClientError>>>,
     {
-        let has_backups = program_coordinators.len() > 1;
-        let (max_times, initial_backoff_ms, max_backoff_ms) = if has_backups {
-            (
-                FALLBACK_RETRY_ATTEMPTS,
-                FALLBACK_INITIAL_BACKOFF_MS,
-                FALLBACK_MAX_BACKOFF_MS,
-            )
-        } else {
-            (
-                SINGLE_RPC_RETRY_ATTEMPTS,
-                SINGLE_RPC_INITIAL_BACKOFF_MS,
-                SINGLE_RPC_MAX_BACKOFF_MS,
-            )
-        };
-
         let mut last_error = None;
         for (i, coordinator) in program_coordinators.iter().enumerate() {
             let coordinator = coordinator.clone();
@@ -598,10 +579,10 @@ impl SolanaBackend {
                     let coord = coordinator.clone();
                     f(coord)
                 },
-                initial_backoff_ms,
-                BACKOFF_FACTOR,
-                max_times,
-                max_backoff_ms,
+                RPC_INITIAL_BACKOFF_MS,
+                1.5,
+                RPC_RETRY_ATTEMPTS,
+                RPC_MAX_BACKOFF_MS,
             )
             .await;
 
