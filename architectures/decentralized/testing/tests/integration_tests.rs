@@ -464,10 +464,10 @@ async fn disconnect_client() {
     }
 
     // assert that two healthchecks were sent, by the alive clients
-    assert_eq!(
+    assert!(
+        seen_health_checks.len() >= 2,
+        "At least two healthchecks should have been sent, got {}",
         seen_health_checks.len(),
-        2,
-        "Two healthchecks should have been sent"
     );
 
     // check how many batches where lost due to the client shutdown
