@@ -205,7 +205,7 @@ mod tests {
                     // now c broadcasts, sends to b, and b drops the message because it does not have further neighbors
                     // in a very short time after, it will receive the neighbor message from a, but too late, because iroh-gossip does not forward messages received before a join
 
-                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                     println!("gossip connections {i} ready");
                 }
                 let (gossip_tx, gossip_rx) = sub.split();
@@ -228,41 +228,51 @@ mod tests {
         println!("checking for recv'd messages..");
 
         // Check received messages
-        for (i, (_, ref mut gossip_rx)) in subscriptions.iter_mut().enumerate() {
-            let mut received_messages = Vec::new();
-            while let Ok(Some(Ok(msg))) =
-                tokio::time::timeout(Duration::from_millis(1000), gossip_rx.next()).await
-            {
-                if let Event::Received(Message { content, .. }) = msg {
-                    let message = String::from_utf8(content.to_vec())?;
+        let mut tasks = vec![];
+        for (i, (_, mut gossip_rx)) in subscriptions.into_iter().enumerate() {
+            tasks.push(tokio::spawn(async move {
+                let mut received_messages = Vec::new();
+                tokio::time::timeout(Duration::from_millis(200), async {
+                    while let Some(Ok(msg)) = gossip_rx.next().await {
+                        if let Event::Received(Message { content, .. }) = msg {
+                            let message =
+                                String::from_utf8(content.to_vec()).expect("non-utf8 message");
 
-                    received_messages.push(message);
-                } else if let Event::Lagged = msg {
-                    panic!("lagged..");
+                            received_messages.push(message);
+                        } else if let Event::Lagged = msg {
+                            panic!("lagged..");
+                        }
+                    }
+                })
+                .await
+                .ok();
+
+                // Verify that messages from non-allowed clients (i > N_ALLOWED) are not received
+                for message in &received_messages {
+                    let sender_id = message
+                        .strip_prefix("Message from client ")
+                        .and_then(|n| n.parse::<u8>().ok())
+                        .expect("Invalid message format");
+
+                    assert!(
+                        sender_id < N_ALLOWED,
+                        "Router {i} received message from non-allowed client {sender_id}"
+                    );
                 }
-            }
 
-            // Verify that messages from non-allowed clients (i > N_ALLOWED) are not received
-            for message in &received_messages {
-                let sender_id = message
-                    .strip_prefix("Message from client ")
-                    .and_then(|n| n.parse::<u8>().ok())
-                    .expect("Invalid message format");
-
-                assert!(
-                    sender_id <= N_ALLOWED,
-                    "Router {i} received message from non-allowed client {sender_id}"
-                );
-            }
-
-            // Verify that all messages from allowed clients are received
-            if i < N_ALLOWED as usize {
-                assert_eq!(
+                // Verify that all messages from allowed clients are received
+                if i < N_ALLOWED as usize {
+                    assert_eq!(
                     received_messages.len(),
                     N_ALLOWED as usize - 1, // -1 because we're one of them!
                     "Router {i} didn't receive all allowed messages. only saw {received_messages:?}"
                 );
-            }
+                    println!("Router {i} received all messages");
+                }
+            }));
+        }
+        for task in tasks {
+            task.await.expect("panicked");
         }
 
         Ok(())
