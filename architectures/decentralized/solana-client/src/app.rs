@@ -281,6 +281,19 @@ impl App {
             .await?
             .state;
 
+        // Verify relay connectivity before proceeding.
+        // By this point several seconds have passed since the iroh endpoint was created.
+        // If the relay connection dropped (e.g. another node with the same iroh key is
+        // already connected), bail early with a clear error instead of running with
+        // a broken relay that spams warnings.
+        if !self.p2p.has_relay_connection() {
+            anyhow::bail!(
+                "Lost relay connection shortly after startup. \
+                 This usually means another client is already running with the same iroh identity key. \
+                 Use a different wallet or provide a unique identity key via --identity-secret-key-path."
+            );
+        }
+
         let mut latest_update = coordinator_state.coordinator;
         let mut updates = backend_runner.updates();
         let mut client = Client::new(

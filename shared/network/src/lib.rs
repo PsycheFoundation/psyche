@@ -509,6 +509,12 @@ where
         self.router.endpoint().id()
     }
 
+    /// Returns true if the endpoint currently has at least one relay URL,
+    /// indicating an active relay connection.
+    pub fn has_relay_connection(&self) -> bool {
+        self.endpoint.addr().relay_urls().next().is_some()
+    }
+
     pub fn is_allowlisted<A: Allowlist>(endpoint_id: &EndpointId, allowlist: &A) -> bool {
         allowlist.allowed(*endpoint_id)
     }
