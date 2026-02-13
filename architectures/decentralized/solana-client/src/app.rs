@@ -225,18 +225,19 @@ impl App {
             .await?
             .state;
 
-        // Check if a client with the same p2p identity is already registered in the run.
+        // Check if a *different* signer is already using our p2p identity (iroh key).
         // Two iroh nodes with the same key cause relay connection conflicts.
+        // Same signer is allowed — that's a legitimate client restart.
         let our_p2p_identity = *p2p_identity.as_bytes();
         if let Some(existing) = start_account_state
             .clients_state
             .clients
             .iter()
-            .find(|c| c.id.p2p_identity == our_p2p_identity)
+            .find(|c| c.id.p2p_identity == our_p2p_identity && c.id.signer != signer)
         {
             anyhow::bail!(
-                "A client with signer {} is already registered with the same p2p identity (iroh key). \
-                 Running two clients with the same identity causes relay connection conflicts. \
+                "Another client (signer: {}) is already using the same p2p identity (iroh key). \
+                 This causes relay connection conflicts. \
                  Use a different wallet or provide a unique identity key via --identity-secret-key-path.",
                 existing.id.signer,
             );
