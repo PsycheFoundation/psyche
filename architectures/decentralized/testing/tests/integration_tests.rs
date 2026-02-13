@@ -204,8 +204,23 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
     // initialize a Solana run with 1 client
     let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
 
-    println!("Waiting for run to go on with the first client");
-    tokio::time::sleep(Duration::from_secs(90)).await;
+    // Wait for the first client to reach Cooldown, which is when model
+    // parameters get serialized and become available for P2P sharing.
+    println!("Waiting for first client to reach Cooldown");
+    let _monitor_first = watcher
+        .monitor_container(
+            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
+            vec![IntegrationTestLogMarker::StateChange],
+        )
+        .unwrap();
+    while let Some(response) = watcher.log_rx.recv().await {
+        if let Response::StateChange(_timestamp, _client, _old_state, new_state, ..) = response {
+            println!("First client state: {new_state}");
+            if new_state == RunState::Cooldown.to_string() {
+                break;
+            }
+        }
+    }
 
     println!("Adding new clients");
     for i in 1..=n_new_clients {
