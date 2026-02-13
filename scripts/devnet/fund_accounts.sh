@@ -47,13 +47,13 @@ RECIPIENTS_FILE="$3"
 # Ensure the sender keypair file exists
 if [[ ! -f "$SENDER_KEYPAIR" ]]; then
     echo "Error: Sender keypair file '$SENDER_KEYPAIR' not found."
-    usage
+    _usage
 fi
 
 # Ensure NUM_ACCOUNTS is a positive integer
 if ! [[ "$NUM_ACCOUNTS" =~ ^[1-9][0-9]*$ ]]; then
     echo "Error: NUM_ACCOUNTS must be a positive integer."
-    usage
+    _usage
 fi
 
 # If recipients file is not provided, generate new keypairs
