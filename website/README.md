@@ -50,7 +50,7 @@ Optional:
 ### running with the backend pointed to localnet
 
 1. `cd backend`, `pnpm dev-local` in another terminal. This will build the WASM for deserializing the onchain state, build the IDL for interacting with the contracts, and start the backend.
-2. `cd frontend`, `pnpm dev` in another terminal.
+2. `cd frontend`, `pnpm dev-localnet` in another terminal.
 
 ### running with the backend pointing to a non-localnet setup
 
