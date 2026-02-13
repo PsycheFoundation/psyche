@@ -220,11 +220,29 @@ impl App {
         let signer = self.state_options.private_key.0.pubkey();
         let p2p_identity = self.state_options.private_key.1.public();
 
-        let start_coordinator_state = backend
+        let start_account_state = backend
             .get_coordinator_account(&coordinator_account)
             .await?
-            .state
-            .coordinator;
+            .state;
+
+        // Check if a client with the same p2p identity is already registered in the run.
+        // Two iroh nodes with the same key cause relay connection conflicts.
+        let our_p2p_identity = *p2p_identity.as_bytes();
+        if let Some(existing) = start_account_state
+            .clients_state
+            .clients
+            .iter()
+            .find(|c| c.id.p2p_identity == our_p2p_identity)
+        {
+            anyhow::bail!(
+                "A client with signer {} is already registered with the same p2p identity (iroh key). \
+                 Running two clients with the same identity causes relay connection conflicts. \
+                 Use a different wallet or provide a unique identity key via --identity-secret-key-path.",
+                existing.id.signer,
+            );
+        }
+
+        let start_coordinator_state = start_account_state.coordinator;
 
         let mut joined_run_this_epoch = None;
         let mut ever_joined_run = false;
