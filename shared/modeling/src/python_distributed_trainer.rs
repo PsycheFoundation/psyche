@@ -130,8 +130,6 @@ impl PythonDistributedTrainer {
             grad_accum_in_fp32,
         ));
 
-        comm.delete(&iteration.to_string())?;
-
         Ok(Self {
             model,
             local,
@@ -248,7 +246,6 @@ impl PythonDistributedTrainer {
         loss *= padded_bs as f32 / original_batch_size as f32; // undilute for padding
 
         trace!("Train operation complete on all Python clients");
-        self.comm.delete(&iteration.to_string())?;
 
         Ok(TrainOutput {
             trainer: Self {
@@ -309,8 +306,6 @@ impl PythonDistributedTrainer {
         let result = self.local.optimize(step, warmup_lr_between, distro_results);
 
         trace!("Optimize operation complete on all Python clients");
-        self.comm.delete(&iteration.to_string())?;
-
         result.map(|x| Self {
             local: Box::new(x),
             comm: self.comm,
@@ -339,9 +334,7 @@ impl PythonDistributedTrainer {
         self.comm.all_reduce(&dummy, ReduceType::Sum)?;
 
         let result = self.local.extract()?;
-
         trace!("Extract operation complete on all Python clients");
-        self.comm.delete(&iteration.to_string())?;
 
         Ok(result)
     }
