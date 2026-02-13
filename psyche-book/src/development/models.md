@@ -29,6 +29,18 @@ cargo run --example train -- \
     --micro-batch 1
 ```
 
+#### Local preprocessed data
+
+For preprocessed data in parquet format (with `inputs` column), use `local-preprocessed`:
+
+```bash
+cargo run --example train -- \
+    --model emozilla/llama2-20m-init \
+    --total-batch 2 \
+    --micro-batch 1 \
+    local-preprocessed --path ./data/parquet/
+```
+
 ### HTTP
 
 You can stream data directly from HTTP URLs without downloading the dataset first. There are several ways to specify HTTP data sources:

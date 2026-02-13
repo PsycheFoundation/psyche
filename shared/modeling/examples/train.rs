@@ -95,8 +95,13 @@ enum Commands {
 
 #[derive(Subcommand, Debug, Clone)]
 enum DataSource {
-    /// Local directory (default behavior)
+    /// Local directory with .ds files
     Local {
+        #[arg(long, default_value = "data")]
+        path: String,
+    },
+    /// Local directory with .parquet files
+    LocalPreprocessed {
         #[arg(long, default_value = "data")]
         path: String,
     },
@@ -142,11 +147,11 @@ struct RunArgs {
     #[arg(long, default_value = "emozilla/llama2-215m-init")]
     model: String,
 
-    /// Path to local data directory (backwards compatibility, use subcommand instead)
+    /// Path to local data directory (used when no data source subcommand is specified)
     #[arg(long, default_value = "data")]
     data_path: String,
 
-    /// Data source subcommand (optional, defaults to local data_path)
+    /// Data source subcommand (defaults to local .ds files from --data-path)
     #[command(subcommand)]
     data_source: Option<DataSource>,
 
@@ -298,40 +303,38 @@ async fn main() -> Result<()> {
                 CliArgs::command().print_long_help()?;
                 std::process::exit(1);
             }
-            match LocalDataProvider::new_from_directory(
+            let dataset = LocalDataProvider::new_from_directory(
                 data_path,
                 token_size,
                 args.sequence_length,
                 shuffle,
             )
-            .with_context(|| "Failed to load data with local data provider.")
-            {
-                Ok(dataset) => {
-                    info!(
-                        "Loaded local dataset with {} samples",
-                        dataset.num_sequences()
-                    );
-                    DataProvider::Local(dataset)
-                }
-                Err(err) => {
-                    println!(
-                        "Failed to load with local data provider. {err:?} Trying preprocessed data provider instead"
-                    );
-                    let dataset = PreprocessedDataProvider::new_from_directory(
-                        data_path,
-                        args.sequence_length,
-                        shuffle,
-                        Some(Split::Train),
-                        None,
-                    )
-                    .with_context(|| "Failed to load preprocessed data")?;
-                    info!(
-                        "Loaded preprocessed dataset with {} samples",
-                        dataset.num_sequences()
-                    );
-                    DataProvider::Preprocessed(dataset)
-                }
+            .with_context(|| format!("Failed to load local .ds data from '{}'", data_path))?;
+            info!(
+                "Loaded local dataset with {} samples",
+                dataset.num_sequences()
+            );
+            DataProvider::Local(dataset)
+        }
+        Some(DataSource::LocalPreprocessed { path }) => {
+            if !std::path::Path::new(path).exists() {
+                eprintln!("Error: Data directory '{}' does not exist.\n", path);
+                CliArgs::command().print_long_help()?;
+                std::process::exit(1);
             }
+            let dataset = PreprocessedDataProvider::new_from_directory(
+                path,
+                args.sequence_length,
+                shuffle,
+                Some(Split::Train),
+                None,
+            )
+            .with_context(|| "Failed to load preprocessed data")?;
+            info!(
+                "Loaded preprocessed dataset with {} samples",
+                dataset.num_sequences()
+            );
+            DataProvider::Preprocessed(dataset)
         }
         Some(DataSource::HttpTemplate {
             template,
