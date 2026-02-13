@@ -204,37 +204,39 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
     // initialize a Solana run with 1 client
     let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
 
-    // Wait for the first client to reach Cooldown, which is when model
-    // parameters get serialized and become available for P2P sharing.
-    println!("Waiting for first client to reach Cooldown");
+    // Wait for the first client to reach Training, then spawn new clients
+    println!("Waiting for first client to reach Training before spawning new clients...");
     let _monitor_first = watcher
         .monitor_container(
             &format!("{CLIENT_CONTAINER_PREFIX}-1"),
             vec![IntegrationTestLogMarker::StateChange],
         )
         .unwrap();
+    let mut clients_spawned = false;
     while let Some(response) = watcher.log_rx.recv().await {
         if let Response::StateChange(_timestamp, _client, _old_state, new_state, ..) = response {
             println!("First client state: {new_state}");
+            if !clients_spawned && new_state == RunState::RoundTrain.to_string() {
+                println!("Adding new clients early so containers are ready by Cooldown");
+                for i in 1..=n_new_clients {
+                    spawn_new_client(docker.clone(), None).await.unwrap();
+                    let _monitor_client = watcher
+                        .monitor_container(
+                            &format!("{CLIENT_CONTAINER_PREFIX}-{}", i + 1),
+                            vec![
+                                IntegrationTestLogMarker::LoadedModel,
+                                IntegrationTestLogMarker::Error,
+                                IntegrationTestLogMarker::Loss,
+                            ],
+                        )
+                        .unwrap();
+                }
+                clients_spawned = true;
+            }
             if new_state == RunState::Cooldown.to_string() {
                 break;
             }
         }
-    }
-
-    println!("Adding new clients");
-    for i in 1..=n_new_clients {
-        spawn_new_client(docker.clone(), None).await.unwrap();
-        let _monitor_client = watcher
-            .monitor_container(
-                &format!("{CLIENT_CONTAINER_PREFIX}-{}", i + 1),
-                vec![
-                    IntegrationTestLogMarker::LoadedModel,
-                    IntegrationTestLogMarker::Error,
-                    IntegrationTestLogMarker::Loss,
-                ],
-            )
-            .unwrap();
     }
 
     let mut liveness_check_interval = time::interval(Duration::from_secs(10));
