@@ -567,7 +567,7 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
     // Wait for state to change back to Warmup
     assert!(
         solana_client.wait_for_run_state(RunState::Warmup, 30).await,
-        "System should have returned to Warmup state after client reconnection"
+        "System should have returned to Warmup state after client reconnection TEST 2"
     );
     println!("Successfully returned to Warmup state after client reconnection");
 }

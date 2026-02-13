@@ -296,7 +296,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                     let mut available_trainers =
                         applying.await.map_err(|_| TrainError::ApplyCrashed)??;
 
-                    while let Some(data) = next_sample.recv().await {
+                    loop {
+                        let data = tokio::select! {
+                            data = next_sample.recv() => match data {
+                                Some(data) => data,
+                                None => break,
+                            },
+                            _ = cancel_training.cancelled() => break,
+                        };
                         let mut in_progress = FuturesUnordered::new();
 
                         // reset the DP barriers
