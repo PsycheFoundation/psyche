@@ -231,13 +231,32 @@ impl App {
             .iter()
             .find(|c| c.id.signer == signer)
         {
-            if existing_client.last_seen > 0 {
+            let was_unhealthy = start_account_state
+                .coordinator
+                .epoch_state
+                .clients
+                .iter()
+                .chain(
+                    start_account_state
+                        .coordinator
+                        .epoch_state
+                        .exited_clients
+                        .iter(),
+                )
+                .any(|c| c.id == existing_client.id && c.state != ClientState::Healthy);
+
+            if was_unhealthy {
+                info!(
+                    wallet = %signer,
+                    "Previous session was marked unhealthy, re-joining immediately"
+                );
+            } else if existing_client.last_seen > 0 {
                 let now = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs() as i64;
                 let elapsed = now - existing_client.last_seen;
-                const STALENESS_THRESHOLD_SECS: i64 = 60;
+                const STALENESS_THRESHOLD_SECS: i64 = 30;
                 if elapsed < STALENESS_THRESHOLD_SECS {
                     anyhow::bail!(
                         "Another client with wallet {} was active {} seconds ago (last_seen={}). \
