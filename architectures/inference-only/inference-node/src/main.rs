@@ -252,12 +252,10 @@ async fn main() -> Result<()> {
                 };
                 if let Err(e) = network.broadcast(&availability_msg) {
                     warn!("Failed to broadcast: {:#}", e);
+                } else if let Some(ref model) = model_name_for_broadcast {
+                    debug!("Re-broadcast successful (model: {})", model);
                 } else {
-                    if let Some(ref model) = model_name_for_broadcast {
-                        debug!("Re-broadcast successful (model: {})", model);
-                    } else {
-                        debug!("Re-broadcast successful (idle)");
-                    }
+                    debug!("Re-broadcast successful (idle)");
                 }
             }
 
@@ -306,7 +304,7 @@ async fn main() -> Result<()> {
                                         }
                                     }
 
-                                    match (async || -> Result<()> {
+                                    match async {
                                         let mut new_node = InferenceNode::new(
                                             model_path.clone(),
                                             Some(tensor_parallel_size),
@@ -320,8 +318,8 @@ async fn main() -> Result<()> {
 
                                         *inference_node_shared.write().await = Some(new_node);
                                         *current_model_name.write().await = Some(requested_model.clone());
-                                        Ok(())
-                                    })().await {
+                                        Ok::<(), anyhow::Error>(())
+                                    }.await {
                                         Ok(()) => {
                                             info!("Successfully loaded model: {}", requested_model);
 
