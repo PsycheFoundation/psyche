@@ -10,7 +10,9 @@
 
 use anyhow::{Context, Result};
 use clap::{Args as ClapArgs, Parser, Subcommand};
-use psyche_inference::{INFERENCE_ALPN, InferenceGossipMessage, InferenceNode, InferenceProtocol};
+use psyche_inference::{
+    INFERENCE_ALPN, InferenceGossipMessage, InferenceNode, InferenceProtocol, ModelSource,
+};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{DiscoveryMode, NetworkConnection, NetworkEvent, RelayKind, allowlist};
 use std::path::PathBuf;
@@ -103,10 +105,12 @@ async fn main() -> Result<()> {
         None => cli.run_args,
     };
 
-    let model_name = run_args.model_name.context("--model-name is required")?;
-
     info!("Starting Psyche Inference Node");
-    info!("Model: {}", model_name);
+    if let Some(ref model) = run_args.model_name {
+        info!("Model: {}", model);
+    } else {
+        info!("Model: <idle - will load on request>");
+    }
     info!("Tensor Parallel Size: {}", run_args.tensor_parallel_size);
     info!(
         "GPU Memory Utilization: {}",
@@ -138,23 +142,31 @@ async fn main() -> Result<()> {
     pyo3::prepare_freethreaded_python();
     info!("Python interpreter initialized");
 
-    info!("Initializing vLLM engine...");
-    let mut inference_node = InferenceNode::new(
-        model_name.clone(),
-        Some(run_args.tensor_parallel_size),
-        Some(run_args.gpu_memory_utilization),
-    );
-
-    inference_node
-        .initialize(
+    let inference_node_shared = if let Some(ref model_name) = run_args.model_name {
+        info!("Initializing vLLM engine with model: {}...", model_name);
+        let mut inference_node = InferenceNode::new(
+            model_name.clone(),
             Some(run_args.tensor_parallel_size),
             Some(run_args.gpu_memory_utilization),
-        )
-        .context("Failed to initialize vLLM engine")?;
+        );
 
-    info!("vLLM engine initialized successfully");
+        inference_node
+            .initialize(
+                Some(run_args.tensor_parallel_size),
+                Some(run_args.gpu_memory_utilization),
+            )
+            .context("Failed to initialize vLLM engine")?;
 
-    let inference_node_shared = Arc::new(RwLock::new(Some(inference_node)));
+        info!("vLLM engine initialized successfully");
+        Arc::new(RwLock::new(Some(inference_node)))
+    } else {
+        info!("No initial model - starting in idle mode");
+        Arc::new(RwLock::new(None))
+    };
+
+    let current_model_name = Arc::new(RwLock::new(run_args.model_name.clone()));
+    let tensor_parallel_size = run_args.tensor_parallel_size;
+    let gpu_memory_utilization = run_args.gpu_memory_utilization;
 
     info!("Initializing P2P network...");
 
@@ -197,9 +209,10 @@ async fn main() -> Result<()> {
     tokio::time::sleep(Duration::from_secs(2)).await;
 
     // announce availability via gossip
+    let model_name_for_broadcast = current_model_name.read().await.clone();
     let availability_msg = InferenceGossipMessage::NodeAvailable {
-        model_name: model_name.clone(),
-        checkpoint_id: None, // TODO: Track actual checkpoint when reloading - do we need this?
+        model_name: model_name_for_broadcast.clone(),
+        checkpoint_id: None,
         capabilities: capabilities.clone(),
     };
 
@@ -207,7 +220,11 @@ async fn main() -> Result<()> {
         .broadcast(&availability_msg)
         .context("Failed to broadcast availability")?;
 
-    info!("Broadcasted availability to network");
+    if let Some(ref model) = model_name_for_broadcast {
+        info!("Broadcasted availability to network (model: {})", model);
+    } else {
+        info!("Broadcasted idle status to network (no model loaded)");
+    }
     info!("Inference node ready! Listening for requests...");
 
     // heartbeat for re-announcing availability
@@ -227,16 +244,18 @@ async fn main() -> Result<()> {
             }
 
             _ = heartbeat_interval.tick() => {
-                info!("Re-broadcasting availability");
+                let model_name_for_broadcast = current_model_name.read().await.clone();
                 let availability_msg = InferenceGossipMessage::NodeAvailable {
-                    model_name: model_name.clone(),
+                    model_name: model_name_for_broadcast.clone(),
                     checkpoint_id: None,
                     capabilities: capabilities.clone(),
                 };
                 if let Err(e) = network.broadcast(&availability_msg) {
                     warn!("Failed to broadcast: {:#}", e);
+                } else if let Some(ref model) = model_name_for_broadcast {
+                    debug!("Re-broadcast successful (model: {})", model);
                 } else {
-                    info!("Broadcast successful");
+                    debug!("Re-broadcast successful (idle)");
                 }
             }
 
@@ -247,16 +266,84 @@ async fn main() -> Result<()> {
 
                         match msg {
                             InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities } => {
-                                info!("Peer {} is available: model={}, checkpoint={:?}, caps={:?}",
+                                info!("Peer {} is available: model={:?}, checkpoint={:?}, caps={:?}",
                                       peer_id.fmt_short(), model_name, checkpoint_id, capabilities);
                             }
                             InferenceGossipMessage::NodeUnavailable => {
                                 info!("Peer {} is no longer available", peer_id.fmt_short());
                             }
+                            InferenceGossipMessage::LoadModel { model_name: requested_model, model_source } => {
+                                info!("Received LoadModel request from {}: model={}, source={:?}",
+                                      peer_id.fmt_short(), requested_model, model_source);
+
+                                let model_path = match model_source {
+                                    ModelSource::HuggingFace(ref name) => name.clone(),
+                                    ModelSource::Local(ref path) => path.clone(),
+                                };
+
+                                let current = current_model_name.read().await;
+                                if current.as_ref() == Some(&requested_model) {
+                                    info!("Model {} already loaded, skipping", requested_model);
+                                    drop(current);
+                                } else {
+                                    drop(current);
+                                    info!("Loading new model: {}", requested_model);
+
+                                    {
+                                        let mut node_guard = inference_node_shared.write().await;
+                                        if let Some(mut old_node) = node_guard.take() {
+                                            info!("Shutting down existing model");
+                                            if let Err(e) = old_node.shutdown() {
+                                                error!("Error shutting down old model: {:#}", e);
+                                            }
+                                            // Give vLLM time to release GPU memory before loading new model
+                                            // This prevents OOM when switching between large models
+                                            drop(node_guard);
+                                            info!("Waiting 5s for GPU memory to be released...");
+                                            tokio::time::sleep(Duration::from_secs(5)).await;
+                                        }
+                                    }
+
+                                    match async {
+                                        let mut new_node = InferenceNode::new(
+                                            model_path.clone(),
+                                            Some(tensor_parallel_size),
+                                            Some(gpu_memory_utilization),
+                                        );
+
+                                        new_node.initialize(
+                                            Some(tensor_parallel_size),
+                                            Some(gpu_memory_utilization),
+                                        )?;
+
+                                        *inference_node_shared.write().await = Some(new_node);
+                                        *current_model_name.write().await = Some(requested_model.clone());
+                                        Ok::<(), anyhow::Error>(())
+                                    }.await {
+                                        Ok(()) => {
+                                            info!("Successfully loaded model: {}", requested_model);
+
+                                            let availability_msg = InferenceGossipMessage::NodeAvailable {
+                                                model_name: Some(requested_model.clone()),
+                                                checkpoint_id: None,
+                                                capabilities: capabilities.clone(),
+                                            };
+                                            if let Err(e) = network.broadcast(&availability_msg) {
+                                                error!("Failed to broadcast availability after model load: {:#}", e);
+                                            } else {
+                                                info!("Broadcasted updated availability");
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to load model {}: {:#}", requested_model, e);
+                                        }
+                                    }
+                                }
+                            }
                             InferenceGossipMessage::ReloadCheckpoint { checkpoint_id, checkpoint_source } => {
                                 info!("Received checkpoint reload request: {} from {}",
                                       checkpoint_id, checkpoint_source);
-                                // TODO: Implement checkpoint reloading - used for changing mdoels? need to figure this out
+                                // TODO: implement checkpoint reloading for RL training
                                 warn!("Checkpoint reloading not yet implemented");
                             }
                         }
