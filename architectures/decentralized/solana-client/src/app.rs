@@ -281,11 +281,10 @@ impl App {
             .await?
             .state;
 
-        // Verify relay connectivity before proceeding.
-        // By this point several seconds have passed since the iroh endpoint was created.
-        // If the relay connection dropped (e.g. another node with the same iroh key is
-        // already connected), bail early with a clear error instead of running with
-        // a broken relay that spams warnings.
+        // Verify relay connectivity. If another node with the same iroh identity key
+        // is already connected, the relay will reject us within a couple seconds.
+        // Wait briefly to let the relay conflict manifest, then check.
+        tokio::time::sleep(Duration::from_secs(3)).await;
         if !self.p2p.has_relay_connection() {
             anyhow::bail!(
                 "Lost relay connection shortly after startup. \
