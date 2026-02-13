@@ -8,7 +8,7 @@ import {
 } from 'shared'
 import { CoordinatorDataStore, MiningPoolDataStore } from './dataStore.js'
 import { startWatchCoordinatorChainLoop } from './coordinatorChainLoop.js'
-import { mkdirSync } from 'fs'
+import { mkdirSync, readdirSync } from 'fs'
 import { FlatFileCoordinatorDataStore } from './dataStores/flatFileCoordinator.js'
 import { FlatFileMiningPoolDataStore } from './dataStores/flatFileMiningPool.js'
 import { startWatchMiningPoolChainLoop } from './miningPoolChainLoop.js'
@@ -25,117 +25,196 @@ interface TimestampedError {
 	error: unknown
 }
 
-export function startIndexingChainToDataStores(
-	coordinator: ServiceConfig,
+interface ServiceResult<T> {
+	stopped: Promise<void>
+	dataStore: T
+	errors: TimestampedError[]
+}
+
+function discoverExistingCoordinators(stateDirectory: string): string[] {
+	try {
+		const files = readdirSync(stateDirectory)
+		const coordinatorFiles = files.filter(
+			(file) => file.startsWith('coordinator-db-') && file.endsWith('.json')
+		)
+
+		// Extract program ID from filename: coordinator-db-{programId}.json
+		const programIds = coordinatorFiles.map((file) =>
+			file.slice('coordinator-db-'.length, -'.json'.length)
+		)
+
+		return programIds
+	} catch (error) {
+		console.warn('Failed to discover existing coordinators:', error)
+		return []
+	}
+}
+
+function createPromiseHandlers<T>(): {
+	promise: Promise<T>
+	resolve: (value: T) => void
+	reject: (reason?: any) => void
+} {
+	let resolve!: (value: T) => void
+	let reject!: (reason?: any) => void
+	const promise = new Promise<T>((res, rej) => {
+		resolve = res
+		reject = rej
+	})
+	return { promise, resolve, reject }
+}
+
+function startCoordinatorService(
+	config: ServiceConfig,
+	stateDirectory: string,
+	cancelled: { cancelled: boolean }
+): ServiceResult<CoordinatorDataStore> {
+	const { promise: stopped, resolve, reject } = createPromiseHandlers<void>()
+
+	const program = new Program<PsycheSolanaCoordinator>(
+		config.addressOverride
+			? { ...coordinatorIdl, address: config.addressOverride }
+			: (coordinatorIdl as any),
+		config
+	)
+
+	const dataStore = new FlatFileCoordinatorDataStore(
+		stateDirectory,
+		program.programId
+	)
+
+	const websocketRpcUrl =
+		config.websocketRpcUrl ??
+		config.connection.rpcEndpoint.replace('http', 'ws')
+
+	const errors: TimestampedError[] = []
+
+	startWatchCoordinatorChainLoop(
+		dataStore,
+		program,
+		websocketRpcUrl,
+		config.minSlot,
+		cancelled,
+		(error) => errors.push({ error, time: new Date() })
+	)
+		.catch(reject)
+		.then(resolve)
+
+	console.log('Coordinator service initialized:')
+	console.log(`Coordinator ProgramID: ${program.programId}`)
+	console.log(`Coordinator RPC: ${config.connection.rpcEndpoint}`)
+	console.log(`Coordinator websocket RPC: ${websocketRpcUrl}`)
+
+	return { stopped, dataStore, errors }
+}
+
+function startMiningPoolService(
+	config: ServiceConfig,
+	stateDirectory: string,
+	cancelled: { cancelled: boolean }
+): ServiceResult<MiningPoolDataStore> {
+	const { promise: stopped, resolve, reject } = createPromiseHandlers<void>()
+
+	const program = new Program<PsycheSolanaMiningPool>(
+		config.addressOverride
+			? { ...miningPoolIdl, address: config.addressOverride }
+			: (miningPoolIdl as any),
+		config
+	)
+
+	const dataStore = new FlatFileMiningPoolDataStore(
+		stateDirectory,
+		program.programId
+	)
+
+	const websocketRpcUrl =
+		config.websocketRpcUrl ??
+		config.connection.rpcEndpoint.replace('http', 'ws')
+
+	const errors: TimestampedError[] = []
+
+	startWatchMiningPoolChainLoop(
+		dataStore,
+		program,
+		websocketRpcUrl,
+		config.minSlot,
+		cancelled,
+		(error) => errors.push({ error, time: new Date() })
+	)
+		.catch(reject)
+		.then(resolve)
+
+	console.log('Mining pool service initialized:')
+	console.log(`MiningPool ProgramID: ${program.programId}`)
+	console.log(`MiningPool RPC: ${config.connection.rpcEndpoint}`)
+	console.log(`MiningPool Websocket RPC: ${websocketRpcUrl}`)
+
+	return { stopped, dataStore, errors }
+}
+
+export function startIndexingCoordinators(
+	solanaConfig: ServiceConfig,
 	miningPool: ServiceConfig
 ): {
 	cancel: () => void
-	coordinator: {
-		stopped: Promise<void>
-		dataStore: CoordinatorDataStore
-		errors: TimestampedError[]
-	}
-	miningPool: {
-		stopped: Promise<void>
-		dataStore: MiningPoolDataStore
-		errors: TimestampedError[]
-	}
+	coordinators: Map<string, ServiceResult<CoordinatorDataStore>>
+	miningPool: ServiceResult<MiningPoolDataStore>
 } {
 	const stateDirectory = process.env.STATE_DIRECTORY ?? process.cwd()
-
-	// create working dir so we can write files to it later
 	mkdirSync(stateDirectory, { recursive: true })
 
 	const cancelled = { cancelled: false }
 
-	let coordinatorRes!: () => void
-	let coordinatorRej!: (reason?: any) => void
-	const coordinatorStopped = new Promise<void>((res, rej) => {
-		coordinatorRes = res
-		coordinatorRej = rej
-	})
-
-	const coordinatorProgram = new Program<PsycheSolanaCoordinator>(
-		coordinator.addressOverride
-			? { ...coordinatorIdl, address: coordinator.addressOverride }
-			: (coordinatorIdl as any),
-		coordinator
-	)
-
-	const coordinatorDataStore = new FlatFileCoordinatorDataStore(
+	// Start mining pool service
+	console.log('Starting mining pool service')
+	const miningPoolService = startMiningPoolService(
+		miningPool,
 		stateDirectory,
-		coordinatorProgram.programId
-	)
-	const coordinatorWebsocketRpcUrl =
-		coordinator.websocketRpcUrl ??
-		coordinator.connection.rpcEndpoint.replace('http', 'ws')
-
-	const coordinatorErrors: TimestampedError[] = []
-
-	startWatchCoordinatorChainLoop(
-		coordinatorDataStore,
-		coordinatorProgram,
-		coordinatorWebsocketRpcUrl,
-		coordinator.minSlot,
-		cancelled,
-		(error) => coordinatorErrors.push({ error, time: new Date() })
-	)
-		.catch(coordinatorRej)
-		.then(coordinatorRes)
-
-	let miningPoolRes!: () => void
-	let miningPoolRej!: (reason?: any) => void
-	const miningPoolStopped = new Promise<void>((res, rej) => {
-		miningPoolRes = res
-		miningPoolRej = rej
-	})
-	const miningPoolProgram = new Program<PsycheSolanaMiningPool>(
-		miningPool.addressOverride
-			? { ...miningPoolIdl, address: miningPool.addressOverride }
-			: (miningPoolIdl as any),
-		miningPool
+		cancelled
 	)
 
-	const miningPoolDataStore = new FlatFileMiningPoolDataStore(
-		stateDirectory,
-		miningPoolProgram.programId
-	)
-	const miningPoolWebsocketRpcUrl =
-		miningPool.websocketRpcUrl ??
-		miningPool.connection.rpcEndpoint.replace('http', 'ws')
+	// Discover existing coordinators and add the configured one
+	const existingProgramIds = discoverExistingCoordinators(stateDirectory)
+	const configuredProgramId =
+		solanaConfig.addressOverride || coordinatorIdl.address
 
-	const miningPoolErrors: TimestampedError[] = []
+	// Create a set of all coordinator program IDs to monitor
+	const allProgramIds = new Set([configuredProgramId, ...existingProgramIds])
 
-	startWatchMiningPoolChainLoop(
-		miningPoolDataStore,
-		miningPoolProgram,
-		miningPoolWebsocketRpcUrl,
-		miningPool.minSlot,
-		cancelled,
-		(error) => miningPoolErrors.push({ error, time: new Date() })
-	)
-		.catch(miningPoolRej)
-		.then(miningPoolRes)
+	console.log('Discovered existing coordinators:', existingProgramIds)
+	console.log('All coordinators to monitor:', Array.from(allProgramIds))
 
-	console.log('Initializing watch chain loop for coordinator & mining pool:')
-	console.log(`Coordinator ProgramID: ${coordinatorProgram.programId}`)
-	console.log(`Coordinator RPC: ${coordinator.connection.rpcEndpoint}`)
-	console.log(`Coordinator websocket RPC: ${coordinatorWebsocketRpcUrl}`)
-	console.log(`MiningPool ProgramID: ${miningPoolProgram.programId}`)
-	console.log(`MiningPool RPC: ${miningPool.connection.rpcEndpoint}`)
-	console.log(`MiningPool websocket RPC: ${miningPoolWebsocketRpcUrl}`)
+	const coordinators = new Map<string, ServiceResult<CoordinatorDataStore>>()
+
+	// Start coordinator services for all program IDs
+	for (const programId of allProgramIds) {
+		console.log(`Starting coordinator monitoring for: ${programId}`)
+
+		try {
+			const coordinatorConfig: ServiceConfig = {
+				connection: solanaConfig.connection,
+				websocketRpcUrl: solanaConfig.websocketRpcUrl,
+				addressOverride: programId,
+				minSlot: solanaConfig.minSlot,
+			}
+
+			const coordinatorService = startCoordinatorService(
+				coordinatorConfig,
+				stateDirectory,
+				cancelled
+			)
+			coordinators.set(programId, coordinatorService)
+		} catch (error) {
+			console.error(
+				`Failed to start monitoring for coordinator ${programId}:`,
+				error
+			)
+		}
+	}
 
 	return {
-		coordinator: {
-			stopped: coordinatorStopped,
-			dataStore: coordinatorDataStore,
-			errors: coordinatorErrors,
-		},
-		miningPool: {
-			stopped: miningPoolStopped,
-			dataStore: miningPoolDataStore,
-			errors: miningPoolErrors,
-		},
+		coordinators,
+		miningPool: miningPoolService,
 		cancel: () => {
 			cancelled.cancelled = true
 		},

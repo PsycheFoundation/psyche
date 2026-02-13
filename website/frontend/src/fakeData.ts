@@ -8,34 +8,38 @@ import {
 	RunSummary,
 } from 'shared'
 
+const FAKE_COORD_PROGRAM_ID = '0x1234567890abcdef1234567890abcdef12345678'
+
 export const fakeIndexerStatus: IndexerStatus = {
 	initTime: Date.now() - 1000 * 60 * 60 * 24 * 7, // 1 week ago
 	commit: 'fake data',
-	coordinator: {
-		status: 'ok',
-		chain: {
-			chainSlotHeight: 123456,
-			indexedSlot: 123450,
-			programId: '0x1234567890abcdef1234567890abcdef12345678',
-			networkGenesis:
-				'0xdeadbeefcafebabe0123456789abcdef0123456789abcdef0123456789abcdef',
-		},
-		trackedRuns: [
-			{ id: 'run-001', index: 0, status: { type: 'active' } },
-			{ id: 'run-002', index: 0, status: { type: 'funding' } },
-			{
-				id: 'run-003',
-				index: 0,
-				status: {
-					type: 'completed',
-					at: {
-						slot: 12345n,
-						time: new Date(Date.now() - 1000 * 60 * 60 * 24),
+	coordinators: {
+		FAKE_COORD_PROGRAM_ID: {
+			status: 'ok',
+			chain: {
+				chainSlotHeight: 123456,
+				indexedSlot: 123450,
+				programId: '0x1234567890abcdef1234567890abcdef12345678',
+				networkGenesis:
+					'0xdeadbeefcafebabe0123456789abcdef0123456789abcdef0123456789abcdef',
+			},
+			trackedRuns: [
+				{ id: 'run-001', index: 0, status: { type: 'active' } },
+				{ id: 'run-002', index: 0, status: { type: 'funding' } },
+				{
+					id: 'run-003',
+					index: 0,
+					status: {
+						type: 'completed',
+						at: {
+							slot: 12345n,
+							time: new Date(Date.now() - 1000 * 60 * 60 * 24),
+						},
 					},
 				},
-			},
-		],
-		errors: [],
+			],
+			errors: [],
+		},
 	},
 	miningPool: {
 		status: 'ok',
@@ -53,6 +57,7 @@ export const fakeIndexerStatus: IndexerStatus = {
 export const fakeRunSummaries: RunSummary[] = [
 	{
 		id: 'run-001',
+		programId: FAKE_COORD_PROGRAM_ID,
 		index: 0,
 		isOnlyRunAtThisIndex: false,
 		name: 'Vision Model Alpha',
@@ -70,6 +75,7 @@ export const fakeRunSummaries: RunSummary[] = [
 	},
 	{
 		id: 'run-002',
+		programId: FAKE_COORD_PROGRAM_ID,
 		index: 0,
 		isOnlyRunAtThisIndex: true,
 		name: 'Text Assistant Beta',
@@ -87,6 +93,7 @@ export const fakeRunSummaries: RunSummary[] = [
 	},
 	{
 		id: 'run-003',
+		programId: FAKE_COORD_PROGRAM_ID,
 		index: 0,
 		isOnlyRunAtThisIndex: true,
 		name: 'Small Language Model',
@@ -110,6 +117,7 @@ export const fakeRunSummaries: RunSummary[] = [
 	},
 	{
 		id: 'run-001',
+		programId: FAKE_COORD_PROGRAM_ID,
 		index: 1,
 		isOnlyRunAtThisIndex: false,
 		name: 'Vision Model Alpha',
@@ -136,6 +144,7 @@ export const makeFakeRunData: Record<
 			? makeFakeRunDataSeeded(seed, step, index)
 			: {
 					info: fakeRunSummaries[0],
+					programId: FAKE_COORD_PROGRAM_ID,
 					recentTxs: [],
 					promptResults: [],
 					promptIndex: 0,
@@ -165,6 +174,7 @@ export const makeFakeRunData: Record<
 				},
 	'run-002': () => ({
 		info: fakeRunSummaries[1],
+		programId: FAKE_COORD_PROGRAM_ID,
 		recentTxs: [],
 		promptResults: [],
 		promptIndex: 0,
@@ -194,6 +204,7 @@ export const makeFakeRunData: Record<
 	}),
 	'run-003': () => ({
 		info: fakeRunSummaries[2],
+		programId: FAKE_COORD_PROGRAM_ID,
 		recentTxs: [],
 		promptResults: [],
 		promptIndex: 0,
@@ -330,6 +341,7 @@ function makeFakeRunDataSeeded(seed = 1, step = 0, index = 0): RunData {
 
 	return {
 		info: { ...fakeRunSummaries[3], index },
+		programId: FAKE_COORD_PROGRAM_ID,
 		recentTxs: Array.from({ length: 5 }, (_, i) => ({
 			pubkey: PublicKey.default.toString(),
 			method: 'tick',

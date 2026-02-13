@@ -22,7 +22,7 @@ const Container = styled.div`
 `
 
 function RouteComponent() {
-	const { commit, initTime, coordinator, miningPool } = Route.useLoaderData()
+	const { commit, initTime, coordinators, miningPool } = Route.useLoaderData()
 
 	return (
 		<Container>
@@ -30,12 +30,13 @@ function RouteComponent() {
 				<div className={text['display/2xl']}>Indexer Status</div>
 
 				<div>commit: {commit}</div>
-				{(
-					[
-						['coordinator', coordinator.chain],
-						['mining pool', miningPool.chain],
-					] as const
-				).map(([name, c]) => {
+				{[
+					...Object.entries(coordinators).map(
+						([programId, coordinator]) =>
+							[`coordinator (${programId})`, coordinator.chain] as const
+					),
+					['mining pool', miningPool.chain] as const,
+				].map(([name, c]) => {
 					const numRecentSlots = 1000
 					const ratioRecentSlots = Math.min(
 						1,
@@ -49,9 +50,9 @@ function RouteComponent() {
 						<div>
 							<h4>{name}</h4>
 							<div>program id:</div>
-							<pre>{coordinator.chain.programId}</pre>
+							<pre>{c.programId}</pre>
 							<div>network genesis block:</div>
-							<pre>{coordinator.chain.networkGenesis}</pre>
+							<pre>{c.networkGenesis}</pre>
 							<div
 								className={css`
 									display: flex;
@@ -89,11 +90,18 @@ function RouteComponent() {
 					`}
 				>
 					tracked runs:
-					{coordinator.trackedRuns.map((run) => (
-						<StatusChip status={run.status.type} style={'bold'} inverted>
-							{run.id} (v{run.index + 1})
-						</StatusChip>
-					))}
+					{Object.entries(coordinators).flatMap(([programId, coordinator]) =>
+						coordinator.trackedRuns.map((run) => (
+							<StatusChip
+								key={`${programId}-${run.id}-${run.index}`}
+								status={run.status.type}
+								style={'bold'}
+								inverted
+							>
+								{run.id} (v{run.index + 1})
+							</StatusChip>
+						))
+					)}
 				</div>
 			</ShadowCard>
 		</Container>
