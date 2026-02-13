@@ -419,8 +419,13 @@ async fn disconnect_client() {
                     && epoch > 0
                     && new_state == RunState::WaitingForMembers.to_string()
                 {
-                    println!("Epoch ended after killing client, breaking to verify assertions");
-                    break;
+                    println!(
+                        "Epoch ended after killing client, seen {} health checks so far",
+                        seen_health_checks.len()
+                    );
+                    // Don't break here — give the slower client more time
+                    // to catch up and send its health check. The loop will
+                    // exit via the health_checks >= 2 check or step == 20 timeout.
                 }
 
                 if epoch == 0
