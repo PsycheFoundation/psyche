@@ -191,6 +191,9 @@ impl CoordinatorInstanceState {
                 if !self.coordinator.model.check() {
                     return err!(ProgramError::ModelSanityCheckFailed);
                 }
+                if !self.coordinator.check_cold_start_warmup_steps() {
+                    return err!(ProgramError::ConfigSanityCheckFailed);
+                }
 
                 if self.coordinator.run_state == RunState::Uninitialized {
                     // this is the only way to get out of RunState::Uninitialized
@@ -310,6 +313,12 @@ impl CoordinatorInstanceState {
             }
 
             let _ = std::mem::replace(&mut self.coordinator.model, model);
+        }
+
+        if (config.is_some() || model.is_some())
+            && !self.coordinator.check_cold_start_warmup_steps()
+        {
+            return err!(ProgramError::ConfigSanityCheckFailed);
         }
 
         if let Some(progress) = progress {

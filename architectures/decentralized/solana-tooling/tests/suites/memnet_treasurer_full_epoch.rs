@@ -216,7 +216,7 @@ pub async fn run() {
             config: Some(CoordinatorConfig {
                 warmup_time,
                 cooldown_time,
-                max_round_train_time: 888,
+                max_round_train_time: 15,
                 round_witness_time,
                 min_clients: 1,
                 init_min_clients: 1,
