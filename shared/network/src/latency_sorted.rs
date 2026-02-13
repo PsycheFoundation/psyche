@@ -1,21 +1,23 @@
 use futures_util::StreamExt;
 use futures_util::stream::{self};
-use iroh::{Endpoint, EndpointId};
+use iroh::EndpointId;
 use iroh_blobs::HashAndFormat;
 use iroh_blobs::api::downloader::ContentDiscovery;
 use n0_future::stream::Boxed;
 use std::time::Duration;
 use tracing::debug;
 
+use crate::connection_monitor::ConnectionMonitor;
+
 /// A ContentDiscovery implementation that orders providers by ascending connection latency.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LatencySorted {
     nodes: Vec<EndpointId>,
-    endpoint: Endpoint,
+    connection_monitor: ConnectionMonitor,
 }
 
 impl LatencySorted {
-    pub fn new(nodes: Vec<EndpointId>, endpoint: Endpoint) -> Self {
+    pub fn new(nodes: Vec<EndpointId>, connection_monitor: ConnectionMonitor) -> Self {
         let mut seen = std::collections::HashSet::new();
         let unique_nodes: Vec<EndpointId> = nodes
             .into_iter()
@@ -24,7 +26,7 @@ impl LatencySorted {
 
         Self {
             nodes: unique_nodes,
-            endpoint,
+            connection_monitor,
         }
     }
 }
@@ -37,7 +39,11 @@ impl ContentDiscovery for LatencySorted {
             .nodes
             .iter()
             .map(|&node| {
-                let latency = self.endpoint.latency(node).unwrap_or(Duration::MAX); // Unknown nodes get max latency
+                let latency = self
+                    .connection_monitor
+                    .get_connection(&node)
+                    .and_then(|conn| conn.latency())
+                    .unwrap_or(Duration::MAX); // Unknown nodes get max latency
 
                 debug!(
                     "[ContentDiscovery] Node {} latency: {}ms",

@@ -79,7 +79,13 @@ impl App {
                 info!(name:"message_recv_text", from=from.fmt_short().to_string(), text=text)
             }
             NetworkEvent::MessageReceived((_, Message::DistroResult { step, blob_ticket })) => {
-                let peers = self.network.endpoint.connections();
+                let peers: Vec<_> = self
+                    .network
+                    .connection_monitor
+                    .get_all_connections()
+                    .into_iter()
+                    .map(|c| c.endpoint_id)
+                    .collect();
 
                 if self.should_wait_before {
                     println!("Waiting to download");

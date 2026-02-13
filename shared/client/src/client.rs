@@ -653,17 +653,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 let remote_infos: Vec<_> = p2p
                                     .remote_infos()
                                     .into_iter()
-                                    .filter(|info| !matches!(info.path, psyche_network::ConnectionType::None))
+                                    .filter(|info| info.selected_path.is_some())
                                     .map(|info| {
                                         PeerConnection {
                                             endpoint_id: info.id.to_string(),
-                                            connection_type: match info.path {
-                                                psyche_network::ConnectionType::None => unreachable!(),
-                                                psyche_network::ConnectionType::Direct(..) => psyche_metrics::ConnectionType::Direct,
-                                                psyche_network::ConnectionType::Relay(..) => psyche_metrics::ConnectionType::Relay,
-                                                psyche_network::ConnectionType::Mixed(..) => psyche_metrics::ConnectionType::Mixed,
-                                            },
-                                            latency: info.latency as f32
+                                            selected_path: info.selected_path,
                                         }
                                     })
                                     .collect();
