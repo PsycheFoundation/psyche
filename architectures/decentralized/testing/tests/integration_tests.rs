@@ -582,7 +582,7 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
     // Wait for state to change back to Warmup
     assert!(
         solana_client.wait_for_run_state(RunState::Warmup, 30).await,
-        "System should have returned to Warmup state after client reconnection TEST 2"
+        "System should have returned to Warmup state after client reconnection"
     );
     println!("Successfully returned to Warmup state after client reconnection");
 }
@@ -621,7 +621,7 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
                     }
                     println!("Checkpoint was P2P");
 
-                    // Wait a bit then kill all clients
+                    // Wait 10 seconds and kill everything
                     tokio::time::sleep(Duration::from_secs(10)).await;
                     println!("Killing all clients to test checkpoint change to Hub");
                     kill_all_clients(&docker, "SIGKILL").await;
@@ -638,9 +638,7 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
         }
     }
 
-    // Create two test clients that will join the run directly (no Docker needed).
-    // These have different keypairs from the killed clients, so the coordinator
-    // will detect all_prev_clients_disconnected and switch P2P -> Hub.
+    // Join two test clients to tick and make the transition from P2P->Hub in the coordinator
     tokio::time::sleep(Duration::from_secs(5)).await;
     println!("Creating test clients to join the run...");
     let run_id_clone = solana_client.run_id().to_string();
@@ -882,7 +880,7 @@ async fn test_everybody_leaves_in_warmup() {
             if old_state == RunState::RoundWitness.to_string()
                 && new_state == RunState::Cooldown.to_string()
             {
-                println!("Epoch restarted correctly, finishing test. TEST TEST REMOVEME");
+                println!("Epoch restarted correctly, finishing test");
                 break;
             }
         }

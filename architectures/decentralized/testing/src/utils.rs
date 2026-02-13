@@ -53,7 +53,6 @@ impl SolanaTestClient {
         let (instance, _) = Pubkey::find_program_address(seeds, &program.id());
         let coordinator_instance: psyche_solana_coordinator::CoordinatorInstance =
             program.account(instance).await.unwrap();
-        // Airdrop SOL so this client can send transactions (e.g. ticks)
         program
             .rpc()
             .request_airdrop(&key_pair.pubkey(), 1_000_000_000)
@@ -321,7 +320,7 @@ impl ConfigBuilder {
         self.set_value("config.min_clients", min_clients as u32);
         self.set_value("config.init_min_clients", min_clients as u32);
 
-        // witness_nodes = 0 means every client is a witness
+        // This means that every client is a witness
         self.set_value("config.witness_nodes", self.witness_nodes.unwrap_or(0));
 
         if let Some(round_witness_time) = self.round_witness_time {

@@ -297,6 +297,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                         applying.await.map_err(|_| TrainError::ApplyCrashed)??;
 
                     loop {
+                        // Check for the cancel_training cancellation token, in case we have
+                        // moved on from Training state and we ought to exit.
                         let data = tokio::select! {
                             data = next_sample.recv() => match data {
                                 Some(data) => data,

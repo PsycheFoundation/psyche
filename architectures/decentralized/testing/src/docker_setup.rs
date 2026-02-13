@@ -87,14 +87,6 @@ pub async fn e2e_testing_setup_subscription(
     init_num_clients: usize,
 ) -> DockerTestCleanup {
     remove_old_client_containers(docker_client).await;
-    // Use witness_nodes = 0 (all clients are witnesses) so the quorum
-    // adapts to actual witness count (n < n is always false), meaning a
-    // missing witness tx won't trigger cooldown or withdraw_all.
-    // Use warmup_time = 15 (instead of default 50) since warmup finished
-    // broadcasts are one-shot and may be lost before P2P connects; a shorter
-    // timeout lets training start sooner once P2P is ready.
-    // Use round_witness_time = 20 to give enough time for witness
-    // transactions to land on-chain in CI with Docker + nginx proxy latency.
     #[cfg(not(feature = "python"))]
     let config_file_path = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
