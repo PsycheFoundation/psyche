@@ -324,6 +324,13 @@ impl CoordinatorInstanceState {
     }
 
     pub fn join_run(&mut self, id: ClientId) -> Result<()> {
+        // Reject if another client (different signer) is already using this p2p identity
+        if self.clients_state.clients.iter().any(|c| {
+            c.id.p2p_identity == id.p2p_identity && c.id.signer != id.signer
+        }) {
+            return err!(ProgramError::DuplicateP2pIdentity);
+        }
+
         let existing = match self
             .clients_state
             .clients
