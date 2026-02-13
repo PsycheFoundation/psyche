@@ -22,7 +22,7 @@ pub use p2p_model_sharing::{
     MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
     PeerManagerHandle,
 };
-use psyche_metrics::{ClientMetrics, ConnectionType, PeerConnection};
+use psyche_metrics::{ClientMetrics, PeerConnection};
 use router::{SupportedProtocols, spawn_router_with_allowlist};
 use state::State;
 use std::str::FromStr;
@@ -80,6 +80,7 @@ pub use download_manager::{
     DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, MAX_DOWNLOAD_RETRIES,
     RetriedDownloadsHandle, TransmittableDownload,
 };
+pub use iroh::protocol::ProtocolHandler;
 pub use iroh::{Endpoint, EndpointId, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayQuicConfig};
 pub use latency_sorted::LatencySorted;
@@ -157,7 +158,7 @@ impl FromStr for RelayKind {
 #[derive(Debug, Clone)]
 pub struct P2PEndpointInfo {
     pub id: EndpointId,
-    pub path: ConnectionType,
+    pub selected_path: Option<psyche_metrics::SelectedPath>,
     pub bandwidth: f64,
     pub latency: f64,
 }
@@ -166,8 +167,7 @@ impl From<P2PEndpointInfo> for PeerConnection {
     fn from(value: P2PEndpointInfo) -> Self {
         Self {
             endpoint_id: value.id.to_string(),
-            connection_type: value.path,
-            latency: value.latency as f32,
+            selected_path: value.selected_path,
         }
     }
 }
@@ -231,6 +231,72 @@ where
         metrics: Arc<ClientMetrics>,
         cancel: Option<CancellationToken>,
     ) -> Result<Self> {
+        Self::init_internal::<A, iroh_gossip::net::Gossip>(
+            run_id,
+            port,
+            interface,
+            discovery_mode,
+            relay_kind,
+            bootstrap_peers,
+            secret_key,
+            allowlist,
+            metrics,
+            cancel,
+            None,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn init_with_custom_protocol<
+        A: Allowlist + 'static + Send + std::marker::Sync,
+        P: ProtocolHandler + Clone,
+    >(
+        run_id: &str,
+        port: Option<u16>,
+        interface: Option<String>,
+        discovery_mode: DiscoveryMode,
+        relay_kind: RelayKind,
+        bootstrap_peers: Vec<EndpointAddr>,
+        secret_key: Option<SecretKey>,
+        allowlist: A,
+        metrics: Arc<ClientMetrics>,
+        cancel: Option<CancellationToken>,
+        additional_protocol: (&'static [u8], P),
+    ) -> Result<Self> {
+        Self::init_internal(
+            run_id,
+            port,
+            interface,
+            discovery_mode,
+            relay_kind,
+            bootstrap_peers,
+            secret_key,
+            allowlist,
+            metrics,
+            cancel,
+            Some(additional_protocol),
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn init_internal<
+        A: Allowlist + 'static + Send + std::marker::Sync,
+        P: ProtocolHandler + Clone,
+    >(
+        run_id: &str,
+        port: Option<u16>,
+        interface: Option<String>,
+        discovery_mode: DiscoveryMode,
+        relay_kind: RelayKind,
+        bootstrap_peers: Vec<EndpointAddr>,
+        secret_key: Option<SecretKey>,
+        allowlist: A,
+        metrics: Arc<ClientMetrics>,
+        cancel: Option<CancellationToken>,
+        additional_protocol: Option<(&'static [u8], P)>,
+    ) -> Result<Self> {
         let secret_key = match secret_key {
             None => SecretKey::generate(&mut rand::rng()),
             Some(key) => key,
@@ -273,6 +339,7 @@ where
             let transport_config = QuicTransportConfig::builder()
                 .max_idle_timeout(Some(Duration::from_secs(10).try_into()?))
                 .keep_alive_interval(Duration::from_secs(1))
+                .set_max_remote_nat_traversal_addresses(50)
                 .build();
 
             let relay_mode = match relay_kind {
@@ -399,6 +466,7 @@ where
             allowlist.clone(),
             endpoint.clone(),
             SupportedProtocols::new(gossip.clone(), blobs_protocol, model_parameter_sharing),
+            additional_protocol,
         )?;
         trace!("router created!");
 
@@ -616,7 +684,7 @@ where
         let mut infos = vec![P2PEndpointInfo {
             id: self.endpoint.id(),
             bandwidth: 0.0,
-            path: ConnectionType::None,
+            selected_path: None,
             latency: 0.0,
         }];
 
@@ -628,11 +696,16 @@ where
                 .get_bandwidth_by_node(&conn_data.endpoint_id)
                 .unwrap_or_default();
 
+            let latency = conn_data
+                .latency()
+                .map(|d| d.as_secs_f64())
+                .unwrap_or(f64::MAX);
+
             infos.push(P2PEndpointInfo {
                 id: conn_data.endpoint_id,
-                path: conn_data.connection_type,
+                selected_path: conn_data.selected_path,
                 bandwidth,
-                latency: conn_data.latency.as_secs_f64(),
+                latency,
             });
         }
 

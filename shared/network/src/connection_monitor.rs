@@ -1,7 +1,7 @@
 use iroh::endpoint::{AfterHandshakeOutcome, ConnectionInfo, EndpointHooks};
 use iroh::{EndpointId, Watcher};
 use n0_future::task::AbortOnDropHandle;
-use psyche_metrics::ConnectionType;
+use psyche_metrics::SelectedPath;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -12,8 +12,14 @@ use tracing::{Instrument, debug, info};
 #[derive(Debug, Clone)]
 pub struct ConnectionData {
     pub endpoint_id: EndpointId,
-    pub connection_type: ConnectionType,
-    pub latency: Duration,
+    pub selected_path: Option<SelectedPath>,
+}
+
+impl ConnectionData {
+    /// Get the latency from the selected path if available
+    pub fn latency(&self) -> Option<Duration> {
+        self.selected_path.as_ref().map(|p| p.rtt)
+    }
 }
 
 /// track active connections and their metadata
@@ -62,22 +68,28 @@ impl ConnectionMonitor {
                     let remote_id = conn.remote_id();
                     let alpn = String::from_utf8_lossy(conn.alpn()).to_string();
 
-                    let (conn_type, latency) = Self::extract_connection_info(&conn);
+                    let selected_path = Self::extract_connection_info(&conn);
 
-                    info!(
-                        remote = %remote_id.fmt_short(),
-                        %alpn,
-                        ?conn_type,
-                        latency_ms = latency.as_millis(),
-                        "new connection"
-                    );
+                    if let Some(ref path) = selected_path {
+                        info!(
+                            remote = %remote_id.fmt_short(),
+                            %alpn,
+                            path = %path,
+                            "new connection"
+                        );
+                    } else {
+                        info!(
+                            remote = %remote_id.fmt_short(),
+                            %alpn,
+                            "new connection (no selected path)"
+                        );
+                    }
 
                     {
                         let mut conns = connections.write().unwrap();
                         conns.insert(remote_id, ConnectionData {
                             endpoint_id: remote_id,
-                            connection_type: conn_type,
-                            latency,
+                            selected_path,
                         });
                     }
 
@@ -91,34 +103,44 @@ impl ConnectionMonitor {
                         loop {
                             tokio::select! {
                                 _ = update_interval.tick() => {
-                                    let (conn_type, latency) = Self::extract_connection_info_from_watcher(&paths_watcher);
+                                    let selected_path = Self::extract_connection_info_from_watcher(&paths_watcher);
 
                                     let mut conns = connections_clone.write().unwrap();
                                     if let Some(data) = conns.get_mut(&remote_id) {
-                                        let type_changed = data.connection_type != conn_type;
-                                        let latency_delta = if latency != Duration::MAX && data.latency != Duration::MAX {
-                                            latency.as_millis().abs_diff(data.latency.as_millis())
-                                        } else {
-                                            0
+                                        let path_changed = data.selected_path != selected_path;
+
+                                        // calculate latency delta if both old and new have latency info
+                                        let latency_delta = match (&data.selected_path, &selected_path) {
+                                            (Some(old_path), Some(new_path)) => {
+                                                old_path.rtt.as_millis().abs_diff(new_path.rtt.as_millis())
+                                            }
+                                            _ => 0,
                                         };
 
-                                        data.connection_type = conn_type;
-                                        data.latency = latency;
+                                        data.selected_path = selected_path.clone();
 
-                                        if type_changed {
-                                            info!(
-                                                remote = %remote_id.fmt_short(),
-                                                new_type = ?conn_type,
-                                                latency_ms = latency.as_millis(),
-                                                "connection type changed"
-                                            );
+                                        if path_changed {
+                                            if let Some(ref path) = selected_path {
+                                                info!(
+                                                    remote = %remote_id.fmt_short(),
+                                                    path = %path,
+                                                    "selected path changed"
+                                                );
+                                            } else {
+                                                info!(
+                                                    remote = %remote_id.fmt_short(),
+                                                    "selected path removed"
+                                                );
+                                            }
                                         } else if latency_delta > 50 {
-                                            debug!(
-                                                remote = %remote_id.fmt_short(),
-                                                latency_ms = latency.as_millis(),
-                                                delta_ms = latency_delta,
-                                                "latency changed"
-                                            );
+                                            if let Some(ref path) = selected_path {
+                                                debug!(
+                                                    remote = %remote_id.fmt_short(),
+                                                    latency_ms = path.rtt.as_millis(),
+                                                    delta_ms = latency_delta,
+                                                    "latency changed"
+                                                );
+                                            }
                                         }
                                     }
                                 }
@@ -163,37 +185,26 @@ impl ConnectionMonitor {
         }
     }
 
-    /// extract connection type and latency from ConnectionInfo
-    fn extract_connection_info(conn: &ConnectionInfo) -> (ConnectionType, Duration) {
+    /// extract selected path info from ConnectionInfo
+    fn extract_connection_info(conn: &ConnectionInfo) -> Option<SelectedPath> {
         let paths_watcher = conn.paths();
         Self::extract_connection_info_from_watcher(&paths_watcher)
     }
 
-    /// extract connection type and latency from a paths watcher
+    /// extract selected path info from a paths watcher
     fn extract_connection_info_from_watcher<T: Watcher<Value = iroh::endpoint::PathInfoList>>(
         paths_watcher: &T,
-    ) -> (ConnectionType, Duration) {
+    ) -> Option<SelectedPath> {
         let paths = paths_watcher.peek();
 
-        if paths.is_empty() {
-            return (ConnectionType::Direct, Duration::MAX);
-        }
-
-        // get minimum RTT across all paths
-        let min_rtt = paths.iter().map(|p| p.rtt()).min().unwrap_or(Duration::MAX);
-
-        // determine connection type based on paths
-        let has_direct = paths.iter().any(|p| p.is_ip());
-        let has_relay = paths.iter().any(|p| p.is_relay());
-
-        let conn_type = match (has_direct, has_relay) {
-            (true, true) => ConnectionType::Mixed,
-            (true, false) => ConnectionType::Direct,
-            (false, true) => ConnectionType::Relay,
-            (false, false) => ConnectionType::None,
-        };
-
-        (conn_type, min_rtt)
+        // check for selected path
+        paths
+            .iter()
+            .find(|p| p.is_selected())
+            .map(|path| SelectedPath {
+                addr: format!("{:?}", path.remote_addr()),
+                rtt: path.rtt(),
+            })
     }
 
     /// get connection data for a specific endpoint
@@ -206,11 +217,5 @@ impl ConnectionMonitor {
     pub fn get_all_connections(&self) -> Vec<ConnectionData> {
         let conns = self.connections.read().unwrap();
         conns.values().cloned().collect()
-    }
-
-    /// get latency for a specific endpoint
-    pub fn get_latency(&self, endpoint_id: &EndpointId) -> Option<Duration> {
-        let conns = self.connections.read().unwrap();
-        conns.get(endpoint_id).map(|data| data.latency)
     }
 }
