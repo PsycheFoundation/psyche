@@ -2,6 +2,8 @@ use anyhow::{Error, Result};
 use bytemuck::Zeroable;
 use hf_hub::Repo;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
+use psyche_client::HubUploadInfo;
+use psyche_client::UploadInfo;
 use psyche_client::{
     Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
 };
@@ -29,7 +31,7 @@ pub type TabsData = <Tabs as CustomWidget>::Data;
 pub enum ToSend {
     Witness(Box<OpportunisticData>),
     HealthCheck(HealthChecks<ClientId>),
-    Checkpoint(model::HubRepo),
+    Checkpoint(model::Checkpoint),
 }
 
 struct Backend {
@@ -67,7 +69,7 @@ impl WatcherBackend<ClientId> for Backend {
         Ok(())
     }
 
-    async fn send_checkpoint(&mut self, checkpoint: model::HubRepo) -> Result<()> {
+    async fn send_checkpoint(&mut self, checkpoint: model::Checkpoint) -> Result<()> {
         self.tx.send(ToSend::Checkpoint(checkpoint))?;
         Ok(())
     }
@@ -176,18 +178,19 @@ impl App {
     ) -> Result<()> {
         // sanity checks
         if let Some(checkpoint_config) = &state_options.checkpoint_config {
-            if let Some(hub_upload) = &checkpoint_config.hub_upload {
+            if let Some(UploadInfo::Hub(HubUploadInfo {
+                hub_repo,
+                hub_token,
+            })) = &checkpoint_config.upload_info
+            {
                 let api = hf_hub::api::tokio::ApiBuilder::new()
-                    .with_token(Some(hub_upload.hub_token.clone()))
+                    .with_token(Some(hub_token.clone()))
                     .build()?;
-                let repo_api = api.repo(Repo::new(
-                    hub_upload.hub_repo.clone(),
-                    hf_hub::RepoType::Model,
-                ));
+                let repo_api = api.repo(Repo::new(hub_repo.clone(), hf_hub::RepoType::Model));
                 if !repo_api.is_writable().await {
                     anyhow::bail!(
                         "Checkpoint upload repo {} is not writable with the passed API key.",
-                        hub_upload.hub_repo
+                        hub_repo
                     )
                 }
             }

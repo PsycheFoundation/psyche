@@ -7,8 +7,9 @@ use psyche_core::{
     Barrier, CancellableBarrier, IntegrationTestLogMarker, NodeIdentity, Shuffle, TokenSize,
 };
 use psyche_data_provider::{
-    DataProvider, DataProviderTcpClient, DummyDataProvider, PreprocessedDataProvider, Split,
-    WeightedDataProvider, download_dataset_repo_async, download_model_repo_async,
+    DataProvider, DataProviderTcpClient, DownloadError, DummyDataProvider,
+    PreprocessedDataProvider, Split, WeightedDataProvider, download_dataset_repo_async,
+    download_model_from_gcs_async, download_model_repo_async,
     http::{FileURLs, HttpDataProvider},
 };
 use psyche_metrics::ClientMetrics;
@@ -90,6 +91,9 @@ pub enum InitRunError {
     #[error("failed to read HF model info: {0}")]
     HfModelLoad(#[from] hf_hub::api::tokio::ApiError),
 
+    #[error("failed to download model from GCS: {0}")]
+    GcsModelLoad(#[from] DownloadError),
+
     #[error("model loading thread crashed")]
     ModelLoadingThreadCrashed(JoinError),
 
@@ -151,7 +155,7 @@ pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
 
     pub tx_health_check: UnboundedSender<HealthChecks<T>>,
     pub tx_witness: UnboundedSender<OpportunisticData>,
-    pub tx_checkpoint: UnboundedSender<model::HubRepo>,
+    pub tx_checkpoint: UnboundedSender<model::Checkpoint>,
     pub tx_model: UnboundedSender<HashMap<String, Tensor>>,
     pub tx_parameters_req: UnboundedSender<(Vec<String>, OneshotModelParameterSender)>,
     pub tx_config: UnboundedSender<(String, String)>,
@@ -311,7 +315,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                     tx_config.send((config.to_string(), tokenizer)).unwrap();
                     Ok(model)
                 }),
-                model::Checkpoint::Hub(_) | model::Checkpoint::P2P(_) => {
+                model::Checkpoint::Hub(_)
+                | model::Checkpoint::P2P(_)
+                | model::Checkpoint::P2PGcs(_)
+                | model::Checkpoint::Gcs(_) => {
                     let checkpoint = llm.checkpoint;
                     tokio::spawn(async move {
                         let (source, tokenizer, checkpoint_extra_files) = match checkpoint {
@@ -367,7 +374,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     checkpoint_extra_files,
                                 )
                             }
-                            model::Checkpoint::P2P(_) => {
+                            model::Checkpoint::P2P(_) | model::Checkpoint::P2PGcs(_) => {
                                 let (tx_model_config_response, rx_model_config_response) =
                                     oneshot::channel();
                                 info!("Checkpoint is p2p, requesting model config over network");
@@ -425,6 +432,39 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     ),
                                     Arc::new(tokenizer),
                                     vec![],
+                                )
+                            }
+                            model::Checkpoint::Gcs(gcs_repo) => {
+                                let bucket: String = (&gcs_repo.bucket).into();
+                                let prefix: Option<String> = gcs_repo.prefix.map(|p| (&p).into());
+
+                                info!(
+                                    "Downloading model from gs://{}/{}",
+                                    bucket,
+                                    prefix.as_deref().unwrap_or("")
+                                );
+
+                                let repo_files =
+                                    download_model_from_gcs_async(&bucket, prefix.as_deref())
+                                        .await?;
+
+                                let checkpoint_extra_files = repo_files
+                                    .iter()
+                                    .filter(|file| {
+                                        file.ends_with("config.json")
+                                            || file.ends_with("tokenizer.json")
+                                            || file.ends_with("tokenizer_config.json")
+                                            || file.ends_with("special_tokens_map.json")
+                                            || file.ends_with("generation_config.json")
+                                            || file.ends_with(".py")
+                                    })
+                                    .cloned()
+                                    .collect();
+                                let tokenizer = Arc::new(auto_tokenizer(&repo_files)?);
+                                (
+                                    PretrainedSource::<AutoConfig>::RepoFiles(repo_files),
+                                    tokenizer,
+                                    checkpoint_extra_files,
                                 )
                             }
                             _ => unreachable!(),

@@ -1,12 +1,16 @@
+use crate::errors::UploadError;
+use crate::hub::model::HubRepo;
 use hf_hub::{
     Cache, Repo, RepoType,
     api::{
         Siblings,
-        tokio::{ApiError, CommitError, UploadSource},
+        tokio::{ApiError, UploadSource},
     },
 };
+use psyche_coordinator::model;
+use psyche_core::FixedString;
 use std::{path::PathBuf, time::Instant};
-use thiserror::Error;
+use tokio::sync::mpsc;
 use tracing::{error, info};
 
 const MODEL_EXTENSIONS: [&str; 3] = [".safetensors", ".json", ".py"];
@@ -189,42 +193,39 @@ pub fn download_dataset_repo_sync(
     )
 }
 
-#[derive(Error, Debug)]
-pub enum UploadModelError {
-    #[error("path {0} is not a file")]
-    NotAFile(PathBuf),
-
-    #[error("file {0} doesn't have a valid utf-8 representation")]
-    InvalidFilename(PathBuf),
-
-    #[error("failed to connect to HF hub: {0}")]
-    HfHub(#[from] ApiError),
-
-    #[error("failed to commit files: {0}")]
-    Commit(#[from] CommitError),
+#[derive(Debug, Clone)]
+pub struct HubUploadInfo {
+    pub hub_repo: String,
+    pub hub_token: String,
 }
 
-pub async fn upload_model_repo_async(
-    repo_id: String,
-    files: Vec<PathBuf>,
-    token: String,
-    commit_message: Option<String>,
-    commit_description: Option<String>,
-) -> Result<String, UploadModelError> {
+pub async fn upload_to_hub(
+    hub_info: HubUploadInfo,
+    local: Vec<PathBuf>,
+    step: u64,
+    tx_checkpoint: mpsc::UnboundedSender<model::Checkpoint>,
+) -> Result<(), UploadError> {
+    let HubUploadInfo {
+        hub_repo,
+        hub_token,
+    } = hub_info;
+
+    info!(repo = hub_repo, "Uploading checkpoint to HuggingFace");
+
     let api = hf_hub::api::tokio::ApiBuilder::new()
-        .with_token(Some(token))
+        .with_token(Some(hub_token.clone()))
         .build()?;
-    let repo = Repo::model(repo_id.clone());
+    let repo = Repo::model(hub_repo.clone());
     let api_repo = api.repo(repo);
 
-    let files: Result<Vec<(UploadSource, String)>, _> = files
+    let files: Result<Vec<(UploadSource, String)>, _> = local
         .into_iter()
         .map(|path| {
             path.file_name()
-                .ok_or(UploadModelError::NotAFile(path.clone()))
+                .ok_or(UploadError::NotAFile(path.clone()))
                 .and_then(|name| {
                     name.to_str()
-                        .ok_or(UploadModelError::InvalidFilename(path.clone()))
+                        .ok_or(UploadError::InvalidFilename(path.clone()))
                         .map(|s| s.to_string())
                 })
                 .map(|name| (path.into(), name))
@@ -233,32 +234,32 @@ pub async fn upload_model_repo_async(
 
     let files = files?;
 
-    let commit_info = match api_repo
-        .upload_files(
-            files,
-            commit_message.clone(),
-            commit_description.clone(),
-            false,
-        )
+    let commit_info = api_repo
+        .upload_files(files, Some(format!("step {step}")), None, false)
         .await
-    {
-        Ok(info) => {
-            info!(
-                repo = repo_id,
-                oid = info.oid,
-                "Successfully uploaded files to HuggingFace"
-            );
-            info
-        }
-        Err(e) => {
+        .map_err(|e| {
             error!(
-                repo = repo_id,
+                repo = hub_repo,
                 error = ?e,
-                "Failed to upload files to HuggingFace. Full error details: {:#?}",
-                e
+                "Failed to upload files to HuggingFace"
             );
-            return Err(e.into());
-        }
-    };
-    Ok(commit_info.oid)
+            e
+        })?;
+
+    let revision = commit_info.oid;
+
+    info!(
+        repo = hub_repo,
+        revision = revision,
+        "Upload to HuggingFace complete"
+    );
+
+    tx_checkpoint
+        .send(model::Checkpoint::Hub(HubRepo {
+            repo_id: FixedString::from_str_truncated(&hub_repo),
+            revision: Some(FixedString::from_str_truncated(&revision)),
+        }))
+        .map_err(|_| UploadError::SendCheckpoint)?;
+
+    Ok(())
 }

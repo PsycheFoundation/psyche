@@ -7217,6 +7217,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bytemuck",
+ "chrono",
  "clap",
  "futures",
  "google-cloud-storage",
@@ -7304,6 +7305,7 @@ dependencies = [
  "tokio-util 0.7.18",
  "torch-sys",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

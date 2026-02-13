@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use psyche_coordinator::CommitteeProof;
 use psyche_core::{BatchId, MerkleRoot, NodeIdentity};
+use psyche_data_provider::{GcsUploadInfo, HubUploadInfo};
 use psyche_modeling::DistroResult;
 use psyche_network::{BlobTicket, TransmittableDistroResult};
 use tch::TchError;
@@ -9,14 +10,14 @@ use thiserror::Error;
 use tokio::task::JoinHandle;
 
 #[derive(Debug, Clone)]
-pub struct HubUploadInfo {
-    pub hub_repo: String,
-    pub hub_token: String,
+pub enum UploadInfo {
+    Hub(HubUploadInfo),
+    Gcs(GcsUploadInfo),
 }
 
 #[derive(Debug, Clone)]
 pub struct CheckpointConfig {
-    pub hub_upload: Option<HubUploadInfo>,
+    pub upload_info: Option<UploadInfo>,
     pub checkpoint_dir: PathBuf,
     pub delete_old_steps: bool,
     pub keep_steps: u32,
