@@ -882,7 +882,7 @@ async fn test_everybody_leaves_in_warmup() {
             if old_state == RunState::RoundWitness.to_string()
                 && new_state == RunState::Cooldown.to_string()
             {
-                println!("Epoch restarted correctly, finishing test");
+                println!("Epoch restarted correctly, finishing test. TEST TEST REMOVEME");
                 break;
             }
         }
