@@ -117,6 +117,7 @@ pub async fn build_app(
 
     let state_options: RunInitConfig<psyche_solana_coordinator::ClientId, NetworkIdentity> =
         RunInitConfig {
+            parallelism_auto: p.parallelism_auto,
             data_parallelism: p.data_parallelism,
             tensor_parallelism: p.tensor_parallelism,
             micro_batch_size: p.micro_batch_size,

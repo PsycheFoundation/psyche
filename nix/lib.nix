@@ -22,7 +22,8 @@ let
     || (builtins.match ".*tests/fixtures/.*$" path != null)
     || (builtins.match ".*.config/.*$" path != null)
     || (builtins.match ".*local-dev-keypair.json$" path != null)
-    || (builtins.match ".*shared/client/src/state/prompt_texts/index\\.json$" path != null);
+    || (builtins.match ".*shared/client/src/state/prompt_texts/index\\.json$" path != null)
+    || (builtins.match ".*shared/client/src/parallelism_data\\.json$" path != null);
 
   src = lib.cleanSourceWith {
     src = ../.;
