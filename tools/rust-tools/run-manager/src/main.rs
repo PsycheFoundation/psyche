@@ -5,11 +5,12 @@ use anchor_client::{
         signature::{EncodableKey, Keypair},
     },
 };
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
 use psyche_solana_rpc::SolanaBackend;
 use run_manager::commands::{self, Command};
 use run_manager::docker::manager::{Entrypoint, RunManager};
+use run_manager::parse_optional_pubkey;
 use std::io::Cursor;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -26,6 +27,10 @@ use commands::run::{
     CommandSetFutureEpochRates, CommandSetPaused, CommandTick, CommandUpdateConfig,
 };
 use commands::treasury::{CommandTreasurerClaimRewards, CommandTreasurerTopUpRewards};
+use run_manager::docker::coordinator_client::CoordinatorClient;
+use run_manager::docker::{
+    RunInfo, find_joinable_runs, parse_delegate_authorizer_from_env, parse_wallet_pubkey,
+};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const GIT_HASH: &str = env!("GIT_HASH");
@@ -58,6 +63,10 @@ struct CliArgs {
     /// Use a local Docker image instead of pulling from registry (Docker mode)
     #[arg(long)]
     local: bool,
+
+    /// Only join runs where this pubkey is the join_authority (Docker mode)
+    #[arg(long)]
+    authorizer: Option<String>,
 
     /// Optional entrypoint (Docker mode)
     #[arg(long)]
@@ -214,6 +223,21 @@ enum Commands {
         params: CommandCanJoin,
     },
 
+    /// List joinable runs on the coordinator program
+    ListRuns {
+        /// Path to .env file with RPC and wallet configuration
+        #[arg(long)]
+        env_file: Option<PathBuf>,
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        /// Coordinator program ID
+        #[arg(long, default_value = "4SHugWqSXwKE5fqDchkJcPEqnoZE22VYKtSTVm7axbT7")]
+        coordinator_program_id: String,
+        /// Only show runs where this pubkey is the join_authority
+        #[arg(long)]
+        authorizer: Option<String>,
+    },
+
     // Docs generation
     #[clap(hide = true)]
     PrintAllHelp {
@@ -287,7 +311,14 @@ async fn async_main() -> Result<()> {
             None => None,
         };
 
-        let run_mgr = RunManager::new(args.coordinator_program_id, env_file, args.local)?;
+        let authorizer = parse_optional_pubkey(args.authorizer.as_ref(), "authorizer")?;
+
+        let run_mgr = RunManager::new(
+            args.coordinator_program_id,
+            env_file,
+            args.local,
+            authorizer,
+        )?;
         let result = run_mgr.run(entrypoint).await;
         if let Err(e) = &result {
             error!("Error: {}", e);
@@ -370,12 +401,64 @@ async fn async_main() -> Result<()> {
         Commands::CanJoin { cluster, params } => {
             params.execute(create_backend_readonly(cluster)?).await
         }
+        Commands::ListRuns {
+            env_file,
+            cluster,
+            coordinator_program_id,
+            authorizer,
+        } => list_runs(env_file, cluster, coordinator_program_id, authorizer),
         Commands::PrintAllHelp { markdown } => {
             assert!(markdown);
             clap_markdown::print_help_markdown::<CliArgs>();
             Ok(())
         }
     }
+}
+
+fn list_runs(
+    env_file: Option<PathBuf>,
+    cluster: ClusterArgs,
+    coordinator_program_id: String,
+    authorizer: Option<String>,
+) -> Result<()> {
+    if let Some(env_file) = env_file {
+        run_manager::load_and_apply_env_file(&env_file)?;
+    }
+    let program_id = coordinator_program_id
+        .parse::<anchor_client::solana_sdk::pubkey::Pubkey>()
+        .context("Failed to parse coordinator program ID")?;
+    let rpc = std::env::var("RPC").unwrap_or_else(|_| cluster.rpc.trim_matches('"').to_string());
+    let coordinator_client = CoordinatorClient::new(rpc, program_id);
+    let runs = coordinator_client.get_all_runs()?;
+
+    if runs.is_empty() {
+        println!("No runs found on coordinator program {}", program_id);
+        return Ok(());
+    }
+
+    let authorizer = parse_optional_pubkey(authorizer.as_ref(), "authorizer")?;
+    let delegate_authorizer = parse_delegate_authorizer_from_env()?;
+    let wallet_key = run_manager::load_wallet_key()?;
+    let user_pubkey = parse_wallet_pubkey(&wallet_key)?;
+    let candidates = find_joinable_runs(
+        &runs,
+        &user_pubkey,
+        &coordinator_client,
+        authorizer.as_ref(),
+        delegate_authorizer.as_ref(),
+    )?;
+
+    if candidates.is_empty() {
+        println!("No available runs to join");
+    } else {
+        println!("Found {} joinable run(s):", candidates.len());
+        let refs: Vec<_> = candidates.iter().map(|(r, _)| r).collect();
+        for line in RunInfo::format_table(&refs) {
+            println!("{}", line);
+        }
+    }
+
+    Ok(())
 }
 
 fn create_backend(cluster: ClusterArgs, wallet: WalletArgs) -> Result<SolanaBackend> {

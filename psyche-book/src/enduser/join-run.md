@@ -64,7 +64,8 @@ WALLET_PATH=/path/to/your/keypair.json
 RPC=https://your-primary-rpc-provider.com
 WS_RPC=wss://your-primary-rpc-provider.com
 
-# Required: Which run id to join
+# Optional: Which run id to join
+# If not set, the client will automatically discover and join an available run
 RUN_ID=your_run_id_here
 
 # Recommended: Fallback RPC Endpoints (for reliability)
@@ -78,6 +79,19 @@ Then, you can start training through the run manager running:
 ./run-manager --env-file /path/to/your/.env
 ```
 
+### Automatic Run Selection
+
+If you don't specify a `RUN_ID` in your `.env` file, the run-manager will automatically query the Solana coordinator to find a suitable run to join.
+This makes it easier to join training without needing to know the specific run ID in advance. The run-manager will display which run it selected in the logs:
+
+```
+INFO RUN_ID not set, discovering available runs...
+INFO Found 2 available run(s):
+INFO   - run_abc123 (state: Waiting for members)
+INFO   - run_def456 (state: Training)
+INFO Selected run: run_abc123 (state: Waiting for members)
+```
+
 After the initial setup, you'll see the Psyche client logs streaming in real-time. These logs show training progress, network status, and other important information.
 
 To stop the client, press `Ctrl+C` in the terminal.
@@ -86,9 +100,19 @@ To stop the client, press `Ctrl+C` in the terminal.
 
 We recommend using a dedicated RPC service such as [Helius](https://www.helius.dev/), [QuickNode](https://www.quicknode.com/), [Triton](https://triton.one/), or self-hosting your own Solana RPC node.
 
+## Filtering by Authorizer
+
+If you want to only join runs authorized by a specific entity, you can use the `--authorizer` flag:
+
+```bash
+./run-manager --env-file /path/to/your/.env --authorizer <AUTHORIZER_PUBKEY>
+```
+
+This is useful when you want to ensure you only join runs from a trusted coordinator.
+
 ## Additional config variables
 
-In general it's not neccesary to change these variables to join a run since we provide sensible defaults,
+In general it's not necessary to change these variables to join a run since we provide sensible defaults,
 though you might need to.
 
 **`NVIDIA_DRIVER_CAPABILITIES`** - An environment variable that the NVIDIA Container Toolkit uses to determine which compute capabilities should be provided to your container. It is recommended to set it to 'all', e.g. `NVIDIA_DRIVER_CAPABILITIES=all`.

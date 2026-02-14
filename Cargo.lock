@@ -8363,6 +8363,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serial_test",
+ "solana-account-decoder-client-types",
  "solana-client",
  "time",
  "tokio",
