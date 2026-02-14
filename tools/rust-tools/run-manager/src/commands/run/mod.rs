@@ -1,19 +1,24 @@
 pub mod checkpoint;
 pub mod close_run;
 pub mod create_run;
+pub mod download_results;
 pub mod json_dump_run;
 pub mod json_dump_user;
+pub mod run_down_service;
 pub mod set_future_epoch_rates;
 pub mod set_paused;
 pub mod tick;
 pub mod update_config;
+pub mod upload_data;
 
 pub use checkpoint::*;
 pub use close_run::*;
 pub use create_run::*;
+pub use download_results::*;
 pub use json_dump_run::*;
 pub use json_dump_user::*;
 pub use set_future_epoch_rates::*;
 pub use set_paused::*;
 pub use tick::*;
 pub use update_config::*;
+pub use upload_data::*;

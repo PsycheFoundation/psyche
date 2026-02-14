@@ -108,6 +108,7 @@ ts-rs = { git = "https://github.com/arilotter/ts-rs.git", rev = "92ce1752227fec9
   "psyche-impl",
 ] }
 rayon = "1.10.0"
+walkdir = "2.5"
 
 # with iroh update need to specify digest and crypto-common versions
 digest = { version = "=0.11.0-rc.10", default-features = false }
