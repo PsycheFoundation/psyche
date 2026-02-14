@@ -504,7 +504,9 @@ impl SharableModel {
 
     pub fn clear_cache(&mut self) {
         self.config_and_tokenizer_ticket = None;
-        self.serialized_parameters = None;
+        // Don't clear serialized_parameters here. The blob data is an immutable
+        // snapshot that remains valid for serving to joining clients. It will be
+        // replaced when update_parameters() is called at the next Cooldown.
     }
 }
 

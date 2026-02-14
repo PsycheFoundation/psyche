@@ -618,14 +618,14 @@ where
         Ok((blob_ticket, blob_data.len()))
     }
 
-    /// Removes all the tags from the store that are lower than the target tag.
-    /// Also removes all the tags used for the parameter sharing since this will run only in the Train state
+    /// Removes stale distro result tags from the store that are older than the target step.
+    /// Model parameter tags are intentionally kept alive so that joining clients can
+    /// finish downloading. They get replaced when new parameters are served.
     pub async fn remove_staled_tags(
         &mut self,
         target_distro_result_step: u32,
     ) -> anyhow::Result<()> {
         let store = self.blobs_store.as_ref().clone();
-        let model_tags_deleted = store.tags().delete_prefix("model-").await?;
         let mut distro_results_deleted = 0;
         let mut tags = store.tags().list().await?;
 
@@ -642,8 +642,12 @@ where
                 continue;
             };
 
-            // Since tags related to model parameter sharing have been already deleted, it is assumed that
-            // all remaining tags are related to Distro result blobs
+            // Skip model parameter tags — they're kept alive for joining clients
+            if tag_name.starts_with("model-") {
+                continue;
+            }
+
+            // All remaining tags are assumed to be distro result blobs
             let tag_name_splitted: Vec<&str> = tag_name.split("_").collect();
             let Some(tag_name_distro_result_step) = tag_name_splitted.get(1) else {
                 warn!("Step not present in tag name: {tag_name}. This may lead to a memory leak");
@@ -668,10 +672,7 @@ where
             }
         }
 
-        debug!(
-            "Untagged {} blobs",
-            model_tags_deleted + distro_results_deleted
-        );
+        debug!("Untagged {} blobs", distro_results_deleted);
         Ok(())
     }
 

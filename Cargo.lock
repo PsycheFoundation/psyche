@@ -7258,6 +7258,7 @@ dependencies = [
  "psyche-coordinator",
  "psyche-core",
  "psyche-python-extension-impl",
+ "psyche-solana-authorizer",
  "psyche-solana-coordinator",
  "psyche-solana-rpc",
  "rstest",
@@ -7267,7 +7268,6 @@ dependencies = [
  "test-log",
  "thiserror 2.0.18",
  "tokio",
- "tokio-util 0.7.18",
  "toml 0.8.23",
 ]
 

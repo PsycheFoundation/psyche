@@ -5,6 +5,7 @@ use anchor_client::{
     solana_sdk::signature::Signature,
     solana_sdk::{
         commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair, signer::Signer,
+        system_program,
     },
 };
 use psyche_coordinator::{
@@ -25,6 +26,7 @@ pub fn write_keypair_to_file(keypair: &Keypair, path: &Path) -> std::io::Result<
 
 pub struct SolanaTestClient {
     program: Program<Arc<Keypair>>,
+    instance: Pubkey,
     account: Pubkey,
     run_id: String,
     owner_keypair: Arc<Keypair>,
@@ -51,8 +53,14 @@ impl SolanaTestClient {
         let (instance, _) = Pubkey::find_program_address(seeds, &program.id());
         let coordinator_instance: psyche_solana_coordinator::CoordinatorInstance =
             program.account(instance).await.unwrap();
+        program
+            .rpc()
+            .request_airdrop(&key_pair.pubkey(), 1_000_000_000)
+            .await
+            .unwrap();
         Self {
             program,
+            instance,
             account: coordinator_instance.coordinator_account,
             run_id,
             owner_keypair: key_pair,
@@ -66,6 +74,74 @@ impl SolanaTestClient {
             &self.account,
             &self.owner_keypair.pubkey(),
             paused,
+        );
+        self.program.request().instruction(instruction).send().await
+    }
+
+    /// Create a lightweight SolanaTestClient for joining a run.
+    /// Skips the initial sleep (validator is already running) and airdrops SOL for transactions.
+    pub async fn new_for_joining(run_id: String) -> Self {
+        let key_pair = Arc::new(Keypair::new());
+        let cluster = Cluster::Localnet;
+        let client = anchor_client::Client::new_with_options(
+            cluster.clone(),
+            key_pair.clone(),
+            CommitmentConfig::confirmed(),
+        );
+        let program = client.program(psyche_solana_coordinator::ID).unwrap();
+
+        let rpc = program.rpc();
+        let sig = rpc
+            .request_airdrop(&key_pair.pubkey(), 1_000_000_000)
+            .await
+            .unwrap();
+        loop {
+            if rpc.confirm_transaction(&sig).await.unwrap_or(false) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        let seeds = &[
+            psyche_solana_coordinator::CoordinatorInstance::SEEDS_PREFIX,
+            psyche_solana_coordinator::bytes_from_string(&run_id),
+        ];
+        let (instance, _) = Pubkey::find_program_address(seeds, &program.id());
+        let coordinator_instance: psyche_solana_coordinator::CoordinatorInstance =
+            program.account(instance).await.unwrap();
+        Self {
+            program,
+            instance,
+            account: coordinator_instance.coordinator_account,
+            run_id,
+            owner_keypair: key_pair,
+        }
+    }
+
+    pub async fn join_run(&self) -> Result<Signature, ClientError> {
+        let coordinator_instance: psyche_solana_coordinator::CoordinatorInstance =
+            self.program.account(self.instance).await.unwrap();
+        let authorization = psyche_solana_authorizer::find_authorization(
+            &coordinator_instance.join_authority,
+            &system_program::id(),
+            psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE,
+        );
+        let client_id = ClientId::new(self.owner_keypair.pubkey(), [0u8; 32]);
+        let instruction = psyche_solana_rpc::instructions::coordinator_join_run(
+            &self.instance,
+            &self.account,
+            &authorization,
+            client_id,
+        );
+        self.program.request().instruction(instruction).send().await
+    }
+
+    /// Send a tick transaction to advance the coordinator state machine.
+    pub async fn send_tick(&self) -> Result<Signature, ClientError> {
+        let instruction = psyche_solana_rpc::instructions::coordinator_tick(
+            &self.instance,
+            &self.account,
+            &self.owner_keypair.pubkey(),
         );
         self.program.request().instruction(instruction).send().await
     }
@@ -126,6 +202,10 @@ impl SolanaTestClient {
         coordinator.state.coordinator.progress.epoch
     }
 
+    pub fn run_id(&self) -> &str {
+        &self.run_id
+    }
+
     pub async fn get_last_step(&self) -> u32 {
         let coordinator = self.get_coordinator_account().await;
         coordinator.state.coordinator.progress.step
@@ -159,6 +239,9 @@ pub struct ConfigBuilder {
     min_clients: Option<usize>,
     batch_size: u32,
     architecture: String,
+    witness_nodes: Option<u32>,
+    round_witness_time: Option<u64>,
+    warmup_time: Option<u64>,
 }
 
 impl Default for ConfigBuilder {
@@ -187,6 +270,9 @@ impl ConfigBuilder {
             min_clients: None,
             batch_size: 4,
             architecture: String::from("HfLlama"),
+            witness_nodes: None,
+            round_witness_time: None,
+            warmup_time: None,
         }
     }
 
@@ -211,6 +297,21 @@ impl ConfigBuilder {
         self
     }
 
+    pub fn with_witness_nodes(mut self, witness_nodes: u32) -> Self {
+        self.witness_nodes = Some(witness_nodes);
+        self
+    }
+
+    pub fn with_round_witness_time(mut self, round_witness_time: u64) -> Self {
+        self.round_witness_time = Some(round_witness_time);
+        self
+    }
+
+    pub fn with_warmup_time(mut self, warmup_time: u64) -> Self {
+        self.warmup_time = Some(warmup_time);
+        self
+    }
+
     pub fn build(mut self) -> PathBuf {
         // Use min_clients if set, otherwise default to num_clients
         let min_clients = self.min_clients.unwrap_or(self.num_clients);
@@ -220,7 +321,15 @@ impl ConfigBuilder {
         self.set_value("config.init_min_clients", min_clients as u32);
 
         // This means that every client is a witness
-        self.set_value("config.witness_nodes", 0_u32);
+        self.set_value("config.witness_nodes", self.witness_nodes.unwrap_or(0));
+
+        if let Some(round_witness_time) = self.round_witness_time {
+            self.set_value("config.round_witness_time", round_witness_time as i64);
+        }
+
+        if let Some(warmup_time) = self.warmup_time {
+            self.set_value("config.warmup_time", warmup_time as i64);
+        }
 
         self.set_value("model.LLM.architecture", self.architecture.clone());
         self.set_value("config.global_batch_size_start", self.batch_size);

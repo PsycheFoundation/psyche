@@ -6,11 +6,11 @@ version.workspace = true
 [dependencies]
 psyche-solana-coordinator.workspace = true
 psyche-solana-rpc.workspace = true
+psyche-solana-authorizer.workspace = true
 psyche-coordinator.workspace = true
 tch.workspace = true
 anchor-client.workspace = true
 psyche-core.workspace = true
-tokio-util.workspace = true
 tokio.workspace = true
 bollard = "0.18.1"
 serde_json.workspace = true
