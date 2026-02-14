@@ -25,7 +25,9 @@ use serial_test::serial;
 #[tokio::test]
 #[serial]
 async fn test_create_run() {
-    let _validator = TestValidator::start().expect("Failed to start test validator");
+    let _validator = TestValidator::start()
+        .await
+        .expect("Failed to start test validator");
     let wallet_arc = create_test_keypair().expect("Failed to create test keypair");
 
     let run_id = format!("test-run-{}", rand::random::<u32>());
@@ -78,7 +80,9 @@ async fn test_create_run() {
 #[tokio::test]
 #[serial]
 async fn test_pause_and_resume_run() {
-    let _validator = TestValidator::start().expect("Failed to start test validator");
+    let _validator = TestValidator::start()
+        .await
+        .expect("Failed to start test validator");
     let wallet_arc = create_test_keypair().expect("Failed to create test keypair");
 
     let run_id = format!("test-run-{}", rand::random::<u32>());
@@ -145,7 +149,9 @@ async fn test_pause_and_resume_run() {
 #[tokio::test]
 #[serial]
 async fn test_json_dump_run() {
-    let _validator = TestValidator::start().expect("Failed to start test validator");
+    let _validator = TestValidator::start()
+        .await
+        .expect("Failed to start test validator");
     let wallet_arc = create_test_keypair().expect("Failed to create test keypair");
 
     let run_id = format!("test-run-{}", rand::random::<u32>());
@@ -190,7 +196,9 @@ async fn test_json_dump_run() {
 #[tokio::test]
 #[serial]
 async fn test_close_run() {
-    let _validator = TestValidator::start().expect("Failed to start test validator");
+    let _validator = TestValidator::start()
+        .await
+        .expect("Failed to start test validator");
     let wallet_arc = create_test_keypair().expect("Failed to create test keypair");
 
     let run_id = format!("test-run-{}", rand::random::<u32>());
@@ -248,7 +256,9 @@ async fn test_close_run() {
 #[tokio::test]
 #[serial]
 async fn test_join_authorization_create_and_read() {
-    let _validator = TestValidator::start().expect("Failed to start test validator");
+    let _validator = TestValidator::start()
+        .await
+        .expect("Failed to start test validator");
     let grantor_arc = create_test_keypair().expect("Failed to create grantor keypair");
     let grantee_pubkey = create_test_keypair()
         .expect("Failed to create grantee keypair")
@@ -290,7 +300,9 @@ async fn test_join_authorization_create_and_read() {
 #[tokio::test]
 #[serial]
 async fn test_join_authorization_delete() {
-    let _validator = TestValidator::start().expect("Failed to start test validator");
+    let _validator = TestValidator::start()
+        .await
+        .expect("Failed to start test validator");
     let grantor_arc = create_test_keypair().expect("Failed to create grantor keypair");
     let grantee_pubkey = create_test_keypair()
         .expect("Failed to create grantee keypair")
@@ -331,7 +343,9 @@ async fn test_join_authorization_delete() {
 #[tokio::test]
 #[serial]
 async fn test_can_join_paused_run() {
-    let _validator = TestValidator::start().expect("Failed to start test validator");
+    let _validator = TestValidator::start()
+        .await
+        .expect("Failed to start test validator");
     let wallet_arc = create_test_keypair().expect("Failed to create test keypair");
 
     let run_id = format!("test-run-{}", rand::random::<u32>());
@@ -391,7 +405,9 @@ async fn test_can_join_paused_run() {
 #[tokio::test]
 #[serial]
 async fn test_full_authorization_workflow() {
-    let _validator = TestValidator::start().expect("Failed to start test validator");
+    let _validator = TestValidator::start()
+        .await
+        .expect("Failed to start test validator");
     let owner_arc = create_test_keypair().expect("Failed to create owner keypair");
     let user_pubkey = create_test_keypair()
         .expect("Failed to create user keypair")
@@ -454,7 +470,9 @@ async fn test_full_authorization_workflow() {
 #[tokio::test]
 #[serial]
 async fn test_update_config() {
-    let _validator = TestValidator::start().expect("Failed to start test validator");
+    let _validator = TestValidator::start()
+        .await
+        .expect("Failed to start test validator");
     let wallet_arc = create_test_keypair().expect("Failed to create test keypair");
 
     let run_id = format!("test-run-{}", rand::random::<u32>());
@@ -490,7 +508,9 @@ async fn test_update_config() {
 #[tokio::test]
 #[serial]
 async fn test_tick() {
-    let _validator = TestValidator::start().expect("Failed to start test validator");
+    let _validator = TestValidator::start()
+        .await
+        .expect("Failed to start test validator");
     let wallet_arc = create_test_keypair().expect("Failed to create test keypair");
 
     let run_id = format!("test-run-{}", rand::random::<u32>());
@@ -535,7 +555,9 @@ async fn test_tick() {
 #[tokio::test]
 #[serial]
 async fn test_set_future_epoch_rates() {
-    let _validator = TestValidator::start().expect("Failed to start test validator");
+    let _validator = TestValidator::start()
+        .await
+        .expect("Failed to start test validator");
     let wallet_arc = create_test_keypair().expect("Failed to create test keypair");
 
     let run_id = format!("test-run-{}", rand::random::<u32>());
@@ -584,7 +606,9 @@ async fn test_set_future_epoch_rates() {
 #[tokio::test]
 #[serial]
 async fn test_checkpoint() {
-    let _validator = TestValidator::start().expect("Failed to start test validator");
+    let _validator = TestValidator::start()
+        .await
+        .expect("Failed to start test validator");
     let wallet_arc = create_test_keypair().expect("Failed to create test keypair");
 
     let run_id = format!("test-run-{}", rand::random::<u32>());
@@ -632,7 +656,9 @@ async fn test_checkpoint() {
 #[tokio::test]
 #[serial]
 async fn test_join_authorization_delegate() {
-    let _validator = TestValidator::start().expect("Failed to start test validator");
+    let _validator = TestValidator::start()
+        .await
+        .expect("Failed to start test validator");
     let grantor_arc = create_test_keypair().expect("Failed to create grantor keypair");
     let delegate_arc = create_test_keypair().expect("Failed to create delegate keypair");
 
@@ -682,7 +708,9 @@ async fn test_join_authorization_delegate() {
 #[tokio::test]
 #[serial]
 async fn test_json_dump_user() {
-    let _validator = TestValidator::start().expect("Failed to start test validator");
+    let _validator = TestValidator::start()
+        .await
+        .expect("Failed to start test validator");
     let wallet_arc = create_test_keypair().expect("Failed to create test keypair");
 
     let run_id = format!("test-run-{}", rand::random::<u32>());
