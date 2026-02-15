@@ -558,6 +558,12 @@ impl SolanaBackend {
                         return Ok(signature);
                     }
                     Err(error) => {
+                        if error.to_string().contains("authorization") && error.to_string().contains("AccountNotInitialized") {
+                            return Err(anyhow!(
+                                "Error: Account not been initialized. You are unable to join this run\n\
+                                Error message: {error}"
+                            ));
+                        }
                         retries += 1;
                         if retries >= SEND_RETRIES {
                             return Err(anyhow!(

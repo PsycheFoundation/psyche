@@ -233,7 +233,7 @@ impl App {
         // (subscription is on change), so check if it's in that state right at boot
         // and join the run if so
         if start_coordinator_state.run_state == RunState::WaitingForMembers {
-            let join_signature = backend
+            let join_signature = match backend
                 .join_run(
                     coordinator_instance_pubkey,
                     coordinator_account,
@@ -243,7 +243,16 @@ impl App {
                     },
                     self.authorizer,
                 )
-                .await?;
+                .await {
+                    Ok(signature) => signature,
+                    Err(error) => {
+                        if error.to_string().contains("Authorization account not initialized") {
+                            tracing::error!("Authorization error: {}", error);
+                            std::process::exit(11);
+                        }
+                        return Err(error);
+                    }
+                };
             info!(
                 run_id = self.run_id,
                 from = %signer,
@@ -356,14 +365,23 @@ impl App {
                     match latest_update.run_state {
                         RunState::WaitingForMembers => {
                             if joined_run_this_epoch.is_none() {
-                                let join_signature = backend
+                                let join_signature = match backend
                                     .join_run(
                                         coordinator_instance_pubkey,
                                         coordinator_account,
                                         id,
                                         self.authorizer,
                                     )
-                                    .await?;
+                                    .await {
+                                        Ok(signature) => signature,
+                                        Err(error) => {
+                                            if error.to_string().contains("Authorization account not initialized") {
+                                                tracing::error!("Authorization error: {}", error);
+                                                std::process::exit(11);
+                                            }
+                                            return Err(error);
+                                        }
+                                    };
                                 info!(
                                     run_id = self.run_id,
                                     from = %signer,
