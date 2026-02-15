@@ -96,6 +96,12 @@ while true; do
         exit 10
     fi
 
+    # Exit code 11 means authorization error - exit container immediately (no retry)
+    if [[ $EXIT_STATUS -eq 11 ]]; then
+        echo -e "[!] Uninitialized account detected. Exiting container without retry..."
+        exit 11
+    fi
+
     # Reset restart counter if client ran longer than RESET_TIME
     if [ $duration -ge $RESET_TIME ]; then
         num_restarts=0
