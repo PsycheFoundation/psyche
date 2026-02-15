@@ -4,8 +4,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use clap::Args;
 
-use psyche_solana_rpc::instructions;
 use psyche_solana_rpc::SolanaBackend;
+use psyche_solana_rpc::instructions;
 
 #[derive(Debug, Clone, Args)]
 #[command()]
