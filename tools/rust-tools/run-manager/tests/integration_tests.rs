@@ -7,7 +7,7 @@ use anchor_client::{
     solana_sdk::{commitment_config::CommitmentConfig, signature::Signer},
     Cluster,
 };
-use common::{create_test_keypair, TestClient, TestValidator};
+use common::{TestClient, TestValidator, create_test_keypair};
 use psyche_coordinator::RunState;
 use psyche_solana_rpc::SolanaBackend;
 use run_manager::commands::{
