@@ -44,6 +44,7 @@ pub struct JoinRunAccounts<'info> {
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct JoinRunParams {
     pub client_id: ClientId,
+    pub claimer: Pubkey,
 }
 
 pub fn join_run_processor(
@@ -55,5 +56,5 @@ pub fn join_run_processor(
     }
     let mut account = context.accounts.coordinator_account.load_mut()?;
     account.increment_nonce();
-    account.state.join_run(params.client_id)
+    account.state.join_run(params.client_id, params.claimer)
 }

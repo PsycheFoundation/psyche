@@ -253,8 +253,9 @@ impl SolanaBackend {
         &self,
         coordinator_instance: Pubkey,
         coordinator_account: Pubkey,
-        id: psyche_solana_coordinator::ClientId,
         authorizer: Option<Pubkey>,
+        id: psyche_solana_coordinator::ClientId,
+        claimer: Option<Pubkey>,
     ) -> Result<Signature> {
         let coordinator_instance_state =
             self.get_coordinator_instance(&coordinator_instance).await?;
@@ -265,6 +266,7 @@ impl SolanaBackend {
             &coordinator_account,
             &authorization,
             id,
+            &claimer.unwrap_or(self.get_payer()),
         );
         // TODO (vbrunet) - what was the point of doing specifically a timeout here but not the other TXs ?
         // We timeout the transaction at 5s max, since internally send() polls Solana until the

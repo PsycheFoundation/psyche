@@ -1,9 +1,18 @@
+use psyche_coordinator::CoordinatorConfig;
+use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
+use psyche_solana_coordinator::ClientId;
 use psyche_solana_coordinator::CoordinatorAccount;
+use psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
+use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_create;
+use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_grantor_update;
+use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_join_run;
 use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_participant_claim;
 use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_participant_create;
 use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_run_create;
+use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_run_update;
 use psyche_solana_treasurer::logic::RunCreateParams;
+use psyche_solana_treasurer::logic::RunUpdateParams;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
@@ -26,6 +35,8 @@ pub async fn run() {
     let join_authority = Keypair::new();
     let client1 = Keypair::new();
     let client2 = Keypair::new();
+    let claimer1 = Keypair::new();
+    let claimer2 = Keypair::new();
 
     // Prepare the collateral mints
     let collateral1_mint = endpoint
@@ -56,7 +67,7 @@ pub async fn run() {
         .unwrap();
 
     // Create the runs (it should init the underlying coordinators)
-    let (run1, _) = process_treasurer_run_create(
+    let (run1, coordinator1_instance) = process_treasurer_run_create(
         &mut endpoint,
         &payer,
         &collateral1_mint,
@@ -71,7 +82,7 @@ pub async fn run() {
     )
     .await
     .unwrap();
-    let (run2, _) = process_treasurer_run_create(
+    let (run2, coordinator2_instance) = process_treasurer_run_create(
         &mut endpoint,
         &payer,
         &collateral2_mint,
@@ -82,6 +93,64 @@ pub async fn run() {
             main_authority: main_authority.pubkey(),
             join_authority: join_authority.pubkey(),
             client_version: "latest".to_string(),
+        },
+    )
+    .await
+    .unwrap();
+
+    // Update the runs' coordinator configs
+    let dummy_config = CoordinatorConfig {
+        warmup_time: 10,
+        cooldown_time: 20,
+        max_round_train_time: 888,
+        round_witness_time: 42,
+        min_clients: 1,
+        init_min_clients: 1,
+        global_batch_size_start: 1,
+        global_batch_size_end: 42,
+        global_batch_size_warmup_tokens: 0,
+        verification_percent: 0,
+        witness_nodes: 0,
+        epoch_time: 999,
+        total_steps: 100,
+        waiting_for_members_extra_time: 3,
+    };
+    process_treasurer_run_update(
+        &mut endpoint,
+        &payer,
+        &main_authority,
+        &run1,
+        &coordinator1_instance,
+        &coordinator1_account,
+        RunUpdateParams {
+            metadata: None,
+            config: Some(dummy_config),
+            model: None,
+            progress: None,
+            epoch_earning_rate_total_shared: None,
+            epoch_slashing_rate_per_client: None,
+            paused: None,
+            client_version: None,
+        },
+    )
+    .await
+    .unwrap();
+    process_treasurer_run_update(
+        &mut endpoint,
+        &payer,
+        &main_authority,
+        &run2,
+        &coordinator2_instance,
+        &coordinator2_account,
+        RunUpdateParams {
+            metadata: None,
+            config: Some(dummy_config),
+            model: None,
+            progress: None,
+            epoch_earning_rate_total_shared: None,
+            epoch_slashing_rate_per_client: None,
+            paused: None,
+            client_version: None,
         },
     )
     .await
@@ -127,35 +196,35 @@ pub async fn run() {
         .await
         .unwrap();
 
-    // Create the clients ATA
-    let client1_collateral1 = endpoint
+    // Create the claimers ATA
+    let claimer1_collateral1 = endpoint
         .process_spl_associated_token_account_get_or_init(
             &payer,
-            &client1.pubkey(),
+            &claimer1.pubkey(),
             &collateral1_mint,
         )
         .await
         .unwrap();
-    let client1_collateral2 = endpoint
+    let claimer1_collateral2 = endpoint
         .process_spl_associated_token_account_get_or_init(
             &payer,
-            &client1.pubkey(),
+            &claimer1.pubkey(),
             &collateral2_mint,
         )
         .await
         .unwrap();
-    let client2_collateral1 = endpoint
+    let claimer2_collateral1 = endpoint
         .process_spl_associated_token_account_get_or_init(
             &payer,
-            &client2.pubkey(),
+            &claimer2.pubkey(),
             &collateral1_mint,
         )
         .await
         .unwrap();
-    let client2_collateral2 = endpoint
+    let claimer2_collateral2 = endpoint
         .process_spl_associated_token_account_get_or_init(
             &payer,
-            &client2.pubkey(),
+            &claimer2.pubkey(),
             &collateral2_mint,
         )
         .await
@@ -165,32 +234,117 @@ pub async fn run() {
     process_treasurer_participant_create(
         &mut endpoint,
         &payer,
-        &client1,
         &run1,
+        &client1.pubkey(),
     )
     .await
     .unwrap();
     process_treasurer_participant_create(
         &mut endpoint,
         &payer,
-        &client1,
         &run2,
+        &client1.pubkey(),
     )
     .await
     .unwrap();
     process_treasurer_participant_create(
+        &mut endpoint,
+        &payer,
+        &run1,
+        &client2.pubkey(),
+    )
+    .await
+    .unwrap();
+    process_treasurer_participant_create(
+        &mut endpoint,
+        &payer,
+        &run2,
+        &client2.pubkey(),
+    )
+    .await
+    .unwrap();
+
+    // Try claiming before joining, it should fail
+    process_treasurer_participant_claim(
+        &mut endpoint,
+        &payer,
+        &claimer1,
+        &claimer1_collateral1,
+        &collateral1_mint,
+        &run1,
+        &client1.pubkey(),
+        &coordinator1_account,
+        0,
+    )
+    .await
+    .unwrap_err();
+
+    // Create and activate the join authorization for everyone
+    let authorization = process_authorizer_authorization_create(
+        &mut endpoint,
+        &payer,
+        &join_authority,
+        &Pubkey::default(),
+        &JOIN_RUN_AUTHORIZATION_SCOPE,
+    )
+    .await
+    .unwrap();
+    process_authorizer_authorization_grantor_update(
+        &mut endpoint,
+        &payer,
+        &join_authority,
+        &authorization,
+        AuthorizationGrantorUpdateParams { active: true },
+    )
+    .await
+    .unwrap();
+
+    // Joining the runs
+    process_coordinator_join_run(
+        &mut endpoint,
+        &payer,
+        &client1,
+        &authorization,
+        &coordinator1_instance,
+        &coordinator1_account,
+        ClientId::new(client1.pubkey(), Default::default()),
+        &claimer1.pubkey(),
+    )
+    .await
+    .unwrap();
+    process_coordinator_join_run(
         &mut endpoint,
         &payer,
         &client2,
-        &run1,
+        &authorization,
+        &coordinator1_instance,
+        &coordinator1_account,
+        ClientId::new(client2.pubkey(), Default::default()),
+        &claimer2.pubkey(),
     )
     .await
     .unwrap();
-    process_treasurer_participant_create(
+    process_coordinator_join_run(
+        &mut endpoint,
+        &payer,
+        &client1,
+        &authorization,
+        &coordinator2_instance,
+        &coordinator2_account,
+        ClientId::new(client1.pubkey(), Default::default()),
+        &claimer1.pubkey(),
+    )
+    .await
+    .unwrap();
+    process_coordinator_join_run(
         &mut endpoint,
         &payer,
         &client2,
-        &run2,
+        &authorization,
+        &coordinator2_instance,
+        &coordinator2_account,
+        ClientId::new(client2.pubkey(), Default::default()),
+        &claimer2.pubkey(),
     )
     .await
     .unwrap();
@@ -199,10 +353,11 @@ pub async fn run() {
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client1,
-        &client1_collateral1,
+        &claimer1,
+        &claimer1_collateral1,
         &collateral1_mint,
         &run1,
+        &client1.pubkey(),
         &coordinator1_account,
         0,
     )
@@ -211,10 +366,11 @@ pub async fn run() {
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client2,
-        &client2_collateral1,
+        &claimer2,
+        &claimer2_collateral1,
         &collateral1_mint,
         &run1,
+        &client2.pubkey(),
         &coordinator1_account,
         0,
     )
@@ -223,10 +379,11 @@ pub async fn run() {
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client1,
-        &client1_collateral2,
+        &claimer1,
+        &claimer1_collateral2,
         &collateral2_mint,
         &run2,
+        &client1.pubkey(),
         &coordinator2_account,
         0,
     )
@@ -235,10 +392,11 @@ pub async fn run() {
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client2,
-        &client2_collateral2,
+        &claimer2,
+        &claimer2_collateral2,
         &collateral2_mint,
         &run2,
+        &client2.pubkey(),
         &coordinator2_account,
         0,
     )
@@ -249,24 +407,41 @@ pub async fn run() {
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client1,
-        &client1_collateral1,
+        &claimer1,
+        &claimer1_collateral1,
         &collateral1_mint,
         &run1,
+        &client1.pubkey(),
         &coordinator1_account,
         1,
     )
     .await
     .unwrap_err();
 
-    // Try claiming using the wrong owner, it should fail
+    // Try claiming using the wrong client, it should fail
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client2,
-        &client1_collateral1,
+        &claimer1,
+        &claimer1_collateral1,
         &collateral1_mint,
         &run1,
+        &client2.pubkey(), // Wrong client
+        &coordinator1_account,
+        0,
+    )
+    .await
+    .unwrap_err();
+
+    // Try claiming using the wrong claimer, it should fail
+    process_treasurer_participant_claim(
+        &mut endpoint,
+        &payer,
+        &claimer2, // Wrong claimer
+        &claimer1_collateral1,
+        &collateral1_mint,
+        &run1,
+        &client1.pubkey(),
         &coordinator1_account,
         0,
     )
@@ -277,10 +452,11 @@ pub async fn run() {
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client1,
-        &client2_collateral1,
+        &claimer1,
+        &claimer2_collateral1, // Wrong ATA
         &collateral1_mint,
         &run1,
+        &client1.pubkey(),
         &coordinator1_account,
         0,
     )
@@ -289,10 +465,11 @@ pub async fn run() {
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client1,
-        &client1_collateral2,
+        &claimer1,
+        &claimer1_collateral2, // Wrong ATA
         &collateral1_mint,
         &run1,
+        &client1.pubkey(),
         &coordinator1_account,
         0,
     )
@@ -303,10 +480,11 @@ pub async fn run() {
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client1,
-        &client1_collateral1,
-        &collateral2_mint,
+        &claimer1,
+        &claimer1_collateral1,
+        &collateral2_mint, // Wrong mint
         &run1,
+        &client1.pubkey(),
         &coordinator1_account,
         0,
     )
@@ -317,10 +495,11 @@ pub async fn run() {
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client1,
-        &client1_collateral1,
+        &claimer1,
+        &claimer1_collateral1,
         &collateral1_mint,
-        &run2,
+        &run2, // Wrong run
+        &client1.pubkey(),
         &coordinator1_account,
         0,
     )
@@ -331,21 +510,22 @@ pub async fn run() {
     process_treasurer_participant_claim(
         &mut endpoint,
         &payer,
-        &client1,
-        &client1_collateral1,
+        &claimer1,
+        &claimer1_collateral1,
         &collateral1_mint,
         &run1,
-        &coordinator2_account,
+        &client1.pubkey(),
+        &coordinator2_account, // Wrong coordinator account
         0,
     )
     .await
     .unwrap_err();
 
     // Noone should have been able to claim anything yet
-    assert_amount(&mut endpoint, &client1_collateral1, 0).await;
-    assert_amount(&mut endpoint, &client2_collateral2, 0).await;
-    assert_amount(&mut endpoint, &client1_collateral1, 0).await;
-    assert_amount(&mut endpoint, &client2_collateral2, 0).await;
+    assert_amount(&mut endpoint, &claimer1_collateral1, 0).await;
+    assert_amount(&mut endpoint, &claimer2_collateral2, 0).await;
+    assert_amount(&mut endpoint, &claimer1_collateral1, 0).await;
+    assert_amount(&mut endpoint, &claimer2_collateral2, 0).await;
 
     // All the runs collateral should still be intact
     assert_amount(&mut endpoint, &run1_collateral1, 1_000_000_000_000).await;

@@ -323,7 +323,7 @@ impl CoordinatorInstanceState {
         Ok(())
     }
 
-    pub fn join_run(&mut self, id: ClientId) -> Result<()> {
+    pub fn join_run(&mut self, id: ClientId, claimer: Pubkey) -> Result<()> {
         let existing = match self
             .clients_state
             .clients
@@ -335,6 +335,7 @@ impl CoordinatorInstanceState {
                     return err!(ProgramError::ClientIdMismatch);
                 }
                 client.id = id; // IMPORTANT. Equality is on wallet key but includes ephemeral p2p key
+                client.claimer = claimer;
                 client.active = self.clients_state.next_active;
                 msg!("Existing client {} re-joined", id.signer);
                 true
@@ -352,6 +353,7 @@ impl CoordinatorInstanceState {
 
             let new_client = Client {
                 id,
+                claimer,
                 earned: 0,
                 slashed: 0,
                 active: self.clients_state.next_active,

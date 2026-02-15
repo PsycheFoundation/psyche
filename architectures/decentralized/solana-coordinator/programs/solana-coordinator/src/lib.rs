@@ -133,7 +133,7 @@ pub struct CoordinatorAccount {
 }
 
 impl CoordinatorAccount {
-    pub const VERSION: u64 = 1;
+    pub const VERSION: u64 = 2;
 
     pub fn space_with_discriminator() -> usize {
         CoordinatorAccount::DISCRIMINATOR.len()

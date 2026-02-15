@@ -61,9 +61,15 @@ pub mod psyche_solana_treasurer {
 
 #[error_code]
 pub enum ProgramError {
-    #[msg("Invalid parameter")]
-    InvalidParameter,
-
     #[msg("run_id must be 32 bytes or less")]
     RunIdInvalidLength,
+
+    #[msg("Participant's client not found")]
+    ParticipantClientNotFound,
+
+    #[msg("Claimer signer does not match the expected signer")]
+    ClaimerSignerMismatch,
+
+    #[msg("Claimed points exceed earned points")]
+    ClaimedPointsExceedEarnedPoints,
 }

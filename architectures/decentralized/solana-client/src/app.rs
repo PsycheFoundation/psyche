@@ -48,6 +48,7 @@ pub struct App {
     update_tui_interval: Interval,
     tx_tui_state: Option<Sender<TabsData>>,
     authorizer: Option<Pubkey>,
+    claimer: Option<Pubkey>,
     metrics: Arc<ClientMetrics>,
     allowlist: allowlist::AllowDynamic,
     p2p: NC,
@@ -61,6 +62,7 @@ pub struct AppParams {
     pub backup_clusters: Vec<Cluster>,
     pub tx_tui_state: Option<Sender<TabsData>>,
     pub authorizer: Option<Pubkey>,
+    pub claimer: Option<Pubkey>,
     pub train_args: TrainArgs,
 }
 
@@ -72,6 +74,7 @@ pub async fn build_app(
         backup_clusters,
         tx_tui_state,
         authorizer,
+        claimer,
         train_args: p,
     }: AppParams,
 ) -> Result<App> {
@@ -151,6 +154,7 @@ pub async fn build_app(
         tx_tui_state,
         update_tui_interval: interval(Duration::from_millis(150)),
         authorizer,
+        claimer,
         allowlist,
         metrics,
         p2p,
@@ -237,11 +241,12 @@ impl App {
                 .join_run(
                     coordinator_instance_pubkey,
                     coordinator_account,
+                    self.authorizer,
                     psyche_solana_coordinator::ClientId {
                         signer,
                         p2p_identity: *p2p_identity.as_bytes(),
                     },
-                    self.authorizer,
+                    self.claimer,
                 )
                 .await?;
             info!(
@@ -360,8 +365,9 @@ impl App {
                                     .join_run(
                                         coordinator_instance_pubkey,
                                         coordinator_account,
-                                        id,
                                         self.authorizer,
+                                        id,
+                                        self.claimer,
                                     )
                                     .await?;
                                 info!(

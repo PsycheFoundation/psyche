@@ -22,13 +22,14 @@ use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
 use psyche_solana_tooling::get_accounts::get_coordinator_account_state;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_create;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_grantor_update;
-use psyche_solana_tooling::process_coordinator_instructions::process_coordiantor_set_future_epoch_rates;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_init;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_join_run;
+use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_set_future_epoch_rates;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_set_paused;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_tick;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_witness;
 use psyche_solana_tooling::process_coordinator_instructions::process_update;
+use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 
@@ -46,6 +47,7 @@ pub async fn run() {
     // Run constants
     let main_authority = Keypair::new();
     let join_authority = Keypair::new();
+    let claimer = Pubkey::new_unique();
     let mut clients = vec![];
     for _ in 0..240 {
         clients.push(Keypair::new());
@@ -130,7 +132,7 @@ pub async fn run() {
     .unwrap();
 
     // Set the reward rate for the epoch
-    process_coordiantor_set_future_epoch_rates(
+    process_coordinator_set_future_epoch_rates(
         &mut endpoint,
         &payer,
         &main_authority,
@@ -184,6 +186,7 @@ pub async fn run() {
             &coordinator_instance,
             &coordinator_account,
             ClientId::new(client.pubkey(), Default::default()),
+            &claimer,
         )
         .await
         .unwrap();
