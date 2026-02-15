@@ -20,7 +20,7 @@ A Training run can be configured to be restricted to only a set of whitelisted k
 
 ## Permissionless Runs
 
-Permissionless runs are open to anyone without any `authorization` required. The owner of the run can set this for a run when creating it. This type of authorization can be made by creating an `authorization` with a special `authorizer` valid for everyone: `11111111111111111111111111111111`
+Permissionless runs are open to anyone without any `authorization` required. The owner of the run can set this for a run when creating it. This type of authorization can be made by using the `permissionless` authorization type, which maps to the system program ID (`11111111111111111111111111111111`).
 
 A CLI is provided for this:
 
@@ -28,7 +28,7 @@ A CLI is provided for this:
 run-manager join-authorization-create \
     --rpc [RPC] \
     --wallet-private-key-path [JOIN_AUTHORITY_KEYPAIR_FILE] \
-    --authorizer 11111111111111111111111111111111
+    --authorization permissionless
 ```
 
 ## Permissioned Runs
@@ -49,7 +49,7 @@ For the `join_authority` to issues new `authorization`, a CLI is provided:
 run-manager join-authorization-create \
     --rpc [RPC] \
     --wallet-private-key-path [JOIN_AUTHORITY_KEYPAIR_FILE] \
-    --authorizer [USER_MASTER_PUBKEY]
+    --authorization [USER_MASTER_PUBKEY]
 ```
 
 For the `authorizer` to then set a list of delegate, the following CLI is provided:
@@ -69,7 +69,7 @@ Removing the authorization is also possible through CLI:
 run-manager join-authorization-delete \
     --rpc [RPC] \
     --wallet-private-key-path [JOIN_AUTHORITY_KEYPAIR_FILE] \
-    --authorizer [USER_MASTER_PUBKEY]
+    --authorization [USER_MASTER_PUBKEY]
 ```
 
 ## Further information

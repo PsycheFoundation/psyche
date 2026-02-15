@@ -1,6 +1,6 @@
 use crate::commands::Command;
+use crate::commands::authorization::Authorization;
 use anchor_client::solana_sdk::pubkey::Pubkey;
-use anchor_client::solana_sdk::system_program;
 use anyhow::Result;
 use async_trait::async_trait;
 use clap::Args;
@@ -12,20 +12,16 @@ use psyche_solana_rpc::SolanaBackend;
 pub struct CommandJoinAuthorizationRead {
     #[clap(long, env)]
     pub join_authority: Pubkey,
+    /// Authorization type: either a pubkey address or "permissionless" (maps to system program ID)
     #[clap(long, env)]
-    pub authorizer: Option<Pubkey>,
+    pub authorization: Authorization,
 }
 
 #[async_trait]
 impl Command for CommandJoinAuthorizationRead {
     async fn execute(self, backend: SolanaBackend) -> Result<()> {
-        let Self {
-            join_authority,
-            authorizer,
-        } = self;
-
-        let grantor = join_authority;
-        let grantee = authorizer.unwrap_or(system_program::ID);
+        let grantor = self.join_authority;
+        let grantee = self.authorization.to_pubkey();
         let scope = psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
 
         println!("Authorization Grantor: {}", grantor);
