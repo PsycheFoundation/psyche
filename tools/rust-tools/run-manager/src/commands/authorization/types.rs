@@ -31,4 +31,3 @@ impl FromStr for Authorization {
         }
     }
 }
-
