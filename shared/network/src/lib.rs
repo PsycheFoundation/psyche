@@ -22,7 +22,7 @@ pub use p2p_model_sharing::{
     MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
     PeerManagerHandle,
 };
-use psyche_metrics::{ClientMetrics, ConnectionType, PeerConnection};
+use psyche_metrics::{ClientMetrics, PeerConnection};
 use router::{SupportedProtocols, spawn_router_with_allowlist};
 use state::State;
 use std::str::FromStr;
@@ -158,7 +158,7 @@ impl FromStr for RelayKind {
 #[derive(Debug, Clone)]
 pub struct P2PEndpointInfo {
     pub id: EndpointId,
-    pub path: ConnectionType,
+    pub selected_path: Option<psyche_metrics::SelectedPath>,
     pub bandwidth: f64,
     pub latency: f64,
 }
@@ -167,8 +167,7 @@ impl From<P2PEndpointInfo> for PeerConnection {
     fn from(value: P2PEndpointInfo) -> Self {
         Self {
             endpoint_id: value.id.to_string(),
-            connection_type: value.path,
-            latency: value.latency as f32,
+            selected_path: value.selected_path,
         }
     }
 }
@@ -685,7 +684,7 @@ where
         let mut infos = vec![P2PEndpointInfo {
             id: self.endpoint.id(),
             bandwidth: 0.0,
-            path: ConnectionType::None,
+            selected_path: None,
             latency: 0.0,
         }];
 
@@ -697,11 +696,16 @@ where
                 .get_bandwidth_by_node(&conn_data.endpoint_id)
                 .unwrap_or_default();
 
+            let latency = conn_data
+                .latency()
+                .map(|d| d.as_secs_f64())
+                .unwrap_or(f64::MAX);
+
             infos.push(P2PEndpointInfo {
                 id: conn_data.endpoint_id,
-                path: conn_data.connection_type,
+                selected_path: conn_data.selected_path,
                 bandwidth,
-                latency: conn_data.latency.as_secs_f64(),
+                latency,
             });
         }
 
