@@ -7529,6 +7529,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "psyche-solana-distributor"
+version = "0.1.1"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+]
+
+[[package]]
 name = "psyche-solana-mining-pool"
 version = "0.2.0"
 dependencies = [
@@ -7570,6 +7578,7 @@ dependencies = [
  "psyche-core",
  "psyche-solana-authorizer",
  "psyche-solana-coordinator",
+ "psyche-solana-distributor",
  "psyche-solana-mining-pool",
  "psyche-solana-treasurer",
  "solana-sdk",

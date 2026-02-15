@@ -115,6 +115,7 @@ lib.makeScope pkgs.newScope (
 
           solana-coordinator-idl = self.callPackage ../architectures/decentralized/solana-coordinator { };
           solana-mining-pool-idl = self.callPackage ../architectures/decentralized/solana-mining-pool { };
+          solana-distributor-idl = self.callPackage ../architectures/decentralized/solana-distributor { };
 
           psyche-book = self.callPackage ../psyche-book { inherit rustPackages; };
         }

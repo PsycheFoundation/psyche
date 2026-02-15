@@ -1,0 +1,10 @@
+[toolchain]
+anchor_version = "0.30.1"
+
+[features]
+resolution = true
+skip-lint = false
+
+[provider]
+cluster = "Devnet"
+wallet = "~/.config/solana/id.json"

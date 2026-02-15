@@ -1,0 +1,22 @@
+imports_granularity = "Item"
+imports_layout = "Vertical"
+group_imports = "StdExternalCrate"
+
+reorder_impl_items = true
+
+hex_literal_case = "Upper"
+match_block_trailing_comma = true
+use_field_init_shorthand = true
+use_try_shorthand = true
+condense_wildcard_suffixes = true
+show_parse_errors = true
+format_macro_matchers = true
+
+normalize_comments = true
+normalize_doc_attributes = true
+
+blank_lines_lower_bound = 0
+blank_lines_upper_bound = 1
+
+tab_spaces = 4
+max_width = 80
