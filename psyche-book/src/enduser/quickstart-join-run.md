@@ -153,7 +153,7 @@ solana balance
 
 ## Step 7: Create the Environment File
 
-Create a `.env` file with your configuration. Example:
+Create a file named `.env` in the same directory as the `run-manager` binary with your configuration. Example:
 
 ```bash
 # Path to your Solana keypair
@@ -217,7 +217,7 @@ chmod +x ./run-manager
 Start the client (using a stable session like `tmux` is recommended for long runs):
 
 ```bash
-./run-manager --env-file /path/to/your/.env
+./run-manager --env-file .env
 ```
 
 The run-manager will pull the correct Docker image, start the training container, and stream logs. To stop the client, press `Ctrl+C`.
