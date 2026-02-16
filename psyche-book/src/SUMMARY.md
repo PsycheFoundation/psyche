@@ -4,6 +4,7 @@
 
 - [End-user usage](./enduser/index.md)
   - [Quickstart: Compute Provider](./enduser/quickstart-compute-provider.md)
+  - [Quickstart: Join a Run](./enduser/quickstart-join-run.md)
   - [Joining a run](./enduser/join-run.md)
   - [Creating a run](./enduser/create-run.md)
   - [Run configuration](./enduser/run-config.md)
