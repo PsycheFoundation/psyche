@@ -2,7 +2,7 @@
 
 ## Joining a run
 
-Learn how to use your existing compute to [join a run](./join-run.md)
+Learn how to use your existing compute to [join a run](./join-run.md). For a step-by-step guide, see [Quickstart: Join a Run](./quickstart-join-run.md).
 
 You may also want to read the [client FAQ](./client-faq.md)
 
