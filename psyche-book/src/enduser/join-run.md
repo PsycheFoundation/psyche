@@ -58,7 +58,7 @@ Before running it, you should create an environment file with some needed variab
 The `.env` file should have at least this defined:
 
 ```bash
-WALLET_PATH=/path/to/your/keypair.json
+WALLET_PRIVATE_KEY_PATH=/path/to/your/keypair.json
 
 # Required: Solana RPC Endpoints
 RPC=https://your-primary-rpc-provider.com
