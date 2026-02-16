@@ -25,4 +25,4 @@ Psyche is built to maintain training integrity without requiring participants to
 
 ## Client Quickstart
 
-If you are a client wanting to join an exiting training round you can refer to the [join a run documentation](./enduser/join-run.md)
+If you are a client wanting to join an existing training round, see the [Quickstart: Join a Run](./enduser/quickstart-join-run.md) or the full [join a run documentation](./enduser/join-run.md).
