@@ -30,7 +30,43 @@ use tokio::{
     time::sleep,
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
+
+/// Default path for storing model assignments
+const ASSIGNMENTS_FILE: &str = "/tmp/psyche-gateway-assignments.json";
+
+/// Load model assignments from disk
+fn load_assignments(path: &str) -> HashMap<EndpointId, String> {
+    match fs::read_to_string(path) {
+        Ok(contents) => match serde_json::from_str::<HashMap<EndpointId, String>>(&contents) {
+            Ok(assignments) => {
+                info!(
+                    "Loaded {} model assignments from {}",
+                    assignments.len(),
+                    path
+                );
+                assignments
+            }
+            Err(e) => {
+                warn!("Failed to parse assignments file: {:#}", e);
+                HashMap::new()
+            }
+        },
+        Err(_) => {
+            info!("No assignments file found at {}, starting fresh", path);
+            HashMap::new()
+        }
+    }
+}
+
+/// Save model assignments to disk
+fn save_assignments(path: &str, assignments: &HashMap<EndpointId, String>) -> Result<()> {
+    let json =
+        serde_json::to_string_pretty(assignments).context("Failed to serialize assignments")?;
+    fs::write(path, json).context("Failed to write assignments file")?;
+    debug!("Saved {} model assignments to {}", assignments.len(), path);
+    Ok(())
+}
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -65,6 +101,7 @@ struct InferenceNodeInfo {
 struct GatewayState {
     available_nodes: RwLock<HashMap<EndpointId, InferenceNodeInfo>>,
     pending_requests: RwLock<HashMap<String, mpsc::Sender<InferenceResponse>>>,
+    model_assignments: RwLock<HashMap<EndpointId, String>>, // node_id -> assigned model name
     network_tx: mpsc::Sender<(EndpointId, InferenceMessage)>,
     gossip_tx: mpsc::Sender<InferenceGossipMessage>,
 }
@@ -98,13 +135,35 @@ fn default_temperature() -> Option<f64> {
 fn default_top_p() -> Option<f64> {
     Some(1.0)
 }
+
+#[derive(serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+enum ModelSourceType {
+    #[default]
+    HuggingFace,
+    Local,
+}
+
 #[derive(serde::Deserialize)]
-struct LoadModelRequest {
+struct AssignModelsRequest {
+    assignments: Vec<ModelAssignmentSpec>,
+}
+
+#[derive(serde::Deserialize)]
+struct ModelAssignmentSpec {
     model_name: String,
-    #[serde(default = "default_model_source_type")]
-    source_type: String, // "huggingface" or "local"
+    #[serde(default)]
+    source_type: ModelSourceType,
     #[serde(default)]
     source_path: Option<String>,
+    num_nodes: usize,
+}
+
+#[derive(serde::Serialize)]
+struct AssignmentInfo {
+    node_id: String,
+    model_name: String,
+    status: String, // "loading", "loaded", "idle", "offline"
 }
 
 fn default_model_source_type() -> String {
@@ -159,6 +218,40 @@ async fn handle_inference(
     Json(req): Json<ChatCompletionRequest>,
 ) -> Result<Json<ChatCompletionResponse>, AppError> {
     let nodes = state.available_nodes.read().await;
+    let assignments = state.model_assignments.read().await;
+
+    // Determine requested model
+    let requested_model = req.model.as_deref();
+
+    // Find suitable nodes:
+    // 1. If model specified: prefer nodes assigned to that model with it loaded
+    // 2. If no model specified: use any node with a model loaded
+    let suitable_nodes: Vec<_> = if let Some(model) = requested_model {
+        // Prefer nodes assigned to the requested model that have it loaded
+        let assigned_and_loaded: Vec<_> = nodes
+            .values()
+            .filter(|n| {
+                assignments
+                    .get(&n.peer_id)
+                    .map(|assigned| assigned == model)
+                    .unwrap_or(false)
+                    && n.model_name.as_deref() == Some(model)
+            })
+            .collect();
+
+        if !assigned_and_loaded.is_empty() {
+            assigned_and_loaded
+        } else {
+            // Fallback: any node with the requested model loaded
+            nodes
+                .values()
+                .filter(|n| n.model_name.as_deref() == Some(model))
+                .collect()
+        }
+    } else {
+        // No model specified - use any node with a model loaded
+        nodes.values().filter(|n| n.model_name.is_some()).collect()
+    };
 
     let nodes_with_model: Vec<(EndpointId, String)> = nodes
         .values()
@@ -178,11 +271,16 @@ async fn handle_inference(
     let model_name = req.model.clone().unwrap_or_else(|| node_model_name.clone());
 
     info!(
-        "Routing request to node: {} (model: {})",
+        "Routing request to node: {} (model: {}, assigned: {})",
         target_peer_id.fmt_short(),
-        node.model_name.as_ref().unwrap_or(&"unknown".to_string())
+        node.model_name.as_deref().unwrap_or("unknown"),
+        assignments
+            .get(&target_peer_id)
+            .map(|s| s.as_str())
+            .unwrap_or("none")
     );
     drop(nodes);
+    drop(assignments);
 
     let messages: Vec<psyche_inference::ChatMessage> = req
         .messages
@@ -249,43 +347,170 @@ async fn handle_inference(
 }
 
 #[axum::debug_handler]
-async fn handle_load_model(
+async fn handle_assign_models(
     State(state): State<Arc<GatewayState>>,
-    Json(req): Json<LoadModelRequest>,
+    Json(req): Json<AssignModelsRequest>,
 ) -> Result<String, AppError> {
     use psyche_inference::ModelSource;
 
     info!(
-        "Admin API: Received LoadModel request for model: {} (source: {:?})",
-        req.model_name, req.source
+        "Admin API: Received assign-models request with {} specs",
+        req.assignments.len()
     );
 
-    let model_source = match req.source {
-        LoadModelSource::HuggingFace { source_path } => {
-            let path = source_path.unwrap_or_else(|| req.model_name.clone());
-            ModelSource::HuggingFace(path)
+    let mut assigned_count = 0;
+    let mut total_requested = 0;
+
+    for spec in req.assignments {
+        total_requested += spec.num_nodes;
+
+        info!(
+            "Assigning {} nodes to model: {}",
+            spec.num_nodes, spec.model_name
+        );
+
+        // Get available nodes
+        let nodes = state.available_nodes.read().await;
+        let assignments = state.model_assignments.read().await;
+
+        // Find idle nodes (not currently assigned)
+        let idle_nodes: Vec<EndpointId> = nodes
+            .keys()
+            .filter(|node_id| !assignments.contains_key(*node_id))
+            .copied()
+            .take(spec.num_nodes)
+            .collect();
+
+        if idle_nodes.len() < spec.num_nodes {
+            warn!(
+                "Only {} idle nodes available, requested {}",
+                idle_nodes.len(),
+                spec.num_nodes
+            );
         }
-        LoadModelSource::Local { source_path } => ModelSource::Local(source_path),
-    };
 
-    let load_msg = InferenceGossipMessage::LoadModel {
-        model_name: req.model_name.clone(),
-        model_source,
-    };
+        drop(nodes);
+        drop(assignments);
 
-    state.gossip_tx.send(load_msg).await.map_err(|e| {
-        error!("Failed to broadcast LoadModel message: {:#}", e);
-        AppError::InternalError
-    })?;
+        // Build model source
+        let model_source = match spec.source_type {
+            ModelSourceType::HuggingFace => {
+                let path = spec.source_path.unwrap_or_else(|| spec.model_name.clone());
+                ModelSource::HuggingFace(path)
+            }
+            ModelSourceType::Local => {
+                let path = spec.source_path.ok_or_else(|| {
+                    AppError::BadRequest("source_path is required for local models".to_string())
+                })?;
+                ModelSource::Local(path)
+            }
+        };
+
+        // Assign and send LoadModel to each selected node
+        for node_id in idle_nodes {
+            // Update assignments map
+            state
+                .model_assignments
+                .write()
+                .await
+                .insert(node_id, spec.model_name.clone());
+
+            // Broadcast LoadModel to the specific node
+            let load_msg = InferenceGossipMessage::LoadModel {
+                model_name: spec.model_name.clone(),
+                model_source: model_source.clone(),
+            };
+
+            if let Err(e) = state.gossip_tx.send(load_msg).await {
+                error!(
+                    "Failed to send LoadModel to node {}: {:#}",
+                    node_id.fmt_short(),
+                    e
+                );
+            } else {
+                info!(
+                    "Sent LoadModel to node {} for model {}",
+                    node_id.fmt_short(),
+                    spec.model_name
+                );
+                assigned_count += 1;
+            }
+        }
+    }
+
+    // Persist assignments to disk
+    let assignments = state.model_assignments.read().await;
+    if let Err(e) = save_assignments(ASSIGNMENTS_FILE, &assignments) {
+        error!("Failed to save assignments: {:#}", e);
+    }
+    drop(assignments);
 
     info!(
-        "Successfully broadcasted LoadModel message for: {}",
-        req.model_name
+        "Assignment complete: {} nodes assigned out of {} requested",
+        assigned_count, total_requested
     );
+
     Ok(format!(
-        "LoadModel broadcast sent for model: {}",
-        req.model_name
+        "Assigned {} nodes out of {} requested",
+        assigned_count, total_requested
     ))
+}
+
+#[axum::debug_handler]
+async fn handle_get_assignments(
+    State(state): State<Arc<GatewayState>>,
+) -> Json<Vec<AssignmentInfo>> {
+    let assignments = state.model_assignments.read().await;
+    let nodes = state.available_nodes.read().await;
+
+    let mut result = Vec::new();
+
+    for (node_id, assigned_model) in assignments.iter() {
+        let status = match nodes.get(node_id) {
+            None => {
+                info!(
+                    "Node {} not in available_nodes (offline)",
+                    node_id.fmt_short()
+                );
+                "offline".to_string()
+            }
+            Some(node_info) => match &node_info.model_name {
+                None => {
+                    info!(
+                        "Node {} has no model loaded (assigned: {})",
+                        node_id.fmt_short(),
+                        assigned_model
+                    );
+                    "idle".to_string()
+                }
+                Some(current_model) if current_model == assigned_model => {
+                    info!(
+                        "Node {} loaded correct model: {}",
+                        node_id.fmt_short(),
+                        current_model
+                    );
+                    "loaded".to_string()
+                }
+                Some(current_model) => {
+                    info!(
+                        "Node {} has model '{}' but assigned model is '{}'",
+                        node_id.fmt_short(),
+                        current_model,
+                        assigned_model
+                    );
+                    "loading".to_string() // Has different model, probably loading
+                }
+            },
+        };
+
+        result.push(AssignmentInfo {
+            node_id: node_id.to_string(),
+            model_name: assigned_model.clone(),
+            status,
+        });
+    }
+
+    Json(result)
 }
 
 #[derive(Debug)]
@@ -293,6 +518,7 @@ enum AppError {
     NoNodesAvailable,
     Timeout,
     InternalError,
+    BadRequest(String),
 }
 
 impl IntoResponse for AppError {
@@ -310,6 +536,7 @@ impl IntoResponse for AppError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Internal server error".to_string(),
             ),
+            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
         };
         (status, message).into_response()
     }
@@ -452,9 +679,14 @@ async fn run_gateway() -> Result<()> {
 
     let (network_tx, mut network_rx) = mpsc::channel::<(EndpointId, InferenceMessage)>(100);
     let (gossip_tx, mut gossip_rx) = mpsc::channel::<InferenceGossipMessage>(100);
+
+    // Load persisted model assignments
+    let model_assignments = load_assignments(ASSIGNMENTS_FILE);
+
     let state = Arc::new(GatewayState {
         available_nodes: RwLock::new(HashMap::new()),
         pending_requests: RwLock::new(HashMap::new()),
+        model_assignments: RwLock::new(model_assignments),
         network_tx,
         gossip_tx,
     });
@@ -468,6 +700,10 @@ async fn run_gateway() -> Result<()> {
         tokio::spawn(async move {
             let mut task_set = tokio::task::JoinSet::new();
 
+            // Reconciliation timer - check for assignment drift every 60s
+            let mut reconciliation_interval = tokio::time::interval(Duration::from_secs(60));
+            reconciliation_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
             loop {
                 tokio::select! {
                     _ = cancel.cancelled() => {
@@ -475,6 +711,58 @@ async fn run_gateway() -> Result<()> {
                         info!("Aborting {} active P2P request tasks", task_set.len());
                         task_set.shutdown().await;
                         break;
+                    }
+
+                    _ = reconciliation_interval.tick() => {
+                        // Check for drift: nodes that are assigned but not serving the right model
+                        use psyche_inference::ModelSource;
+
+                        let assignments = state.model_assignments.read().await;
+                        let nodes = state.available_nodes.read().await;
+
+                        for (node_id, assigned_model) in assignments.iter() {
+                            match nodes.get(node_id) {
+                                None => {
+                                    // Node offline, nothing to do - wait for it to come back
+                                    debug!("Node {} offline (assigned: {})", node_id.fmt_short(), assigned_model);
+                                }
+                                Some(node_info) => {
+                                    let needs_reload = match &node_info.model_name {
+                                        None => {
+                                            // Node is idle but should have a model
+                                            warn!("Node {} is idle, should be serving: {}", node_id.fmt_short(), assigned_model);
+                                            true
+                                        }
+                                        Some(current_model) if current_model != assigned_model => {
+                                            // Node has wrong model
+                                            warn!("Node {} has {} but should have {}",
+                                                  node_id.fmt_short(), current_model, assigned_model);
+                                            true
+                                        }
+                                        _ => false, // All good
+                                    };
+
+                                    if needs_reload {
+                                        info!("Sending LoadModel to node {} for model {}",
+                                              node_id.fmt_short(), assigned_model);
+
+                                        // Re-send LoadModel (assuming HuggingFace for now)
+                                        // TODO: store source_type with assignment
+                                        let load_msg = InferenceGossipMessage::LoadModel {
+                                            model_name: assigned_model.clone(),
+                                            model_source: ModelSource::HuggingFace(assigned_model.clone()),
+                                        };
+
+                                        if let Err(e) = network.broadcast(&load_msg) {
+                                            error!("Failed to broadcast LoadModel for reconciliation: {:#}", e);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        drop(assignments);
+                        drop(nodes);
                     }
 
                     Some((target_peer_id, msg)) = network_rx.recv() => {
@@ -584,7 +872,11 @@ async fn run_gateway() -> Result<()> {
 
     let app = Router::new()
         .route("/v1/chat/completions", post(handle_inference))
-        .route("/admin/load-model", post(handle_load_model))
+        .route("/admin/assign-models", post(handle_assign_models))
+        .route(
+            "/admin/assignments",
+            axum::routing::get(handle_get_assignments),
+        )
         .with_state(state.clone());
 
     let listener = tokio::net::TcpListener::bind(&args.listen_addr)

@@ -289,8 +289,8 @@ test-inference prompt="Hello, world!" max_tokens="50":
 test-inference-e2e model="gpt2" prompt="Hello, world!":
     ./scripts/test-inference-e2e.sh "{{ model }}" "{{ prompt }}"
 
-# Test dynamic model loading with multiple nodes (gateway + 2 inference nodes)
-test-model-loading initial_model="gpt2":
+# Test model assignment system with multiple nodes and models (gateway + 3 inference nodes)
+test-model-assignment:
     #!/usr/bin/env bash
     set -euo pipefail
 
@@ -300,7 +300,7 @@ test-model-loading initial_model="gpt2":
         exit 1
     fi
 
-    SESSION="psyche-model-loading"
+    SESSION="psyche-model-assignment"
     GATEWAY_PEER_FILE="/tmp/psyche-gateway-peer.json"
 
     # Clean up old peer file
@@ -336,15 +336,20 @@ test-model-loading initial_model="gpt2":
     sleep 2
     echo "Gateway ready"
 
-    # Start inference node 1 with initial model
-    echo "Starting inference node 1 (with model: {{ initial_model }})..."
+    # Start inference node 1 in idle mode
+    echo "Starting inference node 1 (idle mode)..."
     tmux new-window -t $SESSION -n node1
-    tmux send-keys -t $SESSION:node1 "PSYCHE_GATEWAY_BOOTSTRAP_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#psyche-inference-node -- --model-name {{ initial_model }} --discovery-mode local --relay-kind n0 --tensor-parallel-size 1 --gpu-memory-utilization 0.35" C-m
+    tmux send-keys -t $SESSION:node1 "PSYCHE_GATEWAY_BOOTSTRAP_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#psyche-inference-node -- --discovery-mode local --relay-kind n0 --tensor-parallel-size 1 --gpu-memory-utilization 0.5" C-m
 
-    # Start inference node 2 without model (idle mode)
-    echo "Starting inference node 2 (idle mode - no initial model)..."
+    # Start inference node 2 in idle mode
+    echo "Starting inference node 2 (idle mode)..."
     tmux new-window -t $SESSION -n node2
     tmux send-keys -t $SESSION:node2 "PSYCHE_GATEWAY_BOOTSTRAP_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#psyche-inference-node -- --discovery-mode local --relay-kind n0 --tensor-parallel-size 1 --gpu-memory-utilization 0.35" C-m
+
+    # Start inference node 3 in idle mode
+    echo "Starting inference node 3 (idle mode)..."
+    tmux new-window -t $SESSION -n node3
+    tmux send-keys -t $SESSION:node3 "PSYCHE_GATEWAY_BOOTSTRAP_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#psyche-inference-node -- --discovery-mode local --relay-kind n0 --tensor-parallel-size 1 --gpu-memory-utilization 0.5" C-m
 
     sleep 5
     echo ""
@@ -355,43 +360,65 @@ test-model-loading initial_model="gpt2":
     tmux new-window -t $SESSION -n test
     tmux send-keys -t $SESSION:test "cat << 'EOF'" C-m
     tmux send-keys -t $SESSION:test "═══════════════════════════════════════════════════════════════" C-m
-    tmux send-keys -t $SESSION:test "  Dynamic Model Loading Test" C-m
+    tmux send-keys -t $SESSION:test "  Model Assignment System Test" C-m
     tmux send-keys -t $SESSION:test "═══════════════════════════════════════════════════════════════" C-m
     tmux send-keys -t $SESSION:test "" C-m
     tmux send-keys -t $SESSION:test "Status:" C-m
     tmux send-keys -t $SESSION:test "  • Gateway: running on http://127.0.0.1:8000" C-m
-    tmux send-keys -t $SESSION:test "  • Node 1: {{ initial_model }}" C-m
+    tmux send-keys -t $SESSION:test "  • Node 1: idle (no model)" C-m
     tmux send-keys -t $SESSION:test "  • Node 2: idle (no model)" C-m
+    tmux send-keys -t $SESSION:test "  • Node 3: idle (no model)" C-m
     tmux send-keys -t $SESSION:test "" C-m
-    tmux send-keys -t $SESSION:test "Test 1: Send inference request with current model" C-m
+    tmux send-keys -t $SESSION:test "Test 1: View current assignments" C-m
+    tmux send-keys -t $SESSION:test "────────────────────────────────────────────────────────────────" C-m
+    tmux send-keys -t $SESSION:test "curl http://127.0.0.1:8000/admin/assignments | jq" C-m
+    tmux send-keys -t $SESSION:test "" C-m
+    tmux send-keys -t $SESSION:test "Expected: Empty array (no assignments yet)" C-m
+    tmux send-keys -t $SESSION:test "" C-m
+    tmux send-keys -t $SESSION:test "Test 2: Assign models to nodes (2 nodes to gpt2, 1 to llama)" C-m
+    tmux send-keys -t $SESSION:test "────────────────────────────────────────────────────────────────" C-m
+    tmux send-keys -t $SESSION:test "curl -X POST http://127.0.0.1:8000/admin/assign-models \\\\" C-m
+    tmux send-keys -t $SESSION:test "  -H 'Content-Type: application/json' \\\\" C-m
+    tmux send-keys -t $SESSION:test "  -d '{" C-m
+    tmux send-keys -t $SESSION:test "    \"assignments\": [" C-m
+    tmux send-keys -t $SESSION:test "      {\"model_name\": \"gpt2\", \"num_nodes\": 2, \"source_type\": \"huggingface\"}," C-m
+    tmux send-keys -t $SESSION:test "      {\"model_name\": \"meta-llama/Llama-3.2-1B-Instruct\", \"num_nodes\": 1, \"source_type\": \"huggingface\"}" C-m
+    tmux send-keys -t $SESSION:test "    ]" C-m
+    tmux send-keys -t $SESSION:test "  }'" C-m
+    tmux send-keys -t $SESSION:test "" C-m
+    tmux send-keys -t $SESSION:test "Expected: Gateway assigns 2 nodes to gpt2, 1 to llama" C-m
+    tmux send-keys -t $SESSION:test "Watch node windows for LoadModel messages and loading progress" C-m
+    tmux send-keys -t $SESSION:test "" C-m
+    tmux send-keys -t $SESSION:test "Test 3: View assignments (wait ~10s for models to load)" C-m
+    tmux send-keys -t $SESSION:test "────────────────────────────────────────────────────────────────" C-m
+    tmux send-keys -t $SESSION:test "curl http://127.0.0.1:8000/admin/assignments | jq" C-m
+    tmux send-keys -t $SESSION:test "" C-m
+    tmux send-keys -t $SESSION:test "Expected: Shows node_id, model_name, status for each assignment" C-m
+    tmux send-keys -t $SESSION:test "Status values: 'loading', 'loaded', 'idle', 'offline'" C-m
+    tmux send-keys -t $SESSION:test "" C-m
+    tmux send-keys -t $SESSION:test "Test 4: Send inference request to gpt2 nodes" C-m
     tmux send-keys -t $SESSION:test "────────────────────────────────────────────────────────────────" C-m
     tmux send-keys -t $SESSION:test "curl -X POST http://127.0.0.1:8000/v1/chat/completions \\\\" C-m
     tmux send-keys -t $SESSION:test "  -H 'Content-Type: application/json' \\\\" C-m
-    tmux send-keys -t $SESSION:test "  -d '{\"messages\": [{\"role\": \"user\", \"content\": \"Hello!\"}], \"max_tokens\": 50}'" C-m
+    tmux send-keys -t $SESSION:test "  -d '{\"model\": \"gpt2\", \"messages\": [{\"role\": \"user\", \"content\": \"Hello!\"}], \"max_tokens\": 50}'" C-m
     tmux send-keys -t $SESSION:test "" C-m
-    tmux send-keys -t $SESSION:test "Test 2: Load new model on all nodes" C-m
+    tmux send-keys -t $SESSION:test "Test 5: Send inference request to llama node" C-m
     tmux send-keys -t $SESSION:test "────────────────────────────────────────────────────────────────" C-m
-    tmux send-keys -t $SESSION:test "curl -X POST http://127.0.0.1:8000/admin/load-model \\\\" C-m
+    tmux send-keys -t $SESSION:test "curl -X POST http://127.0.0.1:8000/v1/chat/completions \\\\" C-m
     tmux send-keys -t $SESSION:test "  -H 'Content-Type: application/json' \\\\" C-m
-    tmux send-keys -t $SESSION:test "  -d '{\"model_name\": \"gpt2\", \"source_type\": \"huggingface\"}'" C-m
-    tmux send-keys -t $SESSION:test "" C-m
-    tmux send-keys -t $SESSION:test "Expected: Both nodes reload with new model" C-m
-    tmux send-keys -t $SESSION:test "" C-m
-    tmux send-keys -t $SESSION:test "Test 3: Send inference with new model" C-m
-    tmux send-keys -t $SESSION:test "────────────────────────────────────────────────────────────────" C-m
-    tmux send-keys -t $SESSION:test "(Use same command as Test 1)" C-m
+    tmux send-keys -t $SESSION:test "  -d '{\"model\": \"meta-llama/Llama-3.2-1B-Instruct\", \"messages\": [{\"role\": \"user\", \"content\": \"Hello!\"}], \"max_tokens\": 50}'" C-m
     tmux send-keys -t $SESSION:test "" C-m
     tmux send-keys -t $SESSION:test "Navigation:" C-m
-    tmux send-keys -t $SESSION:test "  • Switch windows: Ctrl-b then 0/1/2/3" C-m
-    tmux send-keys -t $SESSION:test "    0=gateway, 1=node1, 2=node2, 3=test" C-m
+    tmux send-keys -t $SESSION:test "  • Switch windows: Ctrl-b then 0/1/2/3/4" C-m
+    tmux send-keys -t $SESSION:test "    0=gateway, 1=node1, 2=node2, 3=node3, 4=test" C-m
     tmux send-keys -t $SESSION:test "  • Exit tmux: Ctrl-b then d" C-m
-    tmux send-keys -t $SESSION:test "  • Kill session: tmux kill-session -t psyche-model-loading" C-m
+    tmux send-keys -t $SESSION:test "  • Kill session: tmux kill-session -t psyche-model-assignment" C-m
     tmux send-keys -t $SESSION:test "═══════════════════════════════════════════════════════════════" C-m
     tmux send-keys -t $SESSION:test "EOF" C-m
 
     # Attach to session
-    echo "Starting multi-node test in tmux session '$SESSION'"
-    echo "Windows: gateway, node1, node2, test"
+    echo "Starting model assignment test in tmux session '$SESSION'"
+    echo "Windows: gateway, node1, node2, node3, test"
     echo ""
     echo "To attach: tmux attach -t $SESSION"
     echo "To kill: tmux kill-session -t $SESSION"
