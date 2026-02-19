@@ -33,10 +33,8 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 
-/// Default path for storing model assignments
 const ASSIGNMENTS_FILE: &str = "/tmp/psyche-gateway-assignments.json";
 
-/// Load model assignments from disk
 fn load_assignments(path: &str) -> HashMap<EndpointId, String> {
     match fs::read_to_string(path) {
         Ok(contents) => match serde_json::from_str::<HashMap<EndpointId, String>>(&contents) {
@@ -60,7 +58,6 @@ fn load_assignments(path: &str) -> HashMap<EndpointId, String> {
     }
 }
 
-/// Save model assignments to disk
 fn save_assignments(path: &str, assignments: &HashMap<EndpointId, String>) -> Result<()> {
     let json =
         serde_json::to_string_pretty(assignments).context("Failed to serialize assignments")?;
@@ -169,35 +166,6 @@ struct AssignmentInfo {
     status: String, // "loading", "loaded", "idle", "offline"
 }
 
-fn default_model_source_type() -> String {
-    "huggingface".to_string()
-}
-
-#[derive(serde::Serialize)]
-struct LoadModelResponse {
-    success: bool,
-    message: String,
-}
-
-#[derive(serde::Deserialize, Debug, Clone)]
-#[serde(tag = "source_type", rename_all = "lowercase")]
-enum LoadModelSource {
-    #[serde(rename = "huggingface")]
-    HuggingFace {
-        source_path: Option<String>,
-    },
-    Local {
-        source_path: String,
-    },
-}
-
-#[derive(serde::Deserialize)]
-struct LoadModelRequest {
-    model_name: String,
-    #[serde(flatten)]
-    source: LoadModelSource,
-}
-
 #[derive(serde::Serialize)]
 struct ChatCompletionChoice {
     index: usize,
@@ -223,52 +191,53 @@ async fn handle_inference(
     let nodes = state.available_nodes.read().await;
     let assignments = state.model_assignments.read().await;
 
-    // Determine requested model
     let requested_model = req.model.as_deref();
 
-    // Find suitable nodes:
-    // 1. If model specified: prefer nodes assigned to that model with it loaded
-    // 2. If no model specified: use any node with a model loaded
-    let suitable_nodes: Vec<_> = if let Some(model) = requested_model {
-        // Prefer nodes assigned to the requested model that have it loaded
+    let suitable_nodes: Vec<(EndpointId, String)> = if let Some(model) = requested_model {
         let assigned_and_loaded: Vec<_> = nodes
             .values()
-            .filter(|n| {
-                assignments
+            .filter_map(|n| {
+                if assignments
                     .get(&n.peer_id)
                     .map(|assigned| assigned == model)
                     .unwrap_or(false)
                     && n.model_name.as_deref() == Some(model)
+                {
+                    Some((n.peer_id, n.model_name.clone()?))
+                } else {
+                    None
+                }
             })
             .collect();
 
         if !assigned_and_loaded.is_empty() {
             assigned_and_loaded
         } else {
-            // Fallback: any node with the requested model loaded
             nodes
                 .values()
-                .filter(|n| n.model_name.as_deref() == Some(model))
+                .filter_map(|n| {
+                    if n.model_name.as_deref() == Some(model) {
+                        Some((n.peer_id, n.model_name.clone()?))
+                    } else {
+                        None
+                    }
+                })
                 .collect()
         }
     } else {
-        // No model specified - use any node with a model loaded
-        nodes.values().filter(|n| n.model_name.is_some()).collect()
+        nodes
+            .values()
+            .filter_map(|n| Some((n.peer_id, n.model_name.clone()?)))
+            .collect()
     };
 
-    let nodes_with_model: Vec<(EndpointId, String)> = nodes
-        .values()
-        .filter_map(|n| Some((n.peer_id, n.model_name.clone()?)))
-        .collect();
-
-    if nodes_with_model.is_empty() {
-        // No nodes have models loaded yet
+    if suitable_nodes.is_empty() {
         return Err(AppError::NoNodesAvailable);
     }
 
     // Select first available node with a model
     // TODO: Add load balancing and model-specific routing in the future
-    let (target_peer_id, node_model_name) = &nodes_with_model[0];
+    let (target_peer_id, node_model_name) = &suitable_nodes[0];
     let target_peer_id = *target_peer_id;
 
     let model_name = req.model.clone().unwrap_or_else(|| node_model_name.clone());
@@ -276,7 +245,7 @@ async fn handle_inference(
     info!(
         "Routing request to node: {} (model: {}, assigned: {})",
         target_peer_id.fmt_short(),
-        node.model_name.as_deref().unwrap_or("unknown"),
+        node_model_name,
         assignments
             .get(&target_peer_id)
             .map(|s| s.as_str())
@@ -372,11 +341,9 @@ async fn handle_assign_models(
             spec.num_nodes, spec.model_name
         );
 
-        // Get available nodes
         let nodes = state.available_nodes.read().await;
         let assignments = state.model_assignments.read().await;
 
-        // Find idle nodes (not currently assigned)
         let idle_nodes: Vec<EndpointId> = nodes
             .keys()
             .filter(|node_id| !assignments.contains_key(*node_id))
@@ -395,7 +362,6 @@ async fn handle_assign_models(
         drop(nodes);
         drop(assignments);
 
-        // Build model source
         let model_source = match spec.source_type {
             ModelSourceType::HuggingFace => {
                 let path = spec.source_path.unwrap_or_else(|| spec.model_name.clone());
@@ -409,17 +375,15 @@ async fn handle_assign_models(
             }
         };
 
-        // Assign and send LoadModel to each selected node
         for node_id in idle_nodes {
-            // Update assignments map
             state
                 .model_assignments
                 .write()
                 .await
                 .insert(node_id, spec.model_name.clone());
 
-            // Broadcast LoadModel to the specific node
             let load_msg = InferenceGossipMessage::LoadModel {
+                target_node_id: Some(node_id),
                 model_name: spec.model_name.clone(),
                 model_source: model_source.clone(),
             };
@@ -441,7 +405,6 @@ async fn handle_assign_models(
         }
     }
 
-    // Persist assignments to disk
     let assignments = state.model_assignments.read().await;
     if let Err(e) = save_assignments(ASSIGNMENTS_FILE, &assignments) {
         error!("Failed to save assignments: {:#}", e);
@@ -477,49 +440,67 @@ async fn handle_get_assignments(
 
     let mut result = Vec::new();
 
-    for (node_id, assigned_model) in assignments.iter() {
-        let status = match nodes.get(node_id) {
+    for (node_id, node_info) in nodes.iter() {
+        let (assigned_model, status) = match assignments.get(node_id) {
             None => {
-                info!(
-                    "Node {} not in available_nodes (offline)",
-                    node_id.fmt_short()
-                );
-                "offline".to_string()
+                let status = if node_info.model_name.is_some() {
+                    "unassigned_with_model".to_string()
+                } else {
+                    "unassigned".to_string()
+                };
+                (None, status)
             }
-            Some(node_info) => match &node_info.model_name {
-                None => {
-                    info!(
-                        "Node {} has no model loaded (assigned: {})",
-                        node_id.fmt_short(),
-                        assigned_model
-                    );
-                    "idle".to_string()
-                }
-                Some(current_model) if current_model == assigned_model => {
-                    info!(
-                        "Node {} loaded correct model: {}",
-                        node_id.fmt_short(),
-                        current_model
-                    );
-                    "loaded".to_string()
-                }
-                Some(current_model) => {
-                    info!(
-                        "Node {} has model '{}' but assigned model is '{}'",
-                        node_id.fmt_short(),
-                        current_model,
-                        assigned_model
-                    );
-                    "loading".to_string() // Has different model, probably loading
-                }
-            },
+            Some(assigned_model) => {
+                let status = match &node_info.model_name {
+                    None => {
+                        info!(
+                            "Node {} has no model loaded (assigned: {})",
+                            node_id.fmt_short(),
+                            assigned_model
+                        );
+                        "idle".to_string()
+                    }
+                    Some(current_model) if current_model == assigned_model => {
+                        info!(
+                            "Node {} loaded correct model: {}",
+                            node_id.fmt_short(),
+                            current_model
+                        );
+                        "loaded".to_string()
+                    }
+                    Some(current_model) => {
+                        info!(
+                            "Node {} has model '{}' but assigned model is '{}'",
+                            node_id.fmt_short(),
+                            current_model,
+                            assigned_model
+                        );
+                        "loading".to_string()
+                    }
+                };
+                (Some(assigned_model.clone()), status)
+            }
         };
 
         result.push(AssignmentInfo {
             node_id: node_id.to_string(),
-            model_name: assigned_model.clone(),
+            model_name: assigned_model.unwrap_or_else(|| "<unassigned>".to_string()),
             status,
         });
+    }
+
+    for (node_id, assigned_model) in assignments.iter() {
+        if !nodes.contains_key(node_id) {
+            info!(
+                "Node {} not in available_nodes (offline)",
+                node_id.fmt_short()
+            );
+            result.push(AssignmentInfo {
+                node_id: node_id.to_string(),
+                model_name: assigned_model.clone(),
+                status: "offline".to_string(),
+            });
+        }
     }
 
     Json(result)
@@ -692,8 +673,11 @@ async fn run_gateway() -> Result<()> {
     let (network_tx, mut network_rx) = mpsc::channel::<(EndpointId, InferenceMessage)>(100);
     let (gossip_tx, mut gossip_rx) = mpsc::channel::<InferenceGossipMessage>(100);
 
+<<<<<<< HEAD
     let endpoint_addr = network.router().endpoint().addr();
     // Load persisted model assignments
+=======
+>>>>>>> 78e40a8a2 (Adding target by node id for LoadModel messages, updating endpoint to display full node status and updating justfile)
     let model_assignments = load_assignments(ASSIGNMENTS_FILE);
 
     let state = Arc::new(GatewayState {
@@ -713,7 +697,11 @@ async fn run_gateway() -> Result<()> {
         let cancel = cancel.clone();
         tokio::spawn(async move {
             let mut task_set = tokio::task::JoinSet::new();
+<<<<<<< HEAD
 
+=======
+            
+>>>>>>> 78e40a8a2 (Adding target by node id for LoadModel messages, updating endpoint to display full node status and updating justfile)
             let mut cleanup_interval = tokio::time::interval(Duration::from_secs(15));
             cleanup_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -788,15 +776,6 @@ async fn run_gateway() -> Result<()> {
                     }
 
                     Some(_) = task_set.join_next(), if !task_set.is_empty() => {
-                    }
-
-                    Some(gossip_msg) = gossip_rx.recv() => {
-                        info!("Broadcasting gossip message: {:?}", gossip_msg);
-                        if let Err(e) = network.broadcast(&gossip_msg) {
-                            error!("Failed to broadcast gossip message: {:#}", e);
-                        } else {
-                            info!("Successfully broadcasted gossip message");
-                        }
                     }
 
                     Some(gossip_msg) = gossip_rx.recv() => {
