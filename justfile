@@ -302,9 +302,11 @@ test-model-assignment:
 
     SESSION="psyche-model-assignment"
     GATEWAY_PEER_FILE="/tmp/psyche-gateway-peer.json"
+    ASSIGNMENTS_FILE="/tmp/psyche-gateway-assignments.json"
 
-    # Clean up old peer file
+    # Clean up old files
     rm -f "$GATEWAY_PEER_FILE"
+    rm -f "$ASSIGNMENTS_FILE"
 
     # Kill existing session if it exists
     tmux kill-session -t $SESSION 2>/dev/null || true
@@ -339,17 +341,17 @@ test-model-assignment:
     # Start inference node 1 in idle mode
     echo "Starting inference node 1 (idle mode)..."
     tmux new-window -t $SESSION -n node1
-    tmux send-keys -t $SESSION:node1 "PSYCHE_GATEWAY_BOOTSTRAP_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#psyche-inference-node -- --discovery-mode local --relay-kind n0 --tensor-parallel-size 1 --gpu-memory-utilization 0.5" C-m
+    tmux send-keys -t $SESSION:node1 "PSYCHE_GATEWAY_BOOTSTRAP_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#psyche-inference-node -- --discovery-mode local --relay-kind n0 --tensor-parallel-size 1 --gpu-memory-utilization 0.25" C-m
 
     # Start inference node 2 in idle mode
     echo "Starting inference node 2 (idle mode)..."
     tmux new-window -t $SESSION -n node2
-    tmux send-keys -t $SESSION:node2 "PSYCHE_GATEWAY_BOOTSTRAP_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#psyche-inference-node -- --discovery-mode local --relay-kind n0 --tensor-parallel-size 1 --gpu-memory-utilization 0.35" C-m
+    tmux send-keys -t $SESSION:node2 "PSYCHE_GATEWAY_BOOTSTRAP_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#psyche-inference-node -- --discovery-mode local --relay-kind n0 --tensor-parallel-size 1 --gpu-memory-utilization 0.25" C-m
 
     # Start inference node 3 in idle mode
     echo "Starting inference node 3 (idle mode)..."
     tmux new-window -t $SESSION -n node3
-    tmux send-keys -t $SESSION:node3 "PSYCHE_GATEWAY_BOOTSTRAP_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#psyche-inference-node -- --discovery-mode local --relay-kind n0 --tensor-parallel-size 1 --gpu-memory-utilization 0.5" C-m
+    tmux send-keys -t $SESSION:node3 "PSYCHE_GATEWAY_BOOTSTRAP_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#psyche-inference-node -- --discovery-mode local --relay-kind n0 --tensor-parallel-size 1 --gpu-memory-utilization 0.25" C-m
 
     sleep 5
     echo ""
@@ -373,23 +375,27 @@ test-model-assignment:
     tmux send-keys -t $SESSION:test "────────────────────────────────────────────────────────────────" C-m
     tmux send-keys -t $SESSION:test "curl http://127.0.0.1:8000/admin/assignments | jq" C-m
     tmux send-keys -t $SESSION:test "" C-m
-    tmux send-keys -t $SESSION:test "Expected: Empty array (no assignments yet)" C-m
+    tmux send-keys -t $SESSION:test "Expected: Shows all 3 nodes with status 'unassigned'" C-m
     tmux send-keys -t $SESSION:test "" C-m
-    tmux send-keys -t $SESSION:test "Test 2: Assign models to nodes (2 nodes to gpt2, 1 to llama)" C-m
+    tmux send-keys -t $SESSION:test "Test 2a: Assign 2 nodes to gpt2 (batch 1)" C-m
     tmux send-keys -t $SESSION:test "────────────────────────────────────────────────────────────────" C-m
     tmux send-keys -t $SESSION:test "curl -X POST http://127.0.0.1:8000/admin/assign-models \\\\" C-m
     tmux send-keys -t $SESSION:test "  -H 'Content-Type: application/json' \\\\" C-m
-    tmux send-keys -t $SESSION:test "  -d '{" C-m
-    tmux send-keys -t $SESSION:test "    \"assignments\": [" C-m
-    tmux send-keys -t $SESSION:test "      {\"model_name\": \"gpt2\", \"num_nodes\": 2, \"source_type\": \"huggingface\"}," C-m
-    tmux send-keys -t $SESSION:test "      {\"model_name\": \"meta-llama/Llama-3.2-1B-Instruct\", \"num_nodes\": 1, \"source_type\": \"huggingface\"}" C-m
-    tmux send-keys -t $SESSION:test "    ]" C-m
-    tmux send-keys -t $SESSION:test "  }'" C-m
+    tmux send-keys -t $SESSION:test "  -d '{\"assignments\": [{\"model_name\": \"gpt2\", \"num_nodes\": 2, \"source_type\": \"huggingface\"}]}'" C-m
     tmux send-keys -t $SESSION:test "" C-m
-    tmux send-keys -t $SESSION:test "Expected: Gateway assigns 2 nodes to gpt2, 1 to llama" C-m
-    tmux send-keys -t $SESSION:test "Watch node windows for LoadModel messages and loading progress" C-m
+    tmux send-keys -t $SESSION:test "Wait ~15s for gpt2 models to load, then check status:" C-m
+    tmux send-keys -t $SESSION:test "curl http://127.0.0.1:8000/admin/assignments | jq" C-m
     tmux send-keys -t $SESSION:test "" C-m
-    tmux send-keys -t $SESSION:test "Test 3: View assignments (wait ~10s for models to load)" C-m
+    tmux send-keys -t $SESSION:test "Test 2b: Assign 1 node to llama (batch 2)" C-m
+    tmux send-keys -t $SESSION:test "────────────────────────────────────────────────────────────────" C-m
+    tmux send-keys -t $SESSION:test "curl -X POST http://127.0.0.1:8000/admin/assign-models \\\\" C-m
+    tmux send-keys -t $SESSION:test "  -H 'Content-Type: application/json' \\\\" C-m
+    tmux send-keys -t $SESSION:test "  -d '{\"assignments\": [{\"model_name\": \"meta-llama/Llama-3.2-1B-Instruct\", \"num_nodes\": 1, \"source_type\": \"huggingface\"}]}'" C-m
+    tmux send-keys -t $SESSION:test "" C-m
+    tmux send-keys -t $SESSION:test "Wait ~15s for llama to load, then check status:" C-m
+    tmux send-keys -t $SESSION:test "curl http://127.0.0.1:8000/admin/assignments | jq" C-m
+    tmux send-keys -t $SESSION:test "" C-m
+    tmux send-keys -t $SESSION:test "Test 3: View final assignments" C-m
     tmux send-keys -t $SESSION:test "────────────────────────────────────────────────────────────────" C-m
     tmux send-keys -t $SESSION:test "curl http://127.0.0.1:8000/admin/assignments | jq" C-m
     tmux send-keys -t $SESSION:test "" C-m
