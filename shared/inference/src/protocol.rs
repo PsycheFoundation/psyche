@@ -1,5 +1,6 @@
 //! Protocol types for inference requests and responses
 
+use iroh::PublicKey;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -18,6 +19,7 @@ pub enum InferenceGossipMessage {
     },
     NodeUnavailable,
     LoadModel {
+        target_node_id: Option<PublicKey>, // None = all nodes, Some(id) = specific node
         model_name: String,
         model_source: ModelSource,
     },
@@ -226,6 +228,7 @@ mod tests {
     #[test]
     fn test_load_model_message_serialization() {
         let msg = InferenceGossipMessage::LoadModel {
+            target_node_id: None,
             model_name: "gpt2".to_string(),
             model_source: ModelSource::HuggingFace("gpt2".to_string()),
         };
@@ -235,9 +238,11 @@ mod tests {
 
         match parsed {
             InferenceGossipMessage::LoadModel {
+                target_node_id,
                 model_name,
                 model_source,
             } => {
+                assert_eq!(target_node_id, None);
                 assert_eq!(model_name, "gpt2");
                 assert_eq!(model_source, ModelSource::HuggingFace("gpt2".to_string()));
             }
