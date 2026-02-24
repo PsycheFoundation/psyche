@@ -6,7 +6,7 @@ use std::{
 
 use iroh::EndpointId;
 
-use crate::{P2PEndpointInfo, download::DownloadUpdate};
+use crate::{P2PEndpointInfo, connection_monitor::PeerBandwidth, download::DownloadUpdate};
 
 #[derive(Debug)]
 pub struct State {
@@ -70,8 +70,11 @@ impl BandwidthTracker {
         self.events.values().map(endpoint_bandwidth).sum()
     }
 
-    pub fn get_peer_bandwidth(&self, peer: &EndpointId) -> f64 {
-        self.events.get(peer).map(endpoint_bandwidth).unwrap_or(0.0)
+    pub fn get_peer_bandwidth(&self, peer: &EndpointId) -> PeerBandwidth {
+        match self.events.get(peer) {
+            None => PeerBandwidth::NotMeasured,
+            Some(events) => PeerBandwidth::Measured(endpoint_bandwidth(events)),
+        }
     }
 }
 

@@ -74,8 +74,8 @@ mod util;
 #[cfg(test)]
 mod test;
 
-pub use authenticable_identity::raw_p2p_verify;
-pub use connection_monitor::{ConnectionData, ConnectionMonitor};
+pub use authenticable_identity::{AuthenticatableIdentity, FromSignedBytesError, raw_p2p_verify};
+pub use connection_monitor::{ConnectionData, ConnectionMonitor, PeerBandwidth};
 pub use download::{
     DownloadComplete, DownloadFailed, DownloadSchedulerHandle, DownloadType, ReadyRetry,
     RetryConfig, RetryQueueResult, TransmittableDownload,
@@ -584,10 +584,21 @@ where
 
             match progress {
                 Ok(mut progress) => {
-                    while let Some(val) = progress.next().await {
-                        if let Err(err) = tx.send(Ok(val)) {
-                            panic!("Failed to send download progress: {err:?} {:?}", err.0);
+                    let result = tokio::time::timeout(Duration::from_secs(300), async {
+                        while let Some(val) = progress.next().await {
+                            if let Err(err) = tx.send(Ok(val)) {
+                                panic!("Failed to send download progress: {err:?} {:?}", err.0);
+                            }
                         }
+                    })
+                    .await;
+
+                    if result.is_err() {
+                        warn!(
+                            "Download of blob {} timed out after 5 minutes",
+                            ticket_hash.fmt_short()
+                        );
+                        let _ = tx.send(Err(anyhow!("Download timed out after 5 minutes")));
                     }
                 }
                 Err(e) => panic!("Failed to start download: {e}"),
@@ -697,10 +708,14 @@ where
                 .latency()
                 .map(|d| d.as_secs_f64())
                 .unwrap_or(f64::MAX);
+            let bandwidth = match conn_data.bandwidth {
+                PeerBandwidth::NotMeasured => 0.0,
+                PeerBandwidth::Measured(bw) => bw,
+            };
             infos.push(P2PEndpointInfo {
                 id: conn_data.endpoint_id,
                 selected_path: conn_data.selected_path,
-                bandwidth: conn_data.bandwidth,
+                bandwidth,
                 latency,
             });
         }
@@ -728,6 +743,8 @@ where
                     },
                     Some(DownloadManagerEvent::Failed(result)) => {
                         self.state.download_progesses.remove(&result.blob_ticket.hash());
+                        let peer_id = result.blob_ticket.addr().id;
+                        self.connection_monitor.update_peer_bandwidth(&peer_id, PeerBandwidth::Measured(0.0));
                         Ok(Some(NetworkEvent::DownloadFailed(result)))
                     }
                     None => Ok(None),

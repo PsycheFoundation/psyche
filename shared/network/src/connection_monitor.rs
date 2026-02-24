@@ -9,11 +9,19 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinSet;
 use tracing::{Instrument, debug, info};
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PeerBandwidth {
+    /// No download data yet - peer should be tried at least once
+    NotMeasured,
+    /// Measured bandwidth in bytes/sec from actual download activity
+    Measured(f64),
+}
+
 #[derive(Debug, Clone)]
 pub struct ConnectionData {
     pub endpoint_id: EndpointId,
-    /// Throughput in bytes/sec
-    pub bandwidth: f64,
+    /// Throughput measured from actual downloads
+    pub bandwidth: PeerBandwidth,
     pub selected_path: Option<SelectedPath>,
 }
 
@@ -92,7 +100,7 @@ impl ConnectionMonitor {
                         let prev_bandwidth = conns
                             .get(&remote_id)
                             .map(|d| d.bandwidth)
-                            .unwrap_or(0.0);
+                            .unwrap_or(PeerBandwidth::NotMeasured);
                         conns.insert(remote_id, ConnectionData {
                             endpoint_id: remote_id,
                             bandwidth: prev_bandwidth,
@@ -171,7 +179,10 @@ impl ConnectionMonitor {
                                             );
                                         }
                                     }
-                                    connections_clone.write().unwrap().remove(&remote_id);
+                                    // Keep the entry (preserving bandwidth) but clear path info
+                                    if let Some(data) = connections_clone.write().unwrap().get_mut(&remote_id) {
+                                        data.selected_path = None;
+                                    }
                                     break;
                                 }
                             }
@@ -205,7 +216,7 @@ impl ConnectionMonitor {
     }
 
     /// update bandwidth for a specific peer from application-level download data
-    pub fn update_peer_bandwidth(&self, endpoint_id: &EndpointId, bandwidth: f64) {
+    pub fn update_peer_bandwidth(&self, endpoint_id: &EndpointId, bandwidth: PeerBandwidth) {
         let mut conns = self.connections.write().unwrap();
         if let Some(data) = conns.get_mut(endpoint_id) {
             data.bandwidth = bandwidth;
@@ -230,8 +241,8 @@ impl ConnectionMonitor {
         conns.get(endpoint_id).and_then(|data| data.latency())
     }
 
-    /// get measured throughput (bytes/sec) for a specific endpoint
-    pub fn get_bandwidth(&self, endpoint_id: &EndpointId) -> Option<f64> {
+    /// get measured throughput for a specific endpoint
+    pub fn get_bandwidth(&self, endpoint_id: &EndpointId) -> Option<PeerBandwidth> {
         let conns = self.connections.read().unwrap();
         conns.get(endpoint_id).map(|data| data.bandwidth)
     }

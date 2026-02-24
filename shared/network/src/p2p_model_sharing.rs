@@ -18,7 +18,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, trace, warn};
 
-use crate::connection_monitor::ConnectionMonitor;
+use crate::connection_monitor::{ConnectionMonitor, PeerBandwidth};
 use crate::{NetworkConnection, Networkable, TransmittableDownload};
 #[derive(Debug)]
 /// Manager for the list of peers to ask for the model parameters and config
@@ -142,12 +142,18 @@ impl PeerManagerActor {
                 info!("Updated peer list ({} peers)", self.available_peers.len(),);
             }
             PeerCommand::GetPeer { reply } => {
-                // Sort available peers by bandwidth (highest first), falling back to latency
-                let mut peers_with_priority: Vec<(EndpointId, f64, Duration)> = self
+                // Sort available peers by bandwidth tier then latency:
+                // 1. Measured(bw) where bw > 0 → highest priority, sorted by bw descending
+                // 2. NotMeasured → medium priority (try at least once)
+                // 3. Measured(0.0) → lowest priority (proven slow)
+                let mut peers_with_priority: Vec<(EndpointId, PeerBandwidth, Duration)> = self
                     .available_peers
                     .drain(..)
                     .map(|peer| {
-                        let bandwidth = self.connection_monitor.get_bandwidth(&peer).unwrap_or(0.0);
+                        let bandwidth = self
+                            .connection_monitor
+                            .get_bandwidth(&peer)
+                            .unwrap_or(PeerBandwidth::NotMeasured);
                         let latency = self
                             .connection_monitor
                             .get_latency(&peer)
@@ -155,21 +161,37 @@ impl PeerManagerActor {
                         (peer, bandwidth, latency)
                     })
                     .collect();
-                // Sort: highest bandwidth first; for peers with equal bandwidth, use lowest latency
+
                 peers_with_priority.sort_by(|a, b| {
-                    b.1.partial_cmp(&a.1)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                        .then_with(|| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
+                    fn sort_key(bw: &PeerBandwidth) -> (u8, f64) {
+                        match bw {
+                            PeerBandwidth::NotMeasured => (0, 0.0),
+                            PeerBandwidth::Measured(v) if *v > 0.0 => (1, -v),
+                            PeerBandwidth::Measured(_) => (2, 0.0),
+                        }
+                    }
+                    let (a_tier, a_bw) = sort_key(&a.1);
+                    let (b_tier, b_bw) = sort_key(&b.1);
+                    a_tier
+                        .cmp(&b_tier)
+                        .then_with(|| a_bw.partial_cmp(&b_bw).unwrap_or(std::cmp::Ordering::Equal))
+                        .then_with(|| a.2.cmp(&b.2))
                 });
 
                 self.available_peers = peers_with_priority.into_iter().map(|(p, _, _)| p).collect();
 
                 let peer = if let Some(peer) = self.available_peers.pop_front() {
-                    let bandwidth = self.connection_monitor.get_bandwidth(&peer).unwrap_or(0.0);
+                    let bandwidth = self
+                        .connection_monitor
+                        .get_bandwidth(&peer)
+                        .unwrap_or(PeerBandwidth::NotMeasured);
+                    let bw_display = match bandwidth {
+                        PeerBandwidth::NotMeasured => "unmeasured".to_string(),
+                        PeerBandwidth::Measured(bw) => format!("{:.1} KB/s", bw / 1024.0),
+                    };
                     info!(
-                        "Selected peer {} (bandwidth: {:.1} KB/s) for model parameters",
-                        peer,
-                        bandwidth / 1024.0,
+                        "Selected peer {} (bandwidth: {}) for model parameters",
+                        peer, bw_display,
                     );
                     Some(peer)
                 } else {
