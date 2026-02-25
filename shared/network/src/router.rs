@@ -27,6 +27,7 @@ pub(crate) fn spawn_router<P: ProtocolHandler + Clone>(
     endpoint: Endpoint,
     protocols: SupportedProtocols,
     additional_protocol: Option<(&'static [u8], P)>,
+    iroh_n0des_host: Option<iroh_n0des::ClientHost>,
 ) -> Result<Arc<Router>> {
     let mut builder = Router::builder(endpoint.clone())
         .accept(iroh_gossip::ALPN, protocols.0)
@@ -36,6 +37,10 @@ pub(crate) fn spawn_router<P: ProtocolHandler + Clone>(
     // add optional custom protocol if provided
     if let Some((alpn, handler)) = additional_protocol {
         builder = builder.accept(alpn, handler);
+    }
+
+    if let Some(host) = iroh_n0des_host {
+        builder = builder.accept(iroh_n0des::CLIENT_HOST_ALPN, host);
     }
 
     let router = Arc::new(builder.spawn());
@@ -78,6 +83,7 @@ mod tests {
         let router = spawn_router::<iroh_gossip::net::Gossip>(
             endpoint.clone(),
             SupportedProtocols::new(gossip.clone(), blobs_protocol, p2p_model_sharing),
+            None,
             None,
         )?;
 

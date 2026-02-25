@@ -34,7 +34,7 @@ tokenizers.workspace = true
 get_if_addrs = "0.5.3"
 n0-future = "0.3.2"
 url = { version = "2.5", features = ["serde"] }
-iroh-n0des = "0.9.0"
+iroh-n0des = { version = "0.10", features = ["client_host", "net_diagnostics"] }
 
 [dev-dependencies]
 # for examples
