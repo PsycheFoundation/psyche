@@ -18,6 +18,7 @@ use iroh_gossip::{
     proto::{HyparviewConfig, PlumtreeConfig},
 };
 use iroh_n0des::{API_SECRET_ENV_VAR_NAME, ApiSecret, caps::NetDiagnosticsCap};
+use n0_future::task::AbortOnDropHandle;
 pub use p2p_model_sharing::{
     MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
     PeerManagerHandle,
@@ -37,12 +38,10 @@ use std::{
 use tokio::{
     io::AsyncReadExt,
     select,
+    sync::mpsc,
     sync::{mpsc::UnboundedReceiver, oneshot},
     task::JoinError,
     time::timeout,
-};
-use tokio::{
-    sync::mpsc,
     time::{Interval, interval},
 };
 use tokio_util::sync::CancellationToken;
@@ -194,6 +193,7 @@ where
     endpoint: Endpoint,
     connection_monitor: ConnectionMonitor,
     _iroh_n0des_client: Option<iroh_n0des::Client>,
+    _iroh_diagnostics_task: Option<AbortOnDropHandle<()>>,
 }
 
 impl<B, D> Debug for NetworkConnection<B, D>
@@ -485,13 +485,9 @@ where
         )?;
         trace!("router created!");
 
-        if let Some(ref client) = iroh_n0des_client {
-            match timeout(Duration::from_secs(10), client.net_diagnostics(true)).await {
-                Ok(Ok(report)) => info!("Network diagnostics report: {report:?}"),
-                Ok(Err(e)) => warn!("Failed to get initial network diagnostics report: {e:#}"),
-                Err(_) => warn!("Timed out while getting initial network diagnostics report"),
-            }
-        }
+        let iroh_diagnostics_task = iroh_n0des_client
+            .as_ref()
+            .map(|client| spawn_network_diagnostics_loop(client.clone()));
 
         let (gossip_tx, gossip_rx) = gossip
             .subscribe(gossip_topic(run_id), bootstrap_endpoint_ids)
@@ -521,6 +517,7 @@ where
             endpoint,
             connection_monitor,
             _iroh_n0des_client: iroh_n0des_client,
+            _iroh_diagnostics_task: iroh_diagnostics_task,
         })
     }
 
@@ -962,6 +959,23 @@ fn hash_bytes(bytes: &Bytes) -> u64 {
     let mut hasher = DefaultHasher::new();
     bytes.hash(&mut hasher);
     hasher.finish()
+}
+
+fn spawn_network_diagnostics_loop(client: iroh_n0des::Client) -> AbortOnDropHandle<()> {
+    AbortOnDropHandle::new(tokio::spawn(async move {
+        let mut diagnostics_interval = tokio::time::interval(Duration::from_secs(60 * 60));
+        diagnostics_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        loop {
+            diagnostics_interval.tick().await;
+
+            match timeout(Duration::from_secs(10), client.net_diagnostics(true)).await {
+                Ok(Ok(report)) => info!("Network diagnostics report: {report:?}"),
+                Ok(Err(e)) => warn!("Failed to run network diagnostics: {e:#}"),
+                Err(_) => warn!("Timed out while running network diagnostics"),
+            }
+        }
+    }))
 }
 
 // Simplified param_request_task
