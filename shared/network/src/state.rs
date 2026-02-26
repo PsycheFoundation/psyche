@@ -73,6 +73,7 @@ impl BandwidthTracker {
     pub fn get_peer_bandwidth(&self, peer: &EndpointId) -> PeerBandwidth {
         match self.events.get(peer) {
             None => PeerBandwidth::NotMeasured,
+            Some(events) if events.is_empty() => PeerBandwidth::NotMeasured,
             Some(events) => PeerBandwidth::Measured(endpoint_bandwidth(events)),
         }
     }

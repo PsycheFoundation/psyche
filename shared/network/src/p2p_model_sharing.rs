@@ -129,6 +129,33 @@ impl PeerManagerActor {
         }
     }
 
+    /// Assigns a priority tier to a peer based on its bandwidth measurement.
+    fn bandwidth_tier(bw: &PeerBandwidth) -> u8 {
+        match bw {
+            PeerBandwidth::Measured(v) if *v > 0.0 => 0,
+            PeerBandwidth::NotMeasured => 1,
+            PeerBandwidth::Measured(_) => 2,
+        }
+    }
+
+    fn compare_bandwidth(a: &PeerBandwidth, b: &PeerBandwidth) -> std::cmp::Ordering {
+        match (a, b) {
+            (PeerBandwidth::Measured(a_bw), PeerBandwidth::Measured(b_bw)) => {
+                b_bw.partial_cmp(a_bw).unwrap_or(std::cmp::Ordering::Equal)
+            }
+            _ => std::cmp::Ordering::Equal,
+        }
+    }
+
+    fn sort_peers_by_quality(peers: &mut [(EndpointId, PeerBandwidth, Duration)]) {
+        peers.sort_by(|a, b| {
+            Self::bandwidth_tier(&a.1)
+                .cmp(&Self::bandwidth_tier(&b.1))
+                .then_with(|| Self::compare_bandwidth(&a.1, &b.1))
+                .then_with(|| a.2.cmp(&b.2))
+        });
+    }
+
     fn handle_message(&mut self, message: PeerCommand, cancellation_token: CancellationToken) {
         match message {
             PeerCommand::SetPeers { peers } => {
@@ -142,10 +169,6 @@ impl PeerManagerActor {
                 info!("Updated peer list ({} peers)", self.available_peers.len(),);
             }
             PeerCommand::GetPeer { reply } => {
-                // Sort available peers by bandwidth tier then latency:
-                // 1. Measured(bw) where bw > 0 → highest priority, sorted by bw descending
-                // 2. NotMeasured → medium priority (try at least once)
-                // 3. Measured(0.0) → lowest priority (proven slow)
                 let mut peers_with_priority: Vec<(EndpointId, PeerBandwidth, Duration)> = self
                     .available_peers
                     .drain(..)
@@ -162,21 +185,7 @@ impl PeerManagerActor {
                     })
                     .collect();
 
-                peers_with_priority.sort_by(|a, b| {
-                    fn sort_key(bw: &PeerBandwidth) -> (u8, f64) {
-                        match bw {
-                            PeerBandwidth::NotMeasured => (0, 0.0),
-                            PeerBandwidth::Measured(v) if *v > 0.0 => (1, -v),
-                            PeerBandwidth::Measured(_) => (2, 0.0),
-                        }
-                    }
-                    let (a_tier, a_bw) = sort_key(&a.1);
-                    let (b_tier, b_bw) = sort_key(&b.1);
-                    a_tier
-                        .cmp(&b_tier)
-                        .then_with(|| a_bw.partial_cmp(&b_bw).unwrap_or(std::cmp::Ordering::Equal))
-                        .then_with(|| a.2.cmp(&b.2))
-                });
+                Self::sort_peers_by_quality(&mut peers_with_priority);
 
                 self.available_peers = peers_with_priority.into_iter().map(|(p, _, _)| p).collect();
 
