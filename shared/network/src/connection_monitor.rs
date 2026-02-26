@@ -246,4 +246,12 @@ impl ConnectionMonitor {
         let conns = self.connections.read().unwrap();
         conns.get(endpoint_id).map(|data| data.bandwidth)
     }
+
+    /// reset all bandwidth measurements to NotMeasured
+    pub fn clear_all_bandwidth(&self) {
+        let mut conns = self.connections.write().unwrap();
+        for data in conns.values_mut() {
+            data.bandwidth = PeerBandwidth::NotMeasured;
+        }
+    }
 }

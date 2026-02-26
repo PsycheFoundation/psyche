@@ -66,6 +66,10 @@ impl BandwidthTracker {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.events.clear();
+    }
+
     pub fn get_total_bandwidth(&self) -> f64 {
         self.events.values().map(endpoint_bandwidth).sum()
     }
