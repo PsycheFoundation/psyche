@@ -30,7 +30,7 @@ use tokio::{
     time::sleep,
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -60,6 +60,7 @@ struct InferenceNodeInfo {
     checkpoint_id: Option<String>,
     #[allow(dead_code)]
     capabilities: Vec<String>,
+    last_seen: std::time::Instant,
 }
 
 struct GatewayState {
@@ -450,6 +451,11 @@ async fn run_gateway() -> Result<()> {
         tokio::spawn(async move {
             let mut task_set = tokio::task::JoinSet::new();
 
+            // Cleanup stale nodes every 15 seconds (faster detection)
+            // Nodes broadcast every 30s, so 60s = 2 missed heartbeats
+            let mut cleanup_interval = tokio::time::interval(Duration::from_secs(15));
+            cleanup_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
             loop {
                 tokio::select! {
                     _ = cancel.cancelled() => {
@@ -457,6 +463,30 @@ async fn run_gateway() -> Result<()> {
                         info!("Aborting {} active P2P request tasks", task_set.len());
                         task_set.shutdown().await;
                         break;
+                    }
+
+                    _ = cleanup_interval.tick() => {
+                        // 60 seconds = 2 missed heartbeats (nodes broadcast every 30s)
+                        let stale_threshold = Duration::from_secs(60);
+                        let mut nodes = state.available_nodes.write().await;
+                        let now = std::time::Instant::now();
+
+                        let stale_nodes: Vec<(EndpointId, Duration)> = nodes
+                            .iter()
+                            .filter_map(|(id, info)| {
+                                let age = now.duration_since(info.last_seen);
+                                if age > stale_threshold {
+                                    Some((*id, age))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+
+                        for (node_id, age) in stale_nodes {
+                            warn!("Removing stale node {} (no heartbeat for {:?})", node_id.fmt_short(), age);
+                            nodes.remove(&node_id);
+                        }
                     }
 
                     Some((target_peer_id, msg)) = network_rx.recv() => {
@@ -526,6 +556,7 @@ async fn run_gateway() -> Result<()> {
                                             model_name,
                                             checkpoint_id,
                                             capabilities,
+                                            last_seen: std::time::Instant::now(),
                                         };
                                         state.available_nodes.write().await.insert(peer_id, node_info);
                                     }
