@@ -15,6 +15,7 @@ pub enum InferenceGossipMessage {
         model_name: Option<String>, // None if no model loaded yet
         checkpoint_id: Option<String>,
         capabilities: Vec<String>,
+        timestamp_ms: u64,
     },
     NodeUnavailable,
     LoadModel {
@@ -201,6 +202,7 @@ mod tests {
             model_name: Some("gpt2".to_string()),
             checkpoint_id: Some("checkpoint-123".to_string()),
             capabilities: vec!["streaming".to_string()],
+            timestamp_ms: 1234567890,
         };
 
         let bytes = postcard::to_stdvec(&msg).unwrap();
@@ -211,10 +213,12 @@ mod tests {
                 model_name,
                 checkpoint_id,
                 capabilities,
+                timestamp_ms,
             } => {
                 assert_eq!(model_name, Some("gpt2".to_string()));
                 assert_eq!(checkpoint_id, Some("checkpoint-123".to_string()));
                 assert_eq!(capabilities, vec!["streaming"]);
+                assert_eq!(timestamp_ms, 1234567890);
             }
             _ => panic!("Expected NodeAvailable variant"),
         }

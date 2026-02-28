@@ -451,8 +451,6 @@ async fn run_gateway() -> Result<()> {
         tokio::spawn(async move {
             let mut task_set = tokio::task::JoinSet::new();
 
-            // Cleanup stale nodes every 15 seconds (faster detection)
-            // Nodes broadcast every 30s, so 60s = 2 missed heartbeats
             let mut cleanup_interval = tokio::time::interval(Duration::from_secs(15));
             cleanup_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -466,7 +464,6 @@ async fn run_gateway() -> Result<()> {
                     }
 
                     _ = cleanup_interval.tick() => {
-                        // 60 seconds = 2 missed heartbeats (nodes broadcast every 30s)
                         let stale_threshold = Duration::from_secs(60);
                         let mut nodes = state.available_nodes.write().await;
                         let now = std::time::Instant::now();
@@ -544,12 +541,20 @@ async fn run_gateway() -> Result<()> {
                             Ok(Some(NetworkEvent::MessageReceived((peer_id, msg)))) => {
                                 info!("Received gossip message from {}", peer_id.fmt_short());
                                 match msg {
-                                    InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities } => {
-                                        info!("Discovered inference node!");
-                                        info!("  Peer ID: {}", peer_id.fmt_short());
-                                        info!("  Model: {}", model_name.as_deref().unwrap_or("<idle>"));
-                                        info!("  Checkpoint: {:?}", checkpoint_id);
-                                        info!("  Capabilities: {:?}", capabilities);
+                                    InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities, timestamp_ms: _ } => {
+                                        let is_new = !state.available_nodes.read().await.contains_key(&peer_id);
+
+                                        if is_new {
+                                            info!("Discovered NEW inference node!");
+                                            info!("  Peer ID: {}", peer_id.fmt_short());
+                                            info!("  Model: {}", model_name.as_deref().unwrap_or("<idle>"));
+                                            info!("  Checkpoint: {:?}", checkpoint_id);
+                                            info!("  Capabilities: {:?}", capabilities);
+                                        } else {
+                                            info!("Heartbeat from {} (model: {})",
+                                                peer_id.fmt_short(),
+                                                model_name.as_deref().unwrap_or("<idle>"));
+                                        }
 
                                         let node_info = InferenceNodeInfo {
                                             peer_id,

@@ -230,6 +230,10 @@ async fn main() -> Result<()> {
         model_name: model_name_for_broadcast.clone(),
         checkpoint_id: None,
         capabilities: capabilities.clone(),
+        timestamp_ms: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64,
     };
 
     network
@@ -267,6 +271,10 @@ async fn main() -> Result<()> {
                     model_name: model_name_for_broadcast.clone(),
                     checkpoint_id: None,
                     capabilities: capabilities.clone(),
+                    timestamp_ms: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as u64,
                 };
                 if let Err(e) = network.broadcast(&availability_msg) {
                     warn!("Failed to broadcast: {:#}", e);
@@ -283,7 +291,7 @@ async fn main() -> Result<()> {
                         debug!("Received gossip message from {}: {:?}", peer_id.fmt_short(), msg);
 
                         match msg {
-                            InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities } => {
+                            InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities, timestamp_ms: _ } => {
                                 info!("Peer {} is available: model={:?}, checkpoint={:?}, caps={:?}",
                                       peer_id.fmt_short(), model_name, checkpoint_id, capabilities);
                             }
