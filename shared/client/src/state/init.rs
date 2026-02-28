@@ -509,6 +509,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 {
                                     let dp = init_config.data_parallelism;
                                     let tp = init_config.tensor_parallelism;
+                                    let num_local_ranks = init_config.device.size() as i64;
 
                                     tokio::task::spawn_blocking(move || {
                                         if tp != 1 || dp != 1 {
@@ -520,7 +521,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                 psyche_modeling::ParallelismConfig { dp, tp },
                                                 Some(llm.max_seq_len as usize),
                                                 init_config.sidecar_port,
-                                                None,
+                                                Some(num_local_ranks),
                                             )
                                             .map(RawLoadedModelType::PythonDistributed)
                                             .map_err(InitRunError::PythonDistributedError)

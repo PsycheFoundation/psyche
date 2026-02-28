@@ -355,7 +355,7 @@ async fn main() -> Result<()> {
                             psyche_modeling::ParallelismConfig { dp, tp },
                             Some(args.sequence_length),
                             None,
-                            None,
+                            Some(args.device.size() as i64),
                         )?;
 
                         Ok(psyche_modeling::PythonDistributedTrainer::new(
