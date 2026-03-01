@@ -1,16 +1,16 @@
 use allowlist::Allowlist;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use download::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
-use iroh::{EndpointAddr, RelayConfig};
 use iroh::{endpoint::QuicTransportConfig, protocol::Router};
+use iroh::{EndpointAddr, RelayConfig};
 use iroh_blobs::api::Tag;
 use iroh_blobs::store::GcConfig;
 use iroh_blobs::{
-    BlobsProtocol,
     api::downloader::Downloader,
     store::mem::{MemStore, Options as MemStoreOptions},
+    BlobsProtocol,
 };
 use iroh_gossip::{
     api::{GossipReceiver, GossipSender},
@@ -19,11 +19,11 @@ use iroh_gossip::{
 };
 use iroh_n0des::ApiSecret;
 pub use p2p_model_sharing::{
-    MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
-    PeerManagerHandle,
+    ModelConfigSharingMessage, ParameterSharingMessage, PeerManagerHandle,
+    MODEL_REQUEST_TIMEOUT_SECS,
 };
 use psyche_metrics::{ClientMetrics, PeerConnection};
-use router::{SupportedProtocols, spawn_router};
+use router::{spawn_router, SupportedProtocols};
 use state::State;
 use std::str::FromStr;
 use std::{
@@ -43,15 +43,15 @@ use tokio::{
 };
 use tokio::{
     sync::mpsc,
-    time::{Interval, interval},
+    time::{interval, Interval},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
+use tracing::{debug, debug_span, error, info, trace, warn, Instrument};
 use util::{fmt_relay_mode, gossip_topic};
 
 pub use ed25519_dalek::Signature;
 pub use iroh::RelayMode;
-pub use iroh_blobs::{BlobFormat, Hash, ticket::BlobTicket};
+pub use iroh_blobs::{ticket::BlobTicket, BlobFormat, Hash};
 
 pub mod allowlist;
 mod authenticable_identity;
@@ -74,7 +74,7 @@ mod util;
 #[cfg(test)]
 mod test;
 
-pub use authenticable_identity::{AuthenticatableIdentity, FromSignedBytesError, raw_p2p_verify};
+pub use authenticable_identity::{raw_p2p_verify, AuthenticatableIdentity, FromSignedBytesError};
 pub use connection_monitor::{ConnectionData, ConnectionMonitor};
 pub use download::{
     DownloadComplete, DownloadFailed, DownloadSchedulerHandle, DownloadType, ReadyRetry,
@@ -85,12 +85,12 @@ pub use iroh::{Endpoint, EndpointId, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayQuicConfig};
 pub use latency_sorted::LatencySorted;
 pub use p2p_model_sharing::{
-    ALPN, ModelRequestType, SharableModel, SharableModelError, TransmittableModelConfig,
+    ModelRequestType, SharableModel, SharableModelError, TransmittableModelConfig, ALPN,
 };
 pub use serde::Networkable;
 pub use serialized_distro::{
-    SerializeDistroResultError, SerializedDistroResult, TransmittableDistroResult,
-    distro_results_from_reader, distro_results_to_bytes,
+    distro_results_from_reader, distro_results_to_bytes, SerializeDistroResultError,
+    SerializedDistroResult, TransmittableDistroResult,
 };
 pub use signed_message::SignedMessage;
 pub use tcp::{ClientNotification, TcpClient, TcpServer};
@@ -913,7 +913,7 @@ async fn on_update_stats(
 
 /// Get the Psyche [`RelayMap`].
 pub fn psyche_relay_map() -> RelayMap {
-    RelayMap::from_iter([psyche_use_relay_node(), psyche_usw_relay_node()])
+    RelayMap::from_iter([psyche_use_relay_node()])
 }
 
 /// Get the Psyche [`RelayConfig`] for US East.
@@ -921,17 +921,6 @@ pub fn psyche_use_relay_node() -> RelayConfig {
     let url: Url = format!("https://{USE_RELAY_HOSTNAME}")
         .parse()
         .expect("default url");
-    RelayConfig {
-        url: url.into(),
-        quic: Some(RelayQuicConfig::default()),
-    }
-}
-
-/// Get the Psyche [`RelayConfig`] for US West.
-pub fn psyche_usw_relay_node() -> RelayConfig {
-    let url: Url = format!("https://{USW_RELAY_HOSTNAME}")
-        .parse()
-        .expect("default_url");
     RelayConfig {
         url: url.into(),
         quic: Some(RelayQuicConfig::default()),
