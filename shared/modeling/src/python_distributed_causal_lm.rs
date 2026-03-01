@@ -9,6 +9,8 @@ use pyo3::{PyErr, PyResult, Python, prelude::*, types::PyDict};
 use pyo3_tch::PyTensor;
 use std::{
     collections::HashMap,
+    io::ErrorKind,
+    net::TcpListener,
     process::{Child, Command},
     sync::{
         Arc,
@@ -252,7 +254,14 @@ impl PythonDistributedCausalLM {
             _ => return Err(PythonDistributedCausalLMError::NonCUDADevice(device)),
         };
         let backend = "nccl".to_string();
-        let init_method = format!("tcp://0.0.0.0:{}", port.unwrap_or(34567));
+        let port = match port {
+            Some(port) => port,
+            None => {
+                // Default to an ephemeral local port so quick restarts don't keep colliding.
+                find_available_local_port().map_err(PythonDistributedCausalLMError::SidecarSpawnError)?
+            }
+        };
+        let init_method = format!("tcp://127.0.0.1:{port}");
         let local: JoinHandle<Result<_, PythonDistributedCausalLMError>> = {
             let backend = backend.clone();
             let init_method = init_method.clone();
@@ -343,33 +352,45 @@ impl PythonDistributedCausalLM {
         };
         let pid = format!("{}", std::process::id());
         debug!("Spawned local model load, pid is {pid}");
-        let children: Result<Vec<Child>, _> = (1..num_local_ranks)
-            .map(|rank| {
-                let res = Command::new("python")
-                    .arg("-m")
-                    .arg("psyche.sidecar")
-                    .arg("--parent-pid")
-                    .arg(pid.clone())
-                    .arg("--backend")
-                    .arg(backend.clone())
-                    .arg("--init-method")
-                    .arg(init_method.clone())
-                    .arg("--world-size")
-                    .arg(format!("{world_size}"))
-                    .arg("--rank")
-                    .arg(format!("{rank}"))
-                    .arg("--device")
-                    .arg(format!("{rank}"))
-                    .spawn();
-                match res.as_ref() {
-                    Ok(child) => debug!("Spawned sidecar process {}", child.id()),
-                    Err(err) => error!("{err}"),
-                };
-                res
-            })
-            .collect();
-        let children = children?;
-        let (comm, local) = local.join().unwrap()?;
+        let mut children: Vec<Child> = Vec::with_capacity((num_local_ranks - 1) as usize);
+        for rank in 1..num_local_ranks {
+            let res = Command::new("python")
+                .arg("-m")
+                .arg("psyche.sidecar")
+                .arg("--parent-pid")
+                .arg(pid.clone())
+                .arg("--backend")
+                .arg(backend.clone())
+                .arg("--init-method")
+                .arg(init_method.clone())
+                .arg("--world-size")
+                .arg(format!("{world_size}"))
+                .arg("--rank")
+                .arg(format!("{rank}"))
+                .arg("--device")
+                .arg(format!("{rank}"))
+                .spawn();
+
+            match res {
+                Ok(child) => {
+                    debug!("Spawned sidecar process {}", child.id());
+                    children.push(child);
+                }
+                Err(err) => {
+                    error!("{err}");
+                    cleanup_sidecars(&mut children);
+                    return Err(PythonDistributedCausalLMError::SidecarSpawnError(err));
+                }
+            };
+        }
+
+        let (comm, local) = match local.join().unwrap() {
+            Ok(ok) => ok,
+            Err(err) => {
+                cleanup_sidecars(&mut children);
+                return Err(err);
+            }
+        };
 
         Ok(Self {
             comm,
@@ -547,4 +568,21 @@ fn contract_home_path(path: &Path) -> String {
     }
     // If we can't contract it, return as is
     path.to_str().unwrap_or_default().to_string()
+}
+
+fn find_available_local_port() -> std::io::Result<u16> {
+    let listener = TcpListener::bind("127.0.0.1:0")?;
+    let port = listener.local_addr()?.port();
+    Ok(port)
+}
+
+fn cleanup_sidecars(children: &mut [Child]) {
+    for child in children.iter_mut() {
+        if let Err(err) = child.kill() {
+            if err.kind() != ErrorKind::InvalidInput {
+                debug!("Failed to kill sidecar process {}: {}", child.id(), err);
+            }
+        }
+        let _ = child.wait();
+    }
 }
