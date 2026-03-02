@@ -11,7 +11,7 @@ use std::{
     collections::HashMap,
     process::{Child, Command},
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     thread::JoinHandle,
@@ -362,36 +362,23 @@ impl PythonDistributedCausalLM {
             })
             .collect();
         let children = children?;
-        let children = Arc::new(Mutex::new(children));
         let shutting_down = Arc::new(AtomicBool::new(false));
 
-        // Monitor thread that polls the children sidecars to ensure they are still alive.
-        // If any of them exit unexpectedly, we kill all children and abort to avoid NCCL hangs.
-        {
-            let children = children.clone();
+        // Spawn a watcher thread per sidecar that blocks on child.wait().
+        // If a sidecar exits unexpectedly (not during clean shutdown), abort to avoid NCCL hangs.
+        // This is race-free: shutdown() sets shutting_down BEFORE sending the exit command,
+        // so by the time a sidecar exits cleanly the flag is guaranteed to be set.
+        for (i, mut child) in children.into_iter().enumerate() {
             let shutting_down = shutting_down.clone();
             std::thread::spawn(move || {
-                loop {
-                    std::thread::sleep(Duration::from_secs(1));
-                    if shutting_down.load(Ordering::Acquire) {
-                        return; // Avoid calling abort() on clean shutdown, just exit the loop
-                    }
-                    let Ok(mut children) = children.lock() else {
-                        return;
-                    };
-                    for (i, child) in children.iter_mut().enumerate() {
-                        if let Ok(Some(status)) = child.try_wait() {
-                            error!(
-                                "Sidecar (rank {}) exited with status: {}. Exiting",
-                                i + 1,
-                                status
-                            );
-                            for child in children.iter_mut() {
-                                let _ = child.kill();
-                            }
-                            std::process::abort(); // abort() because exit() seems to hang
-                        }
-                    }
+                let status = child.wait();
+                if !shutting_down.load(Ordering::Acquire) {
+                    error!(
+                        "Sidecar (rank {}) exited unexpectedly with status: {:?}. Aborting",
+                        i + 1,
+                        status
+                    );
+                    std::process::abort();
                 }
             });
         }
