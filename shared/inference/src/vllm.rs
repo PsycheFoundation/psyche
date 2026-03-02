@@ -40,6 +40,13 @@ pub struct InferenceResult {
     pub error: Option<String>,
 }
 
+/// Chunk from streaming inference
+#[derive(Debug, Clone)]
+pub struct StreamChunk {
+    pub text: String,
+    pub finish_reason: Option<String>,
+}
+
 /// Response from engine shutdown
 #[derive(Debug, Clone)]
 pub struct ShutdownResult {
@@ -139,14 +146,21 @@ pub fn create_engine(
 }
 
 /// Run inference on an engine
-pub fn run_inference(
+///
+/// When `stream_callback` is Some, streaming mode is enabled and the callback
+/// will be invoked for each chunk of generated text.
+pub fn run_inference<F>(
     py: Python,
     engine_id: &str,
     messages: Vec<crate::protocol::ChatMessage>,
     temperature: Option<f64>,
     top_p: Option<f64>,
     max_tokens: Option<i32>,
-) -> PyResult<InferenceResult> {
+    stream_callback: Option<F>,
+) -> PyResult<InferenceResult>
+where
+    F: FnMut(StreamChunk),
+{
     let rust_bridge = py.import("psyche.vllm.rust_bridge")?;
 
     let kwargs = PyDict::new(py);
@@ -173,20 +187,96 @@ pub fn run_inference(
         kwargs.set_item("max_tokens", mt)?;
     }
 
-    let result = rust_bridge.call_method("run_inference", (), Some(&kwargs))?;
-    let dict = result.downcast::<PyDict>()?;
-    let map = py_dict_to_hashmap(dict)?;
+    // Choose streaming or non-streaming based on callback presence
+    match stream_callback {
+        Some(mut callback) => {
+            // Streaming mode
+            let generator =
+                rust_bridge.call_method("run_inference_streaming", (), Some(&kwargs))?;
 
-    let status = get_optional_string(&map, "status", py).unwrap_or_default();
-    let success = status == "success";
+            let mut final_request_id: Option<String> = None;
+            let mut final_generated_text: Option<String> = None;
+            let mut final_full_text: Option<String> = None;
+            let mut final_error: Option<String> = None;
+            let mut success = false;
 
-    Ok(InferenceResult {
-        success,
-        request_id: get_optional_string(&map, "request_id", py),
-        generated_text: get_optional_string(&map, "generated_text", py),
-        full_text: get_optional_string(&map, "full_text", py),
-        error: get_optional_string(&map, "error", py),
-    })
+            // Iterate over the generator
+            for item in generator.iter()? {
+                let chunk_dict = item?.downcast::<PyDict>()?;
+                let chunk_map = py_dict_to_hashmap(chunk_dict)?;
+
+                let status = get_optional_string(&chunk_map, "status", py).unwrap_or_default();
+
+                match status.as_str() {
+                    "chunk" => {
+                        // Intermediate chunk - invoke callback
+                        if let Some(text) = get_optional_string(&chunk_map, "text", py) {
+                            callback(StreamChunk {
+                                text,
+                                finish_reason: None,
+                            });
+                        }
+
+                        // Store request_id if we haven't yet
+                        if final_request_id.is_none() {
+                            final_request_id = get_optional_string(&chunk_map, "request_id", py);
+                        }
+                    }
+                    "done" => {
+                        // Final chunk - invoke callback with finish_reason and store final result
+                        let text = get_optional_string(&chunk_map, "text", py).unwrap_or_default();
+                        let finish_reason = get_optional_string(&chunk_map, "finish_reason", py);
+
+                        callback(StreamChunk {
+                            text,
+                            finish_reason: finish_reason.clone(),
+                        });
+
+                        final_request_id = get_optional_string(&chunk_map, "request_id", py);
+                        final_generated_text =
+                            get_optional_string(&chunk_map, "generated_text", py);
+                        final_full_text = get_optional_string(&chunk_map, "full_text", py);
+                        success = true;
+                    }
+                    "error" => {
+                        // Error occurred
+                        final_request_id = get_optional_string(&chunk_map, "request_id", py);
+                        final_error = get_optional_string(&chunk_map, "error", py);
+                        success = false;
+                        break;
+                    }
+                    _ => {
+                        // Unknown status - continue
+                    }
+                }
+            }
+
+            Ok(InferenceResult {
+                success,
+                request_id: final_request_id,
+                generated_text: final_generated_text,
+                full_text: final_full_text,
+                error: final_error,
+            })
+        }
+        None => {
+            // Non-streaming mode
+            let result = rust_bridge.call_method("run_inference", (), Some(&kwargs))?;
+            let dict = result.downcast::<PyDict>()?;
+            let map = py_dict_to_hashmap(dict)?;
+
+            let status = get_optional_string(&map, "status", py).unwrap_or_default();
+            let success = status == "success";
+
+            Ok(InferenceResult {
+                success,
+                request_id: get_optional_string(&map, "request_id", py),
+                generated_text: get_optional_string(&map, "generated_text", py),
+                full_text: get_optional_string(&map, "full_text", py),
+                error: get_optional_string(&map, "error", py),
+            })
+        }
+    }
 }
 
 /// Shutdown an engine
@@ -262,6 +352,36 @@ mod tests {
         Python::with_gil(|py| {
             let result = list_engines(py);
             assert!(result.is_ok());
+        });
+    }
+
+    #[test]
+    fn test_run_inference_signature() {
+        // This test just verifies the function signature compiles correctly
+        // We can't actually run inference without a real engine setup
+        pyo3::prepare_freethreaded_python();
+        Python::with_gil(|py| {
+            // Non-streaming call
+            let _result: PyResult<InferenceResult> = run_inference(
+                py,
+                "test-engine",
+                vec![],
+                None,
+                None,
+                None,
+                None::<fn(StreamChunk)>,
+            );
+
+            // Streaming call would look like:
+            // let _result = run_inference(
+            //     py,
+            //     "test-engine",
+            //     vec![],
+            //     None,
+            //     None,
+            //     None,
+            //     Some(|chunk| { println!("Got chunk: {:?}", chunk); }),
+            // );
         });
     }
 }
