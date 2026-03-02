@@ -212,7 +212,6 @@ pub struct PythonDistributedCausalLM {
     // synchronizes access to underlying model
     iteration: Arc<AtomicUsize>,
     pub(crate) parallelism: ParallelismConfig,
-    children: Arc<Mutex<Vec<Child>>>,
     shutting_down: Arc<AtomicBool>,
 }
 
@@ -383,16 +382,14 @@ impl PythonDistributedCausalLM {
                     for (i, child) in children.iter_mut().enumerate() {
                         if let Ok(Some(status)) = child.try_wait() {
                             error!(
-                                "Sidecar process (rank {}) exited with status: {} — \
-                             force-aborting to avoid NCCL hang",
+                                "Sidecar (rank {}) exited with status: {}. Exiting",
                                 i + 1,
                                 status
                             );
                             for child in children.iter_mut() {
                                 let _ = child.kill();
                             }
-                            // abort() because exit() hangs on NCCL/CUDA atexit handlers
-                            std::process::abort();
+                            std::process::abort(); // abort() because exit() seems to hang
                         }
                     }
                 }
@@ -405,7 +402,6 @@ impl PythonDistributedCausalLM {
             comm,
             local: local.into(),
             parallelism,
-            children,
             shutting_down,
             iteration: Arc::new(AtomicUsize::new(0)),
         })
@@ -413,22 +409,6 @@ impl PythonDistributedCausalLM {
 
     pub fn iteration(&self) -> Arc<AtomicUsize> {
         self.iteration.clone()
-    }
-
-    fn kill_children(&self) {
-        let Ok(mut children) = self.children.lock() else {
-            return;
-        };
-        for child in children.iter_mut() {
-            let pid = child.id();
-            if matches!(child.try_wait(), Ok(Some(_))) {
-                continue;
-            }
-            if let Err(e) = child.kill() {
-                debug!("Failed to kill sidecar process {pid}: {e}");
-            }
-            let _ = child.wait();
-        }
     }
 }
 
@@ -585,7 +565,6 @@ impl CausalLM for PythonDistributedCausalLM {
 impl Drop for PythonDistributedCausalLM {
     fn drop(&mut self) {
         self.shutting_down.store(true, Ordering::Release);
-        self.kill_children();
     }
 }
 
