@@ -967,7 +967,9 @@ impl<T: NodeIdentity> Coordinator<T> {
         unix_timestamp: u64,
         random_seed: u64,
     ) -> std::result::Result<TickResult, CoordinatorError> {
-        if self.check_timeout(unix_timestamp, self.config.warmup_time) {
+        if self.check_timeout(unix_timestamp, self.config.warmup_time)
+            && !self.current_round_unchecked().witnesses.is_empty()
+        {
             self.start_round_train(unix_timestamp, random_seed, 0);
         } else {
             self.move_clients_to_exited(0);

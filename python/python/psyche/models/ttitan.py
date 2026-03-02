@@ -1,6 +1,7 @@
 import torch
 import json
 import os
+import time
 from contextlib import contextmanager, nullcontext
 
 import torch.distributed.checkpoint as dcp
@@ -359,11 +360,16 @@ class TorchtitanAuto(CausalLM):
         if isinstance(source, PretrainedSourceRepoFiles):
             sd_adapter = train_spec.state_dict_adapter(config_tt, hf_assets_path=None)
 
+            t0 = time.monotonic()
             model_sd_clean = {
                 k.replace(_CHECKPOINT_PREFIX, "").replace(COMPILE_PREFIX, ""): v
                 for k, v in model.state_dict().items()
             }
             hf_state_dict = sd_adapter.to_hf(model_sd_clean)
+            print(
+                f"[rank {device}] to_hf conversion took {time.monotonic()-t0:.1f}s"
+                f" ({len(hf_state_dict)} tensors)"
+            )
 
             path = None
             for x in source.files:
@@ -374,14 +380,35 @@ class TorchtitanAuto(CausalLM):
                     f"Could not determine .safetensors root directory for `{source.files}`"
                 )
 
+            t1 = time.monotonic()
             hf_storage_reader = dcp.HuggingFaceStorageReader(path)
             dcp.load(hf_state_dict, storage_reader=hf_storage_reader)
+            print(
+                f"[rank {device}] dcp.load took {time.monotonic()-t1:.1f}s"
+            )
 
+            t2 = time.monotonic()
             state_dict = sd_adapter.from_hf(hf_state_dict)
+            print(
+                f"[rank {device}] from_hf conversion took {time.monotonic()-t2:.1f}s"
+            )
+
+            t3 = time.monotonic()
             TorchtitanAuto._load_into_model(model, state_dict)
+            print(
+                f"[rank {device}] _load_into_model took {time.monotonic()-t3:.1f}s"
+            )
+
+            print(
+                f"[rank {device}] total weight loading took"
+                f" {time.monotonic()-t0:.1f}s"
+            )
         else:
-            # state_dict already in TT format
+            t0 = time.monotonic()
             TorchtitanAuto._load_into_model(model, state_dict)
+            print(
+                f"[rank {device}] _load_into_model took {time.monotonic()-t0:.1f}s"
+            )
 
         loss_fn = build_cross_entropy_loss(job_config)
 
