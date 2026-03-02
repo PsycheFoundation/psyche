@@ -95,9 +95,17 @@ struct InferenceNodeInfo {
     capabilities: Vec<String>,
 }
 
+/// Message type for streaming and non-streaming responses
+#[derive(Debug, Clone)]
+enum ResponseMessage {
+    Chunk(String),            // Incremental text chunk
+    Final(InferenceResponse), // Final response with full text
+    Error(String),            // Error message
+}
+
 struct GatewayState {
     available_nodes: RwLock<HashMap<EndpointId, InferenceNodeInfo>>,
-    pending_requests: RwLock<HashMap<String, mpsc::Sender<InferenceResponse>>>,
+    pending_requests: RwLock<HashMap<String, mpsc::Sender<ResponseMessage>>>,
     model_assignments: RwLock<HashMap<EndpointId, String>>, // node_id -> assigned model name
     network_tx: mpsc::Sender<(EndpointId, InferenceMessage)>,
     gossip_tx: mpsc::Sender<InferenceGossipMessage>,
@@ -287,10 +295,25 @@ async fn handle_inference(
 
     info!("Sent inference request {} to network", request_id);
 
-    let response = tokio::time::timeout(Duration::from_secs(30), rx.recv())
+    // Wait for response (either streaming chunks or final response)
+    let response_msg = tokio::time::timeout(Duration::from_secs(30), rx.recv())
         .await
         .map_err(|_| AppError::Timeout)?
         .ok_or(AppError::InternalError)?;
+
+    let response = match response_msg {
+        ResponseMessage::Final(resp) => resp,
+        ResponseMessage::Error(err) => {
+            state.pending_requests.write().await.remove(&request_id);
+            error!("Inference error: {}", err);
+            return Err(AppError::InternalError);
+        }
+        ResponseMessage::Chunk(_) => {
+            state.pending_requests.write().await.remove(&request_id);
+            error!("Unexpected chunk in non-streaming request");
+            return Err(AppError::InternalError);
+        }
+    };
 
     state.pending_requests.write().await.remove(&request_id);
 
@@ -532,11 +555,13 @@ async fn send_inference_request(
     endpoint: iroh::Endpoint,
     peer_id: EndpointId,
     request: InferenceRequest,
-) -> Result<InferenceResponse> {
+    response_tx: mpsc::Sender<ResponseMessage>,
+) -> Result<()> {
     info!(
-        "Connecting to peer {} with ALPN {:?}",
+        "Connecting to peer {} with ALPN {:?} (streaming: {})",
         peer_id.fmt_short(),
-        std::str::from_utf8(INFERENCE_ALPN)
+        std::str::from_utf8(INFERENCE_ALPN),
+        request.stream
     );
 
     // connect to peer and open bidirectional stream
@@ -551,7 +576,7 @@ async fn send_inference_request(
         .await
         .context("Failed to open bidirectional stream")?;
 
-    let message = InferenceMessage::Request(request);
+    let message = InferenceMessage::Request(request.clone());
     let request_bytes =
         postcard::to_allocvec(&message).context("Failed to serialize inference request")?;
 
@@ -563,23 +588,82 @@ async fn send_inference_request(
     info!("Finishing send stream");
     send.finish()?;
 
-    info!("Reading response...");
-    let response_bytes = recv
-        .read_to_end(10 * 1024 * 1024)
-        .await
-        .context("Failed to read response")?; // 10MB max
+    if request.stream {
+        // Streaming mode: read multiple messages
+        info!("Reading streaming response...");
+        loop {
+            // Read message length-prefix or use read_to_end with smaller buffer per message
+            // For simplicity, we'll use a read loop with chunks
+            let mut buf = vec![0u8; 1024 * 1024]; // 1MB buffer per read
+            match recv.read(&mut buf).await {
+                Ok(Some(n)) => {
+                    if n == 0 {
+                        break; // Stream ended
+                    }
 
-    info!("Received {} bytes, deserializing", response_bytes.len());
-    let response_message: InferenceMessage = postcard::from_bytes(&response_bytes)
-        .context("Failed to deserialize inference response")?;
+                    // Try to deserialize the message
+                    let response_message: InferenceMessage = postcard::from_bytes(&buf[..n])
+                        .context("Failed to deserialize streaming message")?;
 
-    match response_message {
-        InferenceMessage::Response(response) => {
-            info!("Successfully received inference response");
-            Ok(response)
+                    match response_message {
+                        InferenceMessage::StreamChunk {
+                            request_id: _,
+                            text,
+                        } => {
+                            debug!("Received stream chunk: {} bytes", text.len());
+                            let _ = response_tx.send(ResponseMessage::Chunk(text)).await;
+                        }
+                        InferenceMessage::Response(response) => {
+                            info!("Received final streaming response");
+                            let _ = response_tx.send(ResponseMessage::Final(response)).await;
+                            break;
+                        }
+                        _ => {
+                            warn!("Unexpected message type during streaming");
+                        }
+                    }
+                }
+                Ok(None) => {
+                    info!("Stream ended");
+                    break;
+                }
+                Err(e) => {
+                    error!("Error reading stream: {:#}", e);
+                    let _ = response_tx
+                        .send(ResponseMessage::Error(e.to_string()))
+                        .await;
+                    break;
+                }
+            }
         }
-        _ => anyhow::bail!("Unexpected message type from inference node"),
+    } else {
+        // Non-streaming mode: read single response
+        info!("Reading non-streaming response...");
+        let response_bytes = recv
+            .read_to_end(10 * 1024 * 1024)
+            .await
+            .context("Failed to read response")?; // 10MB max
+
+        info!("Received {} bytes, deserializing", response_bytes.len());
+        let response_message: InferenceMessage = postcard::from_bytes(&response_bytes)
+            .context("Failed to deserialize inference response")?;
+
+        match response_message {
+            InferenceMessage::Response(response) => {
+                info!("Successfully received inference response");
+                let _ = response_tx.send(ResponseMessage::Final(response)).await;
+            }
+            _ => {
+                let _ = response_tx
+                    .send(ResponseMessage::Error(
+                        "Unexpected message type from inference node".to_string(),
+                    ))
+                    .await;
+            }
+        }
     }
+
+    Ok(())
 }
 
 async fn run_gateway() -> Result<()> {
@@ -751,26 +835,36 @@ async fn run_gateway() -> Result<()> {
                                 let endpoint = network.router().endpoint().clone();
                                 let state_clone = state.clone();
                                 task_set.spawn(async move {
+                                    // Get the response channel before spawning request
+                                    let response_tx = if let Some(tx) = state_clone.pending_requests.read().await.get(&request_id) {
+                                        tx.clone()
+                                    } else {
+                                        error!("No pending request channel for {}", request_id);
+                                        return;
+                                    };
+
                                     // timeout slightly longer than HTTP handler timeout (30s) to avoid race - might need to adjust
                                     let result = tokio::time::timeout(
                                         Duration::from_secs(35),
-                                        send_inference_request(endpoint, target_peer_id, req)
+                                        send_inference_request(endpoint, target_peer_id, req, response_tx)
                                     ).await;
 
                                     match result {
-                                        Ok(Ok(response)) => {
-                                            info!("Received inference response for {}", request_id);
-                                            if let Some(tx) = state_clone.pending_requests.write().await.remove(&request_id) {
-                                                let _ = tx.send(response).await;
-                                            }
+                                        Ok(Ok(())) => {
+                                            info!("Successfully completed inference request for {}", request_id);
                                         }
                                         Ok(Err(e)) => {
                                             error!("Failed to send inference request: {:#}", e);
+                                            if let Some(tx) = state_clone.pending_requests.write().await.remove(&request_id) {
+                                                let _ = tx.send(ResponseMessage::Error(e.to_string())).await;
+                                            }
                                             state_clone.pending_requests.write().await.remove(&request_id);
                                         }
                                         Err(_) => {
                                             error!("Inference request {} timed out after 35s", request_id);
-                                            state_clone.pending_requests.write().await.remove(&request_id);
+                                            if let Some(tx) = state_clone.pending_requests.write().await.remove(&request_id) {
+                                                let _ = tx.send(ResponseMessage::Error("Request timed out".to_string())).await;
+                                            }
                                         }
                                     }
                                 });
