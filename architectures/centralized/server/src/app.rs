@@ -292,7 +292,13 @@ impl App {
                     pending_clients: HashSet::new(),
                 },
                 save_state_dir,
-                events_dir,
+                events_dir: {
+                    if let Some(ref dir) = events_dir {
+                        let coordinator_dir = dir.join("coordinator");
+                        std::fs::create_dir_all(&coordinator_dir)?;
+                    }
+                    events_dir
+                },
                 original_warmup_time,
                 withdraw_on_disconnect,
                 pause,
@@ -561,10 +567,6 @@ impl App {
             return;
         };
         let coordinator_dir = events_dir.join("coordinator");
-        if let Err(e) = std::fs::create_dir_all(&coordinator_dir) {
-            warn!("Failed to create coordinator events dir: {e}");
-            return;
-        }
         let record = self.build_coordinator_record();
         match postcard::to_stdvec_cobs(&record) {
             Ok(bytes) => {
