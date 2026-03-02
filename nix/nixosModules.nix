@@ -213,7 +213,7 @@
       nixosConfigurations."psyche-http-devnet" = persistentPsycheWebsite {
         configName = "psyche-http-devnet";
         hostnames = [ "devnet-preview.psyche.network" ];
-        backendSecret = ../secrets/devnet/backend.age;
+        backendSecret = ../secrets/devnet/backend-old.age;
         miningPoolRpc = devnetFrontendRpc;
         coordinatorCluster = "devnet";
         miningPoolCluster = "devnet";
@@ -224,7 +224,7 @@
           "mainnet-preview.psyche.network"
           "psyche.network"
         ];
-        backendSecret = ../secrets/mainnet/backend.age;
+        backendSecret = ../secrets/mainnet/backend-old.age;
         miningPoolRpc = mainnetFrontendRpc;
         coordinatorCluster = "devnet";
         miningPoolCluster = "mainnet";
@@ -240,7 +240,7 @@
           modules = [
             self.nixosModules.base-system
             self.nixosModules.debug-ssh
-            (psyche-website-backend ../secrets/mainnet/backend.age)
+            (psyche-website-backend ../secrets/mainnet/backend-old.age)
             (
               {
                 pkgs,

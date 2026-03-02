@@ -10,7 +10,7 @@ use psyche_coordinator::RunState;
 use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_coordinator::TickResult;
 use psyche_coordinator::Witness;
-use psyche_coordinator::model::HubRepo;
+use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::model::Model;
 use psyche_core::FixedString;
 use psyche_core::SmallBoolean;
@@ -191,6 +191,9 @@ impl CoordinatorInstanceState {
                 if !self.coordinator.model.check() {
                     return err!(ProgramError::ModelSanityCheckFailed);
                 }
+                if !self.coordinator.check_cold_start_warmup_steps() {
+                    return err!(ProgramError::ConfigSanityCheckFailed);
+                }
 
                 if self.coordinator.run_state == RunState::Uninitialized {
                     // this is the only way to get out of RunState::Uninitialized
@@ -312,6 +315,12 @@ impl CoordinatorInstanceState {
             let _ = std::mem::replace(&mut self.coordinator.model, model);
         }
 
+        if (config.is_some() || model.is_some())
+            && !self.coordinator.check_cold_start_warmup_steps()
+        {
+            return err!(ProgramError::ConfigSanityCheckFailed);
+        }
+
         if let Some(progress) = progress {
             if !progress.check() {
                 return err!(ProgramError::ModelSanityCheckFailed);
@@ -389,7 +398,11 @@ impl CoordinatorInstanceState {
         self.tick()
     }
 
-    pub fn checkpoint(&mut self, payer: &Pubkey, repo: HubRepo) -> Result<()> {
+    pub fn checkpoint(
+        &mut self,
+        payer: &Pubkey,
+        repo: Checkpoint,
+    ) -> Result<()> {
         // O(n) on clients, reconsider
         let id = self.clients_state.find_signer(payer)?;
         let index = self

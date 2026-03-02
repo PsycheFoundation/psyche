@@ -1,9 +1,12 @@
 use crate::{
     Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
-    model::{Checkpoint, HubRepo, Model},
+    model::{Checkpoint, Model},
 };
 
-use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
+use anchor_lang::{
+    AnchorDeserialize, AnchorSerialize, InitSpace,
+    prelude::{borsh, msg},
+};
 use bytemuck::{Pod, Zeroable};
 use psyche_core::{Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean, sha256};
 use serde::{Deserialize, Serialize};
@@ -597,22 +600,43 @@ impl<T: NodeIdentity> Coordinator<T> {
         &mut self,
         from: &T,
         index: u64,
-        hub_repo: HubRepo,
+        checkpoint_repo: Checkpoint,
     ) -> std::result::Result<(), CoordinatorError> {
         let index = index as usize;
         if index >= self.epoch_state.clients.len() || self.epoch_state.clients[index].id != *from {
             return Err(CoordinatorError::InvalidCommitteeProof);
         }
-        // TODO: In the case of more than one checkpointer, this will overwrite the hub repo
-        // with the last checkpointed one. We could instead have a vector of hub repos to have
+
+        // TODO: In the case of more than one checkpointer, this will overwrite the checkpoint
+        // with the last checkpointed one. We could instead have a vector of checkpoints to have
         // more download options.
-        match &mut self.model {
-            Model::LLM(llm) => match llm.checkpoint {
-                Checkpoint::P2P(_) => llm.checkpoint = Checkpoint::P2P(hub_repo),
-                Checkpoint::Hub(_) => llm.checkpoint = Checkpoint::Hub(hub_repo),
-                _ => {}
-            },
+        let Model::LLM(llm) = &mut self.model;
+        match (&llm.checkpoint, checkpoint_repo) {
+            // If current is P2P, wrap the new checkpoint in P2P
+            (Checkpoint::P2P(_), Checkpoint::Hub(hub_repo)) => {
+                llm.checkpoint = Checkpoint::P2P(hub_repo);
+            }
+            (Checkpoint::P2PGcs(_), Checkpoint::Gcs(gcs_repo)) => {
+                llm.checkpoint = Checkpoint::P2PGcs(gcs_repo);
+            }
+            // If current is Hub, only accept Hub updates
+            (Checkpoint::Hub(_), Checkpoint::Hub(hub_repo)) => {
+                llm.checkpoint = Checkpoint::Hub(hub_repo);
+            }
+            // If current is Gcs, only accept Gcs updates
+            (Checkpoint::Gcs(_), Checkpoint::Gcs(gcs_repo)) => {
+                llm.checkpoint = Checkpoint::Gcs(gcs_repo);
+            }
+            (Checkpoint::P2PGcs(_), Checkpoint::Hub(hub_repo)) => {
+                llm.checkpoint = Checkpoint::P2P(hub_repo);
+            }
+            (Checkpoint::P2P(_), Checkpoint::Gcs(gcs_repo)) => {
+                llm.checkpoint = Checkpoint::P2PGcs(gcs_repo);
+            }
+            // Ignore other combinations
+            _ => {}
         }
+
         Ok(())
     }
 
@@ -870,6 +894,28 @@ impl<T: NodeIdentity> Coordinator<T> {
         ))
     }
 
+    /// Check that cold_start_warmup_steps can be completed within a single epoch.
+    pub fn check_cold_start_warmup_steps(&self) -> bool {
+        let Model::LLM(llm) = &self.model;
+        if llm.cold_start_warmup_steps == 0 {
+            return true;
+        }
+        let training_time = self.config.epoch_time - self.config.warmup_time;
+        let estimated_training_rounds = training_time / self.config.max_round_train_time;
+        if llm.cold_start_warmup_steps as u64 > estimated_training_rounds {
+            msg!(
+                "cold_start_warmup_steps ({}) exceeds estimated training rounds per epoch ((epoch_time={} - warmup_time={}) / max_round_train_time={} = {})",
+                llm.cold_start_warmup_steps,
+                self.config.epoch_time,
+                self.config.warmup_time,
+                self.config.max_round_train_time,
+                estimated_training_rounds
+            );
+            return false;
+        }
+        true
+    }
+
     fn get_global_batch_size_for_tokens(&self, tokens_processed: u64) -> u16 {
         self.config.get_batch_size(tokens_processed)
     }
@@ -912,8 +958,10 @@ impl<T: NodeIdentity> Coordinator<T> {
                 .any(|client| pending_clients_unordered.contains(&client.id));
             if all_prev_clients_disconnected {
                 let Model::LLM(llm) = &mut self.model;
-                if let Checkpoint::P2P(hub_repo) = llm.checkpoint {
-                    llm.checkpoint = Checkpoint::Hub(hub_repo);
+                match llm.checkpoint {
+                    Checkpoint::P2P(hub_repo) => llm.checkpoint = Checkpoint::Hub(hub_repo),
+                    Checkpoint::P2PGcs(gcs_repo) => llm.checkpoint = Checkpoint::Gcs(gcs_repo),
+                    _ => {}
                 }
             }
 
@@ -1045,6 +1093,7 @@ impl<T: NodeIdentity> Coordinator<T> {
                 Checkpoint::Hub(hub_repo) | Checkpoint::Dummy(hub_repo) => {
                     llm.checkpoint = Checkpoint::P2P(hub_repo)
                 }
+                Checkpoint::Gcs(gcs_repo) => llm.checkpoint = Checkpoint::P2PGcs(gcs_repo),
                 _ => {}
             }
 
@@ -1165,7 +1214,10 @@ impl<T> CoordinatorEpochState<T> {
 
 impl CoordinatorConfig {
     pub fn check(&self) -> bool {
-        self.max_round_train_time != 0
+        self.epoch_time > 0
+            && self.warmup_time < self.epoch_time
+            && self.max_round_train_time != 0
+            && self.max_round_train_time < self.epoch_time
             && self.round_witness_time != 0
             && self.min_clients != 0
             && self.init_min_clients >= self.min_clients
