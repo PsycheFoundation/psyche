@@ -15,7 +15,7 @@ pub enum InferenceGossipMessage {
         model_name: Option<String>, // None if no model loaded yet
         checkpoint_id: Option<String>,
         capabilities: Vec<String>,
-        timestamp_ms: u64,
+        timestamp_ms: u64, // this field is used to prevent deduplication of gossip heartbeat messages
     },
     NodeUnavailable,
     LoadModel {
