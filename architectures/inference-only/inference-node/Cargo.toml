@@ -44,4 +44,6 @@ postcard.workspace = true
 axum = { version = "0.7", features = ["macros"] }
 tower = { version = "0.4" }
 tower-http = { version = "0.5", features = ["cors"] }
+async-stream = "0.3"
+futures = "0.3"
 tikv-jemallocator.workspace = true

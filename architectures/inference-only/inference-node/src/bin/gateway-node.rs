@@ -13,10 +13,14 @@ use axum::{
     Json, Router,
     extract::State,
     http::StatusCode,
-    response::{IntoResponse, Response},
+    response::{
+        IntoResponse, Response,
+        sse::{Event, KeepAlive, Sse},
+    },
     routing::post,
 };
 use clap::Parser;
+use futures::stream::{Stream, StreamExt};
 use psyche_inference::{
     INFERENCE_ALPN, InferenceGossipMessage, InferenceMessage, InferenceRequest, InferenceResponse,
 };
@@ -188,11 +192,48 @@ struct ChatCompletionResponse {
     // we're omitting usage stats for now
 }
 
+// Streaming-specific types
+#[derive(serde::Serialize)]
+struct ChatCompletionChunk {
+    id: String,
+    object: String,
+    created: u64,
+    model: String,
+    choices: Vec<ChatCompletionChunkChoice>,
+}
+
+#[derive(serde::Serialize)]
+struct ChatCompletionChunkChoice {
+    index: usize,
+    delta: ChatCompletionDelta,
+    finish_reason: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct ChatCompletionDelta {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    role: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<String>,
+}
+
 #[axum::debug_handler]
 async fn handle_inference(
     State(state): State<Arc<GatewayState>>,
     Json(req): Json<ChatCompletionRequest>,
-) -> Result<Json<ChatCompletionResponse>, AppError> {
+) -> Result<Response, AppError> {
+    // Branch based on streaming mode
+    if req.stream {
+        handle_streaming_inference(state, req).await
+    } else {
+        handle_non_streaming_inference(state, req).await
+    }
+}
+
+async fn handle_non_streaming_inference(
+    state: Arc<GatewayState>,
+    req: ChatCompletionRequest,
+) -> Result<Response, AppError> {
     let nodes = state.available_nodes.read().await;
     let assignments = state.model_assignments.read().await;
 
@@ -335,7 +376,191 @@ async fn handle_inference(
             },
             finish_reason: response.finish_reason,
         }],
-    }))
+    })
+    .into_response())
+}
+
+async fn handle_streaming_inference(
+    state: Arc<GatewayState>,
+    req: ChatCompletionRequest,
+) -> Result<Response, AppError> {
+    let nodes = state.available_nodes.read().await;
+    let assignments = state.model_assignments.read().await;
+
+    let requested_model = req.model.as_deref();
+
+    let suitable_nodes: Vec<(EndpointId, String)> = if let Some(model) = requested_model {
+        let assigned_and_loaded: Vec<_> = nodes
+            .values()
+            .filter_map(|n| {
+                if assignments
+                    .get(&n.peer_id)
+                    .map(|assigned| assigned == model)
+                    .unwrap_or(false)
+                    && n.model_name.as_deref() == Some(model)
+                {
+                    Some((n.peer_id, n.model_name.clone()?))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if !assigned_and_loaded.is_empty() {
+            assigned_and_loaded
+        } else {
+            nodes
+                .values()
+                .filter_map(|n| {
+                    if n.model_name.as_deref() == Some(model) {
+                        Some((n.peer_id, n.model_name.clone()?))
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        }
+    } else {
+        nodes
+            .values()
+            .filter_map(|n| Some((n.peer_id, n.model_name.clone()?)))
+            .collect()
+    };
+
+    if suitable_nodes.is_empty() {
+        return Err(AppError::NoNodesAvailable);
+    }
+
+    let (target_peer_id, node_model_name) = &suitable_nodes[0];
+    let target_peer_id = *target_peer_id;
+    let model_name = req.model.clone().unwrap_or_else(|| node_model_name.clone());
+
+    info!(
+        "Routing streaming request to node: {} (model: {})",
+        target_peer_id.fmt_short(),
+        node_model_name,
+    );
+    drop(nodes);
+    drop(assignments);
+
+    let messages: Vec<psyche_inference::ChatMessage> = req
+        .messages
+        .iter()
+        .map(|m| psyche_inference::ChatMessage {
+            role: m.role.clone(),
+            content: m.content.clone(),
+        })
+        .collect();
+
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let inference_req = InferenceRequest {
+        request_id: request_id.clone(),
+        messages,
+        max_tokens: req.max_tokens.unwrap_or(100),
+        temperature: req.temperature.unwrap_or(1.0),
+        top_p: req.top_p.unwrap_or(1.0),
+        stream: true,
+    };
+
+    let (tx, rx) = mpsc::channel(100); // Larger buffer for streaming
+
+    state
+        .pending_requests
+        .write()
+        .await
+        .insert(request_id.clone(), tx);
+
+    let msg = InferenceMessage::Request(inference_req);
+    if let Err(e) = state.network_tx.send((target_peer_id, msg)).await {
+        error!("Failed to send streaming inference request: {:#}", e);
+        state.pending_requests.write().await.remove(&request_id);
+        return Err(AppError::InternalError);
+    }
+
+    info!("Sent streaming inference request {} to network", request_id);
+
+    // Create SSE stream
+    let stream = create_sse_stream(rx, request_id.clone(), model_name, state.clone());
+
+    Ok(Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response())
+}
+
+fn create_sse_stream(
+    mut rx: mpsc::Receiver<ResponseMessage>,
+    request_id: String,
+    model_name: String,
+    state: Arc<GatewayState>,
+) -> impl Stream<Item = Result<Event, std::convert::Infallible>> {
+    async_stream::stream! {
+        let created = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        loop {
+            match rx.recv().await {
+                Some(ResponseMessage::Chunk(text)) => {
+                    // Send chunk as SSE event in OpenAI format
+                    let chunk = ChatCompletionChunk {
+                        id: format!("chatcmpl-{}", request_id),
+                        object: "chat.completion.chunk".to_string(),
+                        created,
+                        model: model_name.clone(),
+                        choices: vec![ChatCompletionChunkChoice {
+                            index: 0,
+                            delta: ChatCompletionDelta {
+                                role: None,
+                                content: Some(text),
+                            },
+                            finish_reason: None,
+                        }],
+                    };
+
+                    let json = serde_json::to_string(&chunk).unwrap();
+                    yield Ok(Event::default().data(json));
+                }
+                Some(ResponseMessage::Final(_response)) => {
+                    // Send final chunk with finish_reason
+                    let chunk = ChatCompletionChunk {
+                        id: format!("chatcmpl-{}", request_id),
+                        object: "chat.completion.chunk".to_string(),
+                        created,
+                        model: model_name.clone(),
+                        choices: vec![ChatCompletionChunkChoice {
+                            index: 0,
+                            delta: ChatCompletionDelta {
+                                role: None,
+                                content: None,
+                            },
+                            finish_reason: Some("stop".to_string()),
+                        }],
+                    };
+
+                    let json = serde_json::to_string(&chunk).unwrap();
+                    yield Ok(Event::default().data(json));
+
+                    // Send [DONE] message
+                    yield Ok(Event::default().data("[DONE]"));
+
+                    // Cleanup
+                    state.pending_requests.write().await.remove(&request_id);
+                    break;
+                }
+                Some(ResponseMessage::Error(err)) => {
+                    error!("Streaming error: {}", err);
+                    state.pending_requests.write().await.remove(&request_id);
+                    break;
+                }
+                None => {
+                    warn!("Channel closed unexpectedly");
+                    state.pending_requests.write().await.remove(&request_id);
+                    break;
+                }
+            }
+        }
+    }
 }
 
 #[axum::debug_handler]
