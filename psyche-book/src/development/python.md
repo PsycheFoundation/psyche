@@ -1,13 +1,13 @@
 # Python Integration
 
 > [!WARNING]
-> Python support is still under development and not production-ready.
+> Python support is still under development.
 > The APIs used to write it are not documented
 > because they are still subject to large amounts of change.
 
 ## Overview
 
-Psyche provides a Python integration that allows you to write modeling code in Python using libraries like [Hugging Face Transformers](https://github.com/huggingface/transformers) while leveraging Psyche's Rust core for training orchestration. This integration is designed for research where you want the flexibility of Python modeling with Psyche's training infrastructure, and production-scale training where you want to take advantage of highly optimized training frameworks already built in Python.
+Psyche provides a Python integration that allows you to write modeling code in Python using libraries like [Hugging Face Transformers](https://github.com/huggingface/transformers) or [TorchTitan](https://github.com/pytorch/torchtitan) while leveraging Psyche's Rust core for training orchestration. This integration is designed for research where you want the flexibility of Python modeling with Psyche's training infrastructure, and production-scale training where you want to take advantage of highly optimized training frameworks already built in Python.
 
 The Python integration works through a "sidecar" process that Psyche spawns and communicates with during training.
 
@@ -20,6 +20,7 @@ This shell provides:
 - The `psyche` Python module (built from Rust using PyO3)
 - PyTorch
 - Transformers library
+- TorchTitan library
 - Other required Python dependencies via `pyproject.toml` / `uv.lock`
 
 ### Development Workflow
@@ -33,12 +34,11 @@ We recommend running commands directly through the dev shell without entering it
 For example, to run the `train` program using python:
 
 ```bash
-nix develop .#python --command just train-model-python \
+nix develop .#python --command cargo run --bin train \
   --model emozilla/llama2-20m-init \
   --data-path ./data/fineweb-10bt/ \
   --total-batch 2 \
-  --micro-batch 1 \
-  --python
+  --micro-batch 1
 ```
 
 Alternatively, you _could_ enter the shell and run the commands with:
