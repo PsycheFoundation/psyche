@@ -415,21 +415,21 @@ impl PythonDistributedCausalLM {
         self.iteration.clone()
     }
 
-    fn kill_children(&self) {
-        let Ok(mut children) = self.children.lock() else {
-            return;
-        };
-        for child in children.iter_mut() {
-            let pid = child.id();
-            if matches!(child.try_wait(), Ok(Some(_))) {
-                continue;
-            }
-            if let Err(e) = child.kill() {
-                debug!("Failed to kill sidecar process {pid}: {e}");
-            }
-            let _ = child.wait();
-        }
-    }
+    // fn kill_children(&self) {
+    //     let Ok(mut children) = self.children.lock() else {
+    //         return;
+    //     };
+    //     for child in children.iter_mut() {
+    //         let pid = child.id();
+    //         if matches!(child.try_wait(), Ok(Some(_))) {
+    //             continue;
+    //         }
+    //         if let Err(e) = child.kill() {
+    //             debug!("Failed to kill sidecar process {pid}: {e}");
+    //         }
+    //         let _ = child.wait();
+    //     }
+    // }
 }
 
 impl CausalLM for PythonDistributedCausalLM {
@@ -585,7 +585,7 @@ impl CausalLM for PythonDistributedCausalLM {
 impl Drop for PythonDistributedCausalLM {
     fn drop(&mut self) {
         self.shutting_down.store(true, Ordering::Release);
-        self.kill_children();
+        // self.kill_children();
     }
 }
 
