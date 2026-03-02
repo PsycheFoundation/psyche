@@ -784,7 +784,10 @@ async fn main() -> Result<()> {
     let slow_store = if num_slow > 0 {
         let store = FakeStore::builder()
             .with_unique_blobs(args.num_parameters, param_size_bytes as u64)
-            .with_throttle(args.slow_sharer_rate_kb * 1024) // KB/s -> bytes/s
+            .with_throttle(
+                std::num::NonZeroU64::new(args.slow_sharer_rate_kb * 1024)
+                    .expect("slow_sharer_rate_kb must be > 0"),
+            ) // KB/s -> bytes/s
             .build();
         info!(
             "Created slow FakeStore throttled to {} KB/s",
