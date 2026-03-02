@@ -6,6 +6,7 @@ use anyhow::{Context, Result, anyhow};
 use pyo3::prelude::*;
 use tracing::{debug, info, warn};
 
+#[derive(Debug)]
 pub struct InferenceNode {
     engine_id: String,
     model_name: String,
@@ -74,16 +75,16 @@ impl InferenceNode {
         }
 
         debug!(
-            "Running inference for request: {} with prompt: {:?}",
+            "Running inference for request: {} with {} messages",
             request.request_id,
-            request.prompt.chars().take(50).collect::<String>()
+            request.messages.len()
         );
 
         Python::with_gil(|py| {
             let result = vllm::run_inference(
                 py,
                 &self.engine_id,
-                &request.prompt,
+                request.messages.clone(),
                 Some(request.temperature),
                 Some(request.top_p),
                 Some(request.max_tokens as i32),
@@ -159,6 +160,7 @@ impl Drop for InferenceNode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ChatMessage;
 
     #[test]
     fn test_node_creation() {
@@ -184,7 +186,10 @@ mod tests {
 
         let request = InferenceRequest {
             request_id: "test-1".to_string(),
-            prompt: "Hello".to_string(),
+            messages: vec![ChatMessage {
+                role: "user".to_string(),
+                content: "Hello".to_string(),
+            }],
             max_tokens: 10,
             temperature: 0.7,
             top_p: 0.9,

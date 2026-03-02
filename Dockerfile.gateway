@@ -1,0 +1,13 @@
+# Nix builder
+FROM nixos/nix:latest AS builder
+
+# Copy our source and setup our working dir.
+COPY . /tmp/build
+WORKDIR /tmp/build
+
+RUN echo extra-substituters = https://cache.garnix.io >> /etc/nix/nix.conf
+RUN echo extra-trusted-public-keys = cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= >> /etc/nix/nix.conf
+
+RUN nix build --extra-experimental-features nix-command --extra-experimental-features flakes .#bin-psyche-inference-node-gateway-node
+
+ENTRYPOINT nix run --extra-experimental-features nix-command --extra-experimental-features flakes .#bin-psyche-inference-node-gateway-node

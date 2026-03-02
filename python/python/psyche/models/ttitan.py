@@ -246,21 +246,30 @@ class TorchtitanAuto(CausalLM):
 
     @staticmethod
     def _load_into_model(model, state_dict):
-        model_sd = (
-            model.state_dict()
-        )  # mapping from clean keys to the actual model keys
+        # map from clean keys to the actual model keys
+        # and load into model
+
+        model_sd = model.state_dict()
         clean_to_actual = {
             k.replace(_CHECKPOINT_PREFIX, "").replace(COMPILE_PREFIX, ""): k
             for k in model_sd.keys()
         }
 
-        remapped = {}
-        for k, v in state_dict.items():
+        sorted_keys = sorted(state_dict.keys())
+        for idx, k in enumerate(sorted_keys):
+            source = state_dict[k]
             actual_key = clean_to_actual.get(k)
             if actual_key is not None:
-                remapped[actual_key] = v
-        # strict=False because TT has ephemeral tensors like expert_bias
-        model.load_state_dict(remapped, strict=False)
+                dest = model_sd[actual_key]
+
+                if isinstance(dest, DTensor):
+                    source = distribute_tensor(
+                        source, device_mesh=dest.device_mesh, placements=dest.placements
+                    )
+
+                dest.copy_(source)
+            else:
+                raise RuntimeError(f"Missing parameter {actual_key}")
 
     @staticmethod
     def from_pretrained(
@@ -427,7 +436,7 @@ class TorchtitanAuto(CausalLM):
                     ),
                 )
                 if num_logits_to_keep:
-                    pred = pred[:, -num_logits_to_keep, :]
+                    pred = pred[:, -num_logits_to_keep:, :]
                 loss = None
                 if labels is not None:
                     if labels.shape != pred.shape[:2]:

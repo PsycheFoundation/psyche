@@ -22,7 +22,7 @@ use tokio::{
     sync::mpsc::{self},
     task::JoinHandle,
 };
-use tracing::{Instrument, debug, error, info, trace, trace_span, warn};
+use tracing::{Instrument, debug, info, trace, trace_span, warn};
 
 use super::{
     FinishedBroadcast, RunInitConfigAndIO,

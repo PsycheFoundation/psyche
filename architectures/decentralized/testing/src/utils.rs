@@ -1,8 +1,11 @@
-use std::{fs, sync::Arc, time::Duration};
+use std::{fs, path::Path, sync::Arc, time::Duration};
 
 use anchor_client::{
-    Cluster, Program,
-    solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair},
+    ClientError, Cluster, Program,
+    solana_sdk::signature::Signature,
+    solana_sdk::{
+        commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair, signer::Signer,
+    },
 };
 use psyche_coordinator::{
     NUM_STORED_ROUNDS, Round, RunState,
@@ -13,14 +16,26 @@ use psyche_solana_coordinator::{ClientId, SOLANA_MAX_NUM_PENDING_CLIENTS};
 use std::env;
 use std::path::PathBuf;
 
+/// Write a Solana keypair to a JSON file in the format expected by solana tools
+pub fn write_keypair_to_file(keypair: &Keypair, path: &Path) -> std::io::Result<()> {
+    let bytes = keypair.to_bytes();
+    let json = serde_json::to_string(&bytes.to_vec())?;
+    fs::write(path, json)
+}
+
 pub struct SolanaTestClient {
     program: Program<Arc<Keypair>>,
     account: Pubkey,
+    run_id: String,
+    owner_keypair: Arc<Keypair>,
 }
 
 impl SolanaTestClient {
-    pub async fn new(run_id: String) -> Self {
-        let key_pair = Arc::new(Keypair::new());
+    /// Create a new SolanaTestClient.
+    /// If owner_keypair is provided, it will be used for signing transactions (like set_paused).
+    /// If not provided, a random keypair will be generated (suitable for read-only operations).
+    pub async fn new(run_id: String, owner_keypair: Option<Arc<Keypair>>) -> Self {
+        let key_pair = owner_keypair.unwrap_or_else(|| Arc::new(Keypair::new()));
         tokio::time::sleep(Duration::from_secs(10)).await;
         let cluster = Cluster::Localnet;
         let client = anchor_client::Client::new_with_options(
@@ -33,13 +48,26 @@ impl SolanaTestClient {
             psyche_solana_coordinator::CoordinatorInstance::SEEDS_PREFIX,
             psyche_solana_coordinator::bytes_from_string(&run_id),
         ];
-        let (account, _) = Pubkey::find_program_address(seeds, &program.id());
-        let instance: psyche_solana_coordinator::CoordinatorInstance =
-            program.account(account).await.unwrap();
+        let (instance, _) = Pubkey::find_program_address(seeds, &program.id());
+        let coordinator_instance: psyche_solana_coordinator::CoordinatorInstance =
+            program.account(instance).await.unwrap();
         Self {
             program,
-            account: instance.coordinator_account,
+            account: coordinator_instance.coordinator_account,
+            run_id,
+            owner_keypair: key_pair,
         }
+    }
+
+    /// Pause or resume the run. Requires the owner keypair to be the run's main authority.
+    pub async fn set_paused(&self, paused: bool) -> Result<Signature, ClientError> {
+        let instruction = psyche_solana_rpc::instructions::coordinator_set_paused(
+            &self.run_id,
+            &self.account,
+            &self.owner_keypair.pubkey(),
+            paused,
+        );
+        self.program.request().instruction(instruction).send().await
     }
 
     async fn get_coordinator_account(&self) -> psyche_solana_coordinator::CoordinatorAccount {
@@ -128,6 +156,7 @@ impl SolanaTestClient {
 pub struct ConfigBuilder {
     base_config: toml::Value,
     num_clients: usize,
+    min_clients: Option<usize>,
     batch_size: u32,
     architecture: String,
 }
@@ -155,6 +184,7 @@ impl ConfigBuilder {
         Self {
             base_config,
             num_clients: 1,
+            min_clients: None,
             batch_size: 4,
             architecture: String::from("HfLlama"),
         }
@@ -162,6 +192,12 @@ impl ConfigBuilder {
 
     pub fn with_num_clients(mut self, num: usize) -> Self {
         self.num_clients = num;
+        self
+    }
+
+    /// Set min_clients
+    pub fn with_min_clients(mut self, min: usize) -> Self {
+        self.min_clients = Some(min);
         self
     }
 
@@ -176,9 +212,12 @@ impl ConfigBuilder {
     }
 
     pub fn build(mut self) -> PathBuf {
+        // Use min_clients if set, otherwise default to num_clients
+        let min_clients = self.min_clients.unwrap_or(self.num_clients);
+
         // Apply runtime overrides
-        self.set_value("config.min_clients", self.num_clients as u32);
-        self.set_value("config.init_min_clients", self.num_clients as u32);
+        self.set_value("config.min_clients", min_clients as u32);
+        self.set_value("config.init_min_clients", min_clients as u32);
 
         // This means that every client is a witness
         self.set_value("config.witness_nodes", 0_u32);

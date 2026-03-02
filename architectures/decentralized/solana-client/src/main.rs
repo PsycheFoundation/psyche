@@ -29,6 +29,9 @@ use tracing::info;
 mod app;
 mod network_identity;
 
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 #[derive(Parser, Debug)]
 struct CliArgs {
     #[command(subcommand)]
@@ -170,13 +173,13 @@ async fn async_main() -> Result<()> {
             authorizer,
         } => {
             psyche_client::prepare_environment();
-
             info!(
                 "============ Client Startup at {} ============",
                 OffsetDateTime::now_utc()
             );
 
             let wallet_keypair: Arc<Keypair> = Arc::new(wallet.try_into()?);
+            info!("Solana wallet pubkey: {}", wallet_keypair.pubkey());
 
             let logger = psyche_tui::logging()
                 .with_output(args.logs)
@@ -216,20 +219,16 @@ async fn async_main() -> Result<()> {
                 (args.logs == LogOutput::TUI).then(|| Tabs::new(Default::default(), &TAB_NAMES)),
             )?;
 
-            let mut backup_clusters = Vec::new();
-            for (rpc, ws) in [(rpc_2, ws_rpc_2), (rpc_3, ws_rpc_3)] {
-                let rpc = if rpc.is_empty() {
-                    cluster.rpc.clone()
-                } else {
-                    rpc
-                };
-                let ws = if ws.is_empty() {
-                    cluster.ws_rpc.clone()
-                } else {
-                    ws
-                };
-                backup_clusters.push(Cluster::Custom(rpc, ws))
-            }
+            let backup_clusters: Vec<_> = [(rpc_2, ws_rpc_2), (rpc_3, ws_rpc_3)]
+                .into_iter()
+                .filter_map(|(rpc, ws)| {
+                    if rpc.is_empty() || ws.is_empty() {
+                        None
+                    } else {
+                        Some(Cluster::Custom(rpc, ws))
+                    }
+                })
+                .collect();
 
             let app = build_app(AppParams {
                 cancel,
@@ -283,34 +282,50 @@ async fn async_main() -> Result<()> {
                     bail!("Model is not an LLM, unsure how to predownload.");
                 };
 
-                let checkpoint = match model_config.checkpoint {
+                match model_config.checkpoint {
                     Checkpoint::Ephemeral => {
                         bail!("Can't predownload model with ephemeral checkpoint.")
                     }
                     Checkpoint::Dummy(hub_repo)
                     | Checkpoint::Hub(hub_repo)
-                    | Checkpoint::P2P(hub_repo) => hub_repo,
+                    | Checkpoint::P2P(hub_repo) => {
+                        let repo_id = hub_repo.repo_id.to_string();
+                        let revision = hub_repo.revision.map(|s| s.to_string());
+                        println!(
+                            "Predownloading model {repo_id} revision {}",
+                            revision.as_ref().unwrap_or(&"main".to_string())
+                        );
+
+                        let hub_read_token = std::env::var("HF_TOKEN").ok();
+                        let cache_folder = None; // Uses HF_HOME env var
+
+                        psyche_data_provider::download_model_repo_async(
+                            &repo_id,
+                            revision,
+                            cache_folder,
+                            hub_read_token,
+                            Some(hub_max_concurrent_downloads),
+                            true,
+                        )
+                        .await?;
+                    }
+                    Checkpoint::Gcs(gcs_repo) | Checkpoint::P2PGcs(gcs_repo) => {
+                        let bucket = gcs_repo.bucket.to_string();
+                        let prefix: Option<String> = gcs_repo.prefix.map(|p| p.to_string());
+                        println!(
+                            "Predownloading model from gs://{}/{}",
+                            bucket,
+                            prefix.as_deref().unwrap_or("")
+                        );
+
+                        psyche_data_provider::download_model_from_gcs_async(
+                            &bucket,
+                            prefix.as_deref(),
+                        )
+                        .await?;
+                    }
                 };
 
-                let repo_id = checkpoint.repo_id.to_string();
-                let revision = checkpoint.revision.map(|s| s.to_string());
-                println!(
-                    "Predownloading model {repo_id} revision {}",
-                    revision.as_ref().unwrap_or(&"main".to_string())
-                );
-
-                let hub_read_token = std::env::var("HF_TOKEN").ok();
-                let cache_folder = None; // Uses HF_HOME env var
-
-                psyche_data_provider::download_model_repo_async(
-                    &repo_id,
-                    revision,
-                    cache_folder,
-                    hub_read_token,
-                    Some(hub_max_concurrent_downloads),
-                    true,
-                )
-                .await?;
                 println!("Model predownloaded successfully.");
             }
 
@@ -330,10 +345,17 @@ async fn async_main() -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    // Multi-threaded runtime for ML workloads
-    Builder::new_multi_thread()
-        .enable_all()
+    #[cfg(feature = "python")]
+    psyche_python_extension_impl::init_embedded_python()?;
+
+    let runtime = Builder::new_multi_thread()
+        .enable_io()
+        .enable_time()
+        .max_blocking_threads(8192)
+        .thread_stack_size(10 * 1024 * 1024)
         .build()
-        .unwrap()
-        .block_on(async_main())
+        .unwrap();
+    let ret = runtime.block_on(async_main());
+    runtime.shutdown_timeout(Duration::from_millis(1000));
+    ret
 }

@@ -15,9 +15,19 @@ in
     overlays = lib.optionals cudaSupported [ inputs.nix-gl-host.overlays.default ] ++ [
       inputs.rust-overlay.overlays.default
       (final: prev: {
+        # temporary fix until https://github.com/NixOS/nixpkgs/pull/471394 is merged
+        # that lets us use `torch` instead of `torch-bin`
+        cudaPackages = prev.cudaPackages // {
+          cudnn = prev.cudaPackages.cudnn.overrideAttrs (old: {
+            appendRunpaths = (old.appendRunpaths or [ ]) ++ [
+              "${prev.lib.getLib prev.cudaPackages.cuda_nvrtc}/lib"
+            ];
+          });
+        };
+
+        # provide packages for uv2pip to include
         python312Packages = prev.python312Packages.override {
           overrides = pyfinal: pyprev: {
-            torch = pyfinal.torch-bin;
             flash-attn = pyfinal.callPackage ../python/flash-attn.nix { };
             liger-kernel = pyfinal.callPackage ../python/liger-kernel.nix { };
             torchtitan = pyfinal.callPackage ../python/torchtitan.nix { };

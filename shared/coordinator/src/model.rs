@@ -64,6 +64,7 @@ impl std::fmt::Display for LLMArchitecture {
     Serialize,
     Deserialize,
     InitSpace,
+    PartialEq,
     TS,
 )]
 #[repr(C)]
@@ -239,6 +240,32 @@ impl HubRepo {
 }
 
 #[derive(
+    Clone,
+    Debug,
+    Copy,
+    AnchorDeserialize,
+    AnchorSerialize,
+    InitSpace,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    TS,
+)]
+pub struct GcsRepo {
+    pub bucket: FixedString<{ SOLANA_MAX_STRING_LEN }>,
+    pub prefix: Option<FixedString<{ SOLANA_MAX_STRING_LEN }>>,
+}
+
+impl GcsRepo {
+    pub fn dummy() -> Self {
+        Self {
+            bucket: FixedString::new(),
+            prefix: None,
+        }
+    }
+}
+
+#[derive(
     AnchorSerialize,
     AnchorDeserialize,
     InitSpace,
@@ -256,6 +283,8 @@ pub enum Checkpoint {
     Dummy(HubRepo),
     Hub(HubRepo),
     P2P(HubRepo),
+    Gcs(GcsRepo),
+    P2PGcs(GcsRepo),
 }
 
 impl std::fmt::Display for Checkpoint {
@@ -267,6 +296,10 @@ impl std::fmt::Display for Checkpoint {
             Checkpoint::P2P(hub_repo) => {
                 write!(f, "P2P - Hub repo: {}", &hub_repo.repo_id)
             }
+            Checkpoint::Gcs(gcs_repo) | Checkpoint::P2PGcs(gcs_repo) => match &gcs_repo.prefix {
+                Some(prefix) => write!(f, "gs://{}/{}", &gcs_repo.bucket, prefix),
+                None => write!(f, "gs://{}", &gcs_repo.bucket),
+            },
         }
     }
 }
@@ -307,6 +340,9 @@ impl Model {
                     Checkpoint::Ephemeral => true,
                     Checkpoint::Hub(hub_repo) => hub_repo.repo_id.is_empty(),
                     Checkpoint::P2P(hub_repo) => hub_repo.repo_id.is_empty(),
+                    Checkpoint::Gcs(gcs_repo) | Checkpoint::P2PGcs(gcs_repo) => {
+                        gcs_repo.bucket.is_empty()
+                    }
                 };
 
                 if bad_checkpoint {

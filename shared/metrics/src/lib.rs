@@ -1,10 +1,9 @@
 mod iroh;
 
 use std::{
-    collections::HashMap,
     fmt::Display,
     sync::{Arc, Mutex, OnceLock},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use nvml_wrapper::{Nvml, enum_wrappers::device::TemperatureSensor};
@@ -62,6 +61,7 @@ pub struct ClientMetrics {
     // internal state tracking
     pub(crate) system_monitor: Arc<tokio::task::JoinHandle<()>>,
     pub(crate) tcp_server: Option<Arc<tokio::task::JoinHandle<()>>>,
+    pub(crate) print_metrics_task: Option<Arc<tokio::task::JoinHandle<()>>>,
 
     // shared state for TCP server
     pub(crate) tcp_metrics: Arc<Mutex<TcpMetrics>>,
@@ -119,22 +119,33 @@ impl Drop for ClientMetrics {
         if let Some(server) = &self.tcp_server {
             server.abort();
         }
+        if let Some(interval) = &self.print_metrics_task {
+            interval.abort();
+        }
     }
 }
 
-#[derive(Debug, Serialize, Clone, Copy)]
-pub enum ConnectionType {
-    None,
-    Direct,
-    Mixed,
-    Relay,
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub struct SelectedPath {
+    pub addr: String,
+    pub rtt: Duration,
 }
 
+impl Display for SelectedPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} (rtt: {:?})", self.addr, self.rtt)
+    }
+}
 #[derive(Debug, Serialize, Clone)]
 pub struct PeerConnection {
     pub endpoint_id: String,
-    pub connection_type: ConnectionType,
-    pub latency: f32,
+    pub selected_path: Option<SelectedPath>,
+}
+
+impl PeerConnection {
+    pub fn latency(&self) -> Option<f32> {
+        self.selected_path.as_ref().map(|p| p.rtt.as_secs_f32())
+    }
 }
 
 #[derive(Debug, Serialize, Clone, Copy, Default)]
@@ -146,11 +157,14 @@ pub enum ClientRoleInRound {
 }
 
 impl ClientMetrics {
-    pub fn new(metrics_port: Option<u16>) -> Self {
+    pub fn new(metrics_port: Option<u16>, print_metrics_interval: Option<Duration>) -> Self {
         let meter = global::meter("psyche_client");
 
         let tcp_metrics = Arc::new(Mutex::new(TcpMetrics::default()));
         let tcp_server = metrics_port.map(|port| Self::start_tcp_server(port, tcp_metrics.clone()));
+
+        let print_metrics_task = print_metrics_interval
+            .map(|interval| Self::start_print_metrics_task(interval, tcp_metrics.clone()));
 
         Self {
             // broadcasts state
@@ -312,6 +326,7 @@ impl ClientMetrics {
             system_monitor: Self::start_system_monitoring(&meter),
             tcp_server,
             tcp_metrics,
+            print_metrics_task,
 
             num_params: OnceLock::new(),
             p2p_downloaded_params_percent: OnceLock::new(),
@@ -474,37 +489,29 @@ impl ClientMetrics {
     }
 
     pub fn update_peer_connections(&self, connections: &[PeerConnection]) {
-        let mut connection_counts = HashMap::new();
+        let mut selected_count = 0u64;
 
-        for PeerConnection {
-            connection_type,
-            latency,
-            ..
-        } in connections
-        {
-            if matches!(connection_type, ConnectionType::None) {
+        for peer_conn in connections {
+            if peer_conn.selected_path.is_none() {
                 continue;
             }
-            *connection_counts
-                .entry(match connection_type {
-                    ConnectionType::None => unreachable!(),
-                    ConnectionType::Direct => "direct",
-                    ConnectionType::Mixed => "mixed",
-                    ConnectionType::Relay => "relay",
-                })
-                .or_insert(0u64) += 1;
 
-            self.connection_latency.record((*latency).into(), &[]);
+            selected_count += 1;
+
+            // record latency if available
+            if let Some(latency) = peer_conn.latency() {
+                self.connection_latency.record(latency.into(), &[]);
+            }
         }
 
         // Update shared state
         self.tcp_metrics.lock().unwrap().connected_peers = connections.to_vec();
 
-        // record connection counts by type
-        for (conn_type, count) in connection_counts {
-            self.peer_connections
-                .record(count, &[KeyValue::new("connection_type", conn_type)]);
-        }
+        // record connection count
+        self.peer_connections.record(
+            selected_count,
+            &[KeyValue::new("connection_type", "selected")],
+        );
     }
 
     pub fn update_p2p_gossip_neighbors(&self, neighbors: &[impl Display]) {
@@ -730,10 +737,51 @@ impl ClientMetrics {
             }
         }))
     }
+
+    fn start_print_metrics_task(
+        interval: Duration,
+        metrics: Arc<Mutex<TcpMetrics>>,
+    ) -> Arc<tokio::task::JoinHandle<()>> {
+        let start = Instant::now();
+        let mut interval = tokio::time::interval_at(start.into(), interval);
+
+        Arc::new(tokio::task::spawn(async move {
+            loop {
+                interval.tick().await;
+                let m = metrics.lock().unwrap();
+                info!(
+                    "peers={} gossip={} bw={:.1}KB/s r={} role={:?} | msgs: ok={} fail={} ign={} | dl: {}/{} fails={} ({:.1}MB)",
+                    m.connected_peers.len(),
+                    m.gossip_neighbors.len(),
+                    m.bandwidth / 1024.0,
+                    m.round_step,
+                    m.role,
+                    m.apply_message_success,
+                    m.apply_message_failure,
+                    m.apply_message_ignored,
+                    m.downloads_finished,
+                    m.downloads_started,
+                    m.downloads_failed + m.downloads_perma_failed,
+                    m.downloads_bytes as f64 / 1_048_576.0
+                );
+                debug!(
+                    "fin: cur={} prev={} | ann: cur={} prev={} | results: cur={} prev={} | wit={} bcast={}",
+                    m.finishes_received_current_round,
+                    m.finishes_received_previous_round,
+                    m.result_announcements_received_current_round,
+                    m.result_announcements_received_previous_round,
+                    m.results_downloaded_current_round,
+                    m.results_downloaded_previous_round,
+                    m.witnesses_sent,
+                    m.broadcasts_seen
+                );
+            }
+        }))
+    }
 }
 
 impl Default for ClientMetrics {
     fn default() -> Self {
-        Self::new(None)
+        Self::new(None, None)
     }
 }

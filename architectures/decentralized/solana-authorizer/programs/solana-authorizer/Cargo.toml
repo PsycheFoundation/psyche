@@ -1,6 +1,6 @@
 [package]
 name = "psyche-solana-authorizer"
-version = "0.1.0"
+version = "0.2.0"
 description = "Psyche Solana Authorizer"
 edition = "2021"
 
@@ -16,6 +16,12 @@ no-idl = []
 no-log-ix-name = []
 idl-build = ["anchor-lang/idl-build"]
 anchor-debug = []
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = [
+  'cfg(target_os, values("solana"))',
+  'cfg(feature, values("custom-heap", "custom-panic"))',
+] }
 
 [dependencies]
 anchor-lang = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5" }

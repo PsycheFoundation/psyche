@@ -621,14 +621,14 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		if (run.lastState) {
 			const c = run.lastState
 
-			const clients = c.coordinator.epoch_state.clients
+			const currentRoundClients = c.coordinator.epoch_state.clients
 			const currentRound =
 				c.coordinator.epoch_state.rounds[c.coordinator.epoch_state.rounds_head]
-			const witnessStates = clients.map((client, index) => {
+			const witnessStates = currentRoundClients.map((client, index) => {
 				const isWitness = isClientWitness(
 					index,
 					currentRound.random_seed,
-					clients.length,
+					currentRoundClients.length,
 					c.coordinator.config.witness_nodes
 				)
 				const witnessStatus = isWitness
@@ -642,15 +642,27 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				} satisfies RunRoundClient
 			})
 
-			const checkpoint =
-				(typeof c.coordinator.model.LLM.checkpoint === 'object' &&
-					(('Hub' in c.coordinator.model.LLM.checkpoint &&
-						c.coordinator.model.LLM.checkpoint.Hub) ||
-						('P2P' in c.coordinator.model.LLM.checkpoint &&
-							c.coordinator.model.LLM.checkpoint.P2P))) ||
-				null
+			const checkpoint = (() => {
+				const cp = c.coordinator.model.LLM.checkpoint
+				if (typeof cp !== 'object') return null
+				if ('Hub' in cp) return { Hub: cp.Hub }
+				if ('P2P' in cp) return { Hub: cp.P2P }
+				if ('Gcs' in cp) return { Gcs: cp.Gcs }
+				if ('P2PGcs' in cp) return { Gcs: cp.P2PGcs }
+				return null
+			})()
 
 			const config = c.coordinator.config
+
+			const clients =
+				c.coordinator.run_state === 'WaitingForMembers'
+					? c.clients_state.clients
+							.filter((cl) => cl.active === c.clients_state.next_active)
+							.map((cl) => ({
+								pubkey: new PublicKey(cl.id.signer).toString(),
+								witness: false as const,
+							}))
+					: witnessStates
 			state = {
 				phase: c.coordinator.run_state,
 				phaseStartTime: new Date(
@@ -661,7 +673,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				),
 				round: currentRound.height,
 
-				clients: witnessStates,
+				clients,
 				checkpoint,
 
 				config: {
@@ -929,7 +941,14 @@ function cleanupSampledUpdates(
 function removeOverriddenSteps(
 	witnesses: [WitnessV2, ChainTimestamp][]
 ): [WitnessV2, ChainTimestamp][] {
-	const orderedWitnesses = witnesses.sort(
+	const validWitnesses = witnesses.filter((w) => {
+		if (!w) {
+			console.error('null witness found?? removing...')
+			return false
+		}
+		return true
+	})
+	const orderedWitnesses = validWitnesses.sort(
 		(a, b) => a[1].time.getTime() - b[1].time.getTime()
 	)
 

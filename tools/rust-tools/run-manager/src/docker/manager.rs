@@ -153,6 +153,7 @@ impl RunManager {
             .arg("--network=host")
             .arg("--shm-size=1g")
             .arg("--privileged")
+            .arg("--runtime=nvidia")
             .arg("--gpus=all")
             .arg("--device=/dev/infiniband:/dev/infiniband")
             .arg("--env")

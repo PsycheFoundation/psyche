@@ -59,15 +59,21 @@
                   exit 1
                 fi
 
+
                 for f in $dir/*; do
                   if [ -f $f/data.toml ]; then
+                  echo "ccecking $(realpath -s --relative-to $dir $f/data.toml) and $(realpath -s --relative-to $dir $f/state.toml)"
                     psyche-centralized-server validate-config --state $f/state.toml --data-config $f/data.toml || exit 1
-                    echo "config $f/data.toml and $f/state.toml ok!"
+                    echo "ok!"
+                  elif [ -f $f/state.toml ]; then
+                    echo "checking $(realpath -s --relative-to $dir $f/state.toml)"
+                    psyche-centralized-server validate-config --state $f/state.toml || exit 1
+                    echo "ok!"
                   else
-                    psyche-centralized-server validate-config --state $f/state.toml|| exit 1
-                    echo "config $f/state.toml ok!"
+                    echo "Note: $(realpath -s --relative-to $dir $f) has no state.toml, skipping validation"
                   fi
                 done;
+
 
                 echo "all configs ok!"
 

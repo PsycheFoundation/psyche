@@ -32,12 +32,9 @@ jobs:
         run: |
           nix build .#docker-psyche-solana-client --no-link --print-out-paths > image-path.txt
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKER_DEPLOY_KEY }}
-
-      - run: scripts/push-client-image.sh
+      - name: Push image to Docker Hub
+        run: scripts/push-client-image.sh
         env:
           DOCKER_REPOSITORY: ${{ vars.DOCKERHUB_REPO }}
+          REGISTRY_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.DOCKER_DEPLOY_KEY }}

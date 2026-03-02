@@ -13,6 +13,7 @@ use ts_rs::TS;
     Debug,
     Zeroable,
     Copy,
+    PartialEq,
     TS,
 )]
 #[repr(C)]

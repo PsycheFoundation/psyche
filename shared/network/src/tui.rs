@@ -1,7 +1,7 @@
 use crate::{NetworkConnection, Networkable, P2PEndpointInfo, util::fmt_bytes};
 
 use futures_util::StreamExt;
-use iroh::{EndpointId, endpoint::ConnectionType};
+use iroh::EndpointId;
 use psyche_tui::ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
@@ -57,18 +57,22 @@ impl psyche_tui::CustomWidget for NetworkTui {
                 List::new(state.endpoint_connections.iter().map(
                     |P2PEndpointInfo {
                          id: endpoint_id,
-                         path,
+                         selected_path,
                          bandwidth,
                          latency,
                      }| {
+                        let path_str = selected_path
+                            .as_ref()
+                            .map(|p| p.to_string())
+                            .unwrap_or_else(|| "none".to_string());
                         let li = ListItem::new(format!(
                             "{} ({}): {} ({:.2}s)",
                             endpoint_id.fmt_short(),
-                            path,
+                            path_str,
                             bandwidth,
                             latency,
                         ));
-                        if *bandwidth > 1.0 && !matches!(path, ConnectionType::None) {
+                        if *bandwidth > 1.0 && selected_path.is_some() {
                             li.bg(Color::LightYellow).fg(Color::Black)
                         } else {
                             li
