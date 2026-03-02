@@ -4497,6 +4497,7 @@ dependencies = [
 [[package]]
 name = "iroh-fake-store"
 version = "0.1.1"
+source = "git+https://github.com/IAvecilla/iroh-fake-store?branch=fake-store-update#73ca4293e23dd048890a9d269f6f1baf4ab5db21"
 dependencies = [
  "anyhow",
  "bao-tree",
