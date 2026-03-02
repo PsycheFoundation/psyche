@@ -10,7 +10,9 @@
 
 use anyhow::{Context, Result};
 use clap::{Args as ClapArgs, Parser, Subcommand};
-use psyche_inference::{INFERENCE_ALPN, InferenceGossipMessage, InferenceNode, InferenceProtocol};
+use psyche_inference::{
+    INFERENCE_ALPN, InferenceGossipMessage, InferenceNode, InferenceProtocol, ModelSource,
+};
 use psyche_metrics::ClientMetrics;
 use psyche_network::{DiscoveryMode, NetworkConnection, NetworkEvent, RelayKind, allowlist};
 use std::path::PathBuf;
@@ -22,6 +24,13 @@ use tracing::{debug, error, info, warn};
 
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+#[derive(Debug, Clone)]
+enum ModelLoadState {
+    Idle,
+    Loading(String),
+    Loaded(String),
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "psyche-inference-node")]
@@ -106,10 +115,11 @@ async fn main() -> Result<()> {
         None => cli.run_args,
     };
 
-    let model_name = run_args.model_name.context("--model-name is required")?;
-
     info!("Starting Psyche Inference Node");
-    info!("Model: {}", model_name);
+    info!(
+        "  Model: {}",
+        run_args.model_name.as_deref().unwrap_or("<idle>")
+    );
     info!("Tensor Parallel Size: {}", run_args.tensor_parallel_size);
     info!(
         "GPU Memory Utilization: {}",
@@ -141,23 +151,35 @@ async fn main() -> Result<()> {
     pyo3::prepare_freethreaded_python();
     info!("Python interpreter initialized");
 
-    info!("Initializing vLLM engine...");
-    let mut inference_node = InferenceNode::new(
-        model_name.clone(),
-        Some(run_args.tensor_parallel_size),
-        Some(run_args.gpu_memory_utilization),
-    );
-
-    inference_node
-        .initialize(
+    let inference_node_shared = if let Some(ref model_name) = run_args.model_name {
+        info!("Initializing vLLM engine with model: {}...", model_name);
+        let mut inference_node = InferenceNode::new(
+            model_name.clone(),
             Some(run_args.tensor_parallel_size),
             Some(run_args.gpu_memory_utilization),
-        )
-        .context("Failed to initialize vLLM engine")?;
+        );
 
-    info!("vLLM engine initialized successfully");
+        inference_node
+            .initialize(
+                Some(run_args.tensor_parallel_size),
+                Some(run_args.gpu_memory_utilization),
+            )
+            .context("Failed to initialize vLLM engine")?;
 
-    let inference_node_shared = Arc::new(RwLock::new(Some(inference_node)));
+        info!("vLLM engine initialized successfully");
+        Arc::new(RwLock::new(Some(inference_node)))
+    } else {
+        info!("No initial model - starting in idle mode");
+        Arc::new(RwLock::new(None))
+    };
+
+    let model_state = Arc::new(RwLock::new(if let Some(ref model) = run_args.model_name {
+        ModelLoadState::Loaded(model.clone())
+    } else {
+        ModelLoadState::Idle
+    }));
+    let tensor_parallel_size = run_args.tensor_parallel_size;
+    let gpu_memory_utilization = run_args.gpu_memory_utilization;
 
     info!("Initializing P2P network...");
 
@@ -200,9 +222,13 @@ async fn main() -> Result<()> {
     tokio::time::sleep(Duration::from_secs(2)).await;
 
     // announce availability via gossip
+    let model_name_for_broadcast = match &*model_state.read().await {
+        ModelLoadState::Loaded(name) => Some(name.clone()),
+        _ => None,
+    };
     let availability_msg = InferenceGossipMessage::NodeAvailable {
-        model_name: model_name.clone(),
-        checkpoint_id: None, // TODO: Track actual checkpoint when reloading - do we need this?
+        model_name: model_name_for_broadcast.clone(),
+        checkpoint_id: None,
         capabilities: capabilities.clone(),
     };
 
@@ -210,7 +236,10 @@ async fn main() -> Result<()> {
         .broadcast(&availability_msg)
         .context("Failed to broadcast availability")?;
 
-    info!("Broadcasted availability to network");
+    info!(
+        "Broadcasted availability to network (model: {})",
+        model_name_for_broadcast.as_deref().unwrap_or("<idle>")
+    );
     info!("Inference node ready! Listening for requests...");
 
     // heartbeat for re-announcing availability
@@ -230,16 +259,21 @@ async fn main() -> Result<()> {
             }
 
             _ = heartbeat_interval.tick() => {
-                info!("Re-broadcasting availability");
+                let model_name_for_broadcast = match &*model_state.read().await {
+                    ModelLoadState::Loaded(name) => Some(name.clone()),
+                    _ => None,
+                };
                 let availability_msg = InferenceGossipMessage::NodeAvailable {
-                    model_name: model_name.clone(),
+                    model_name: model_name_for_broadcast.clone(),
                     checkpoint_id: None,
                     capabilities: capabilities.clone(),
                 };
                 if let Err(e) = network.broadcast(&availability_msg) {
                     warn!("Failed to broadcast: {:#}", e);
+                } else if let Some(ref model) = model_name_for_broadcast {
+                    debug!("Re-broadcast successful (model: {})", model);
                 } else {
-                    info!("Broadcast successful");
+                    debug!("Re-broadcast successful (idle)");
                 }
             }
 
@@ -250,16 +284,95 @@ async fn main() -> Result<()> {
 
                         match msg {
                             InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities } => {
-                                info!("Peer {} is available: model={}, checkpoint={:?}, caps={:?}",
+                                info!("Peer {} is available: model={:?}, checkpoint={:?}, caps={:?}",
                                       peer_id.fmt_short(), model_name, checkpoint_id, capabilities);
                             }
                             InferenceGossipMessage::NodeUnavailable => {
                                 info!("Peer {} is no longer available", peer_id.fmt_short());
                             }
+                            InferenceGossipMessage::LoadModel { model_name: requested_model, model_source } => {
+                                info!("Received LoadModel request from {}: model={}, source={:?}",
+                                      peer_id.fmt_short(), requested_model, model_source);
+
+                                let model_path = match model_source.clone() {
+                                    ModelSource::HuggingFace(name) | ModelSource::Local(name) => name,
+                                };
+
+                                let should_load = match &*model_state.read().await {
+                                    ModelLoadState::Loaded(name) if name == &requested_model => {
+                                        info!("Model {} already loaded, skipping", requested_model);
+                                        false
+                                    }
+                                    ModelLoadState::Loading(name) => {
+                                        info!("Model load already in progress ({}), skipping concurrent load request for {}",
+                                              name, requested_model);
+                                        false
+                                    }
+                                    _ => true,
+                                };
+
+                                if should_load {
+                                    *model_state.write().await = ModelLoadState::Loading(requested_model.clone());
+                                    info!("Loading new model: {} (background task)", requested_model);
+
+                                    // Spawn background task to avoid blocking the event loop
+                                    // Model loading can take 10-60+ seconds, so we don't want to block heartbeats
+                                    let inference_node_shared_clone = inference_node_shared.clone();
+                                    let model_state_clone = model_state.clone();
+                                    let requested_model_clone = requested_model.clone();
+
+                                    tokio::spawn(async move {
+                                        // Shutdown old model if exists
+                                        let old_node = inference_node_shared_clone.write().await.take();
+                                        if let Some(mut old_node) = old_node {
+                                            info!("Shutting down existing model");
+                                            if let Err(e) = old_node.shutdown() {
+                                                error!("Error shutting down old model: {:#}", e);
+                                            }
+                                            // Give vLLM time to release GPU memory before loading new model
+                                            // This prevents OOM when switching between large models
+                                            info!("Waiting 5s for GPU memory to be released...");
+                                            tokio::time::sleep(Duration::from_secs(5)).await;
+                                        }
+
+                                        // Load new model (blocking operation)
+                                        let load_result = (|| -> Result<InferenceNode> {
+                                            let mut new_node = InferenceNode::new(
+                                                model_path.clone(),
+                                                Some(tensor_parallel_size),
+                                                Some(gpu_memory_utilization),
+                                            );
+
+                                            new_node.initialize(
+                                                Some(tensor_parallel_size),
+                                                Some(gpu_memory_utilization),
+                                            )?;
+
+                                            Ok(new_node)
+                                        })();
+
+                                        match load_result {
+                                            Ok(new_node) => {
+                                                *inference_node_shared_clone.write().await = Some(new_node);
+                                                *model_state_clone.write().await = ModelLoadState::Loaded(requested_model_clone.clone());
+
+                                                info!("Successfully loaded model: {}", requested_model_clone);
+                                                // Note: NodeAvailable will be broadcast on next heartbeat (every 30s)
+                                                // or the node can be manually queried to verify the model is loaded
+                                            }
+                                            Err(e) => {
+                                                error!("Failed to load model {}: {:#}", requested_model_clone, e);
+                                                // Set back to Idle on failure
+                                                *model_state_clone.write().await = ModelLoadState::Idle;
+                                            }
+                                        }
+                                    });
+                                }
+                            }
                             InferenceGossipMessage::ReloadCheckpoint { checkpoint_id, checkpoint_source } => {
                                 info!("Received checkpoint reload request: {} from {}",
                                       checkpoint_id, checkpoint_source);
-                                // TODO: Implement checkpoint reloading - used for changing mdoels? need to figure this out
+                                // TODO: implement checkpoint reloading for RL training
                                 warn!("Checkpoint reloading not yet implemented");
                             }
                         }
