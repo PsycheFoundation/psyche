@@ -9,223 +9,15 @@ use bytes::Bytes;
 use futures_util::future::select_all;
 use iroh::PublicKey;
 use iroh_blobs::api::Tag;
+use iroh_blobs::api::downloader::DownloadProgressItem;
 use iroh_blobs::ticket::BlobTicket;
-use iroh_blobs::{Hash, api::downloader::DownloadProgressItem};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap, fmt::Debug, future::Future, marker::PhantomData, pin::Pin, sync::Arc,
-    time::Instant,
-};
+use std::{fmt::Debug, future::Future, marker::PhantomData, pin::Pin, sync::Arc};
 use tokio::{
     sync::{Mutex, mpsc, oneshot},
     task::JoinHandle,
 };
 use tracing::{error, info, trace, warn};
-
-pub const MAX_DOWNLOAD_RETRIES: usize = 3;
-
-#[derive(Debug, Clone)]
-pub struct DownloadRetryInfo {
-    pub retries: usize,
-    pub retry_time: Option<Instant>,
-    pub ticket: BlobTicket,
-    pub tag: Tag,
-    pub r#type: DownloadType,
-}
-
-#[derive(Debug)]
-pub enum RetriedDownloadsMessage {
-    Insert {
-        info: DownloadRetryInfo,
-    },
-    Remove {
-        hash: Hash,
-        response: oneshot::Sender<Option<DownloadRetryInfo>>,
-    },
-    Get {
-        hash: Hash,
-        response: oneshot::Sender<Option<DownloadRetryInfo>>,
-    },
-    PendingRetries {
-        response: oneshot::Sender<Vec<(Hash, BlobTicket, Tag, DownloadType)>>,
-    },
-    UpdateTime {
-        hash: Hash,
-        response: oneshot::Sender<usize>,
-    },
-}
-
-/// Handler to interact with the retried downloads actor
-#[derive(Clone)]
-pub struct RetriedDownloadsHandle {
-    tx: mpsc::UnboundedSender<RetriedDownloadsMessage>,
-}
-
-impl Default for RetriedDownloadsHandle {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl RetriedDownloadsHandle {
-    pub fn new() -> Self {
-        let (tx, rx) = mpsc::unbounded_channel();
-
-        // Spawn the actor
-        tokio::spawn(retried_downloads_actor(rx));
-
-        Self { tx }
-    }
-
-    /// Insert a new download to retry
-    pub fn insert(&self, info: DownloadRetryInfo) {
-        let _ = self.tx.send(RetriedDownloadsMessage::Insert { info });
-    }
-
-    /// Remove a download from the retry list
-    pub async fn remove(&self, hash: Hash) -> Option<DownloadRetryInfo> {
-        let (response_tx, response_rx) = oneshot::channel();
-
-        if self
-            .tx
-            .send(RetriedDownloadsMessage::Remove {
-                hash,
-                response: response_tx,
-            })
-            .is_err()
-        {
-            return None;
-        }
-
-        response_rx.await.unwrap_or(None)
-    }
-
-    /// Get a download from the retry list
-    pub async fn get(&self, hash: Hash) -> Option<DownloadRetryInfo> {
-        let (response_tx, response_rx) = oneshot::channel();
-
-        if self
-            .tx
-            .send(RetriedDownloadsMessage::Get {
-                hash,
-                response: response_tx,
-            })
-            .is_err()
-        {
-            return None;
-        }
-
-        response_rx.await.unwrap_or(None)
-    }
-
-    /// Get the retries that are considered pending and have not been retried yet
-    pub async fn pending_retries(&self) -> Vec<(Hash, BlobTicket, Tag, DownloadType)> {
-        let (response_tx, response_rx) = oneshot::channel();
-
-        if self
-            .tx
-            .send(RetriedDownloadsMessage::PendingRetries {
-                response: response_tx,
-            })
-            .is_err()
-        {
-            return Vec::new();
-        }
-
-        response_rx.await.unwrap_or_else(|_| Vec::new())
-    }
-
-    /// Mark the retry as already being retried marking updating the retry time
-    pub async fn update_time(&self, hash: Hash) -> usize {
-        let (response_tx, response_rx) = oneshot::channel();
-
-        if self
-            .tx
-            .send(RetriedDownloadsMessage::UpdateTime {
-                hash,
-                response: response_tx,
-            })
-            .is_err()
-        {
-            return 0;
-        }
-
-        response_rx.await.unwrap_or(0)
-    }
-}
-
-struct RetriedDownloadsActor {
-    downloads: HashMap<Hash, DownloadRetryInfo>,
-}
-
-impl RetriedDownloadsActor {
-    fn new() -> Self {
-        Self {
-            downloads: HashMap::new(),
-        }
-    }
-
-    fn handle_message(&mut self, message: RetriedDownloadsMessage) {
-        match message {
-            RetriedDownloadsMessage::Insert { info } => {
-                let hash = info.ticket.hash();
-                self.downloads.insert(hash, info);
-            }
-
-            RetriedDownloadsMessage::Remove { hash, response } => {
-                let removed = self.downloads.remove(&hash);
-                let _ = response.send(removed);
-            }
-
-            RetriedDownloadsMessage::Get { hash, response } => {
-                let info = self.downloads.get(&hash).cloned();
-                let _ = response.send(info);
-            }
-
-            RetriedDownloadsMessage::PendingRetries { response } => {
-                let now = Instant::now();
-                let pending: Vec<_> = self
-                    .downloads
-                    .iter()
-                    .filter(|(_, info)| {
-                        info.retry_time
-                            .map(|retry_time| now >= retry_time)
-                            .unwrap_or(false)
-                    })
-                    .map(|(hash, info)| {
-                        (
-                            *hash,
-                            info.ticket.clone(),
-                            info.tag.clone(),
-                            info.r#type.clone(),
-                        )
-                    })
-                    .collect();
-
-                let _ = response.send(pending);
-            }
-
-            RetriedDownloadsMessage::UpdateTime { hash, response } => {
-                let retries = if let Some(info) = self.downloads.get_mut(&hash) {
-                    info.retry_time = None; // Mark as being retried now
-                    info.retries
-                } else {
-                    0
-                };
-
-                let _ = response.send(retries);
-            }
-        }
-    }
-}
-
-async fn retried_downloads_actor(mut rx: mpsc::UnboundedReceiver<RetriedDownloadsMessage>) {
-    let mut actor = RetriedDownloadsActor::new();
-
-    while let Some(message) = rx.recv().await {
-        actor.handle_message(message);
-    }
-}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum TransmittableDownload {
@@ -258,14 +50,14 @@ struct Download {
     download: mpsc::UnboundedReceiver<Result<DownloadProgressItem>>,
     last_offset: u64,
     total_size: u64,
-    r#type: DownloadType,
+    download_type: DownloadType,
 }
 
 struct ReadingFinishedDownload {
     blob_ticket: BlobTicket,
     tag: Tag,
     download: oneshot::Receiver<Bytes>,
-    r#type: DownloadType,
+    download_type: DownloadType,
 }
 
 impl Debug for ReadingFinishedDownload {
@@ -290,7 +82,7 @@ impl Download {
             download,
             last_offset: 0,
             total_size: 0,
-            r#type: download_type,
+            download_type,
         }
     }
 }
@@ -443,7 +235,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                 blob_ticket,
                 tag,
                 download,
-                r#type: download_type,
+                download_type,
             });
             if let Err(err) = sender.send(()) {
                 error!("{err:#}");
@@ -525,17 +317,19 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                     downloaded_size: 0,
                     total_size: 0,
                     all_done: false,
-                    download_type: download.r#type.clone(),
+                    download_type: download.download_type.clone(),
                 })),
                 DownloadProgressItem::Progress(bytes_amount) => {
+                    let delta = bytes_amount.saturating_sub(download.last_offset);
+                    download.last_offset = bytes_amount;
                     Some(DownloadManagerEvent::Update(DownloadUpdate {
                         blob_ticket: download.blob_ticket.clone(),
                         tag,
-                        downloaded_size_delta: bytes_amount.saturating_sub(download.last_offset),
+                        downloaded_size_delta: delta,
                         downloaded_size: bytes_amount,
                         total_size: download.total_size,
                         all_done: false,
-                        download_type: download.r#type.clone(),
+                        download_type: download.download_type.clone(),
                     }))
                 }
                 // We're using the Blob format so there's only one part for each blob
@@ -547,7 +341,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                         downloaded_size: download.last_offset,
                         total_size: download.total_size,
                         all_done: true,
-                        download_type: download.r#type.clone(),
+                        download_type: download.download_type.clone(),
                     }))
                 }
                 DownloadProgressItem::DownloadError => {
@@ -555,15 +349,15 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                         blob_ticket: download.blob_ticket.clone(),
                         error: anyhow!("Download error"),
                         tag,
-                        download_type: download.r#type.clone(),
+                        download_type: download.download_type.clone(),
                     }))
                 }
                 DownloadProgressItem::Error(e) => {
                     Some(DownloadManagerEvent::Failed(DownloadFailed {
                         blob_ticket: download.blob_ticket.clone(),
-                        error: e,
+                        error: e.into(),
                         tag,
-                        download_type: download.r#type.clone(),
+                        download_type: download.download_type.clone(),
                     }))
                 }
                 DownloadProgressItem::ProviderFailed {
@@ -576,23 +370,18 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                     downloaded_size: download.last_offset,
                     total_size: download.total_size,
                     all_done: false,
-                    download_type: download.r#type.clone(),
+                    download_type: download.download_type.clone(),
                 })),
             },
             Err(err) => Some(DownloadManagerEvent::Failed(DownloadFailed {
                 blob_ticket: download.blob_ticket.clone(),
                 error: err,
                 tag,
-                download_type: download.r#type.clone(),
+                download_type: download.download_type.clone(),
             })),
         };
         match &event {
-            Some(DownloadManagerEvent::Update(DownloadUpdate {
-                all_done,
-                downloaded_size,
-                ..
-            })) if *all_done => {
-                download.last_offset = *downloaded_size;
+            Some(DownloadManagerEvent::Update(DownloadUpdate { all_done, .. })) if *all_done => {
                 let removed = downloads.swap_remove(index);
                 trace!(
                     "Since download is complete, removing it: idx {index}, hash {}",
@@ -632,14 +421,14 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                     blob_ticket: downloader.blob_ticket,
                     tag: downloader.tag,
                     error: err.into(),
-                    download_type: downloader.r#type.clone(),
+                    download_type: downloader.download_type.clone(),
                 })),
             },
             Err(e) => Some(DownloadManagerEvent::Failed(DownloadFailed {
                 blob_ticket: downloader.blob_ticket,
                 tag: downloader.tag,
                 error: e,
-                download_type: downloader.r#type.clone(),
+                download_type: downloader.download_type.clone(),
             })),
         }
     }

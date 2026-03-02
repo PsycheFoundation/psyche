@@ -69,11 +69,14 @@ futures-util = "0.3.30"
 chrono = { version = "0.4.38", features = ["clock"] }
 fast-math = "0.1"
 async-trait = "0.1.82"
-iroh = { version = "0.95.1", features = ["metrics"] }
-iroh-relay = { version = "0.95.1", features = ["metrics"] }
-iroh-blobs = { version = "0.97", features = ["metrics"] }
+iroh = { version = "0.96.0", features = ["metrics"] }
+iroh-relay = { version = "0.96.0", features = ["metrics"] }
+iroh-blobs = { version = "0.98", features = ["metrics"] }
+iroh-gossip = { version = "0.96.0" }
+axum = "0.7"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace"] }
 flume = "0.11.1"
-iroh-gossip = { version = "0.95.0" }
 memmap2 = { version = "0.9.3", features = ["stable_deref_trait"] }
 indicatif = "0.17.5"
 tokenizers = { version = "0.20.0", default-features = false, features = [
@@ -105,17 +108,21 @@ ts-rs = { git = "https://github.com/arilotter/ts-rs.git", rev = "92ce1752227fec9
   "psyche-impl",
 ] }
 rayon = "1.10.0"
+walkdir = "2.5"
+
+# with iroh update need to specify digest and crypto-common versions
+digest = { version = "=0.11.0-rc.10", default-features = false }
+crypto-common = "0.2"
+
+tikv-jemallocator = { version = "0.6.1", features = [
+  "unprefixed_malloc_on_supported_platforms",
+] }
 
 # dev only
 test-log = { version = "0.2.16", features = ["trace"] }
 pretty_assertions = "1.4.1"
 serial_test = "3.2.0"
 rstest = "0.25.0"
-
-[patch.crates-io]
-iroh = { version = "0.95.1", git = "https://github.com/arilotter/iroh", rev = "420fde1d3fdb7a5bacb85ef821c2b1a3c6691bd1" }
-iroh-base = { version = "0.95.1", git = "https://github.com/arilotter/iroh", rev = "420fde1d3fdb7a5bacb85ef821c2b1a3c6691bd1" }
-iroh-relay = { version = "0.95.1", git = "https://github.com/arilotter/iroh", rev = "420fde1d3fdb7a5bacb85ef821c2b1a3c6691bd1" }
 
 [profile.dev]
 opt-level = 1

@@ -1,5 +1,5 @@
 use futures_util::{Stream, stream};
-use iroh::discovery::{DiscoveryError, DiscoveryItem};
+use iroh::address_lookup::{Error, Item};
 use iroh::endpoint_info::{EndpointData, EndpointInfo};
 use iroh::{EndpointId, TransportAddr};
 use serde::{Deserialize, Serialize};
@@ -34,7 +34,7 @@ impl LocalTestDiscovery {
     }
 }
 
-impl iroh::discovery::Discovery for LocalTestDiscovery {
+impl iroh::address_lookup::AddressLookup for LocalTestDiscovery {
     fn publish(&self, data: &EndpointData) {
         // Create discovery directory if it doesn't exist
         let discovery_dir = Self::get_discovery_dir();
@@ -63,7 +63,7 @@ impl iroh::discovery::Discovery for LocalTestDiscovery {
     fn resolve(
         &self,
         endpoint_id: iroh::EndpointId,
-    ) -> Option<BoxStream<anyhow::Result<DiscoveryItem, DiscoveryError>>> {
+    ) -> Option<BoxStream<anyhow::Result<Item, Error>>> {
         let file_path = Self::get_endpoint_file_path(&endpoint_id);
 
         if !file_path.exists() {
@@ -93,7 +93,7 @@ impl iroh::discovery::Discovery for LocalTestDiscovery {
 
         let direct_addresses: BTreeSet<_> = endpoint_info.direct_addresses.into_iter().collect();
 
-        let discovery_item = iroh::discovery::DiscoveryItem::new(
+        let discovery_item = iroh::address_lookup::Item::new(
             EndpointInfo {
                 endpoint_id,
                 data: EndpointData::new(

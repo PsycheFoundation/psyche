@@ -642,22 +642,26 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				} satisfies RunRoundClient
 			})
 
-			const checkpoint =
-				(typeof c.coordinator.model.LLM.checkpoint === 'object' &&
-					(('Hub' in c.coordinator.model.LLM.checkpoint &&
-						c.coordinator.model.LLM.checkpoint.Hub) ||
-						('P2P' in c.coordinator.model.LLM.checkpoint &&
-							c.coordinator.model.LLM.checkpoint.P2P))) ||
-				null
+			const checkpoint = (() => {
+				const cp = c.coordinator.model.LLM.checkpoint
+				if (typeof cp !== 'object') return null
+				if ('Hub' in cp) return { Hub: cp.Hub }
+				if ('P2P' in cp) return { Hub: cp.P2P }
+				if ('Gcs' in cp) return { Gcs: cp.Gcs }
+				if ('P2PGcs' in cp) return { Gcs: cp.P2PGcs }
+				return null
+			})()
 
 			const config = c.coordinator.config
 
 			const clients =
 				c.coordinator.run_state === 'WaitingForMembers'
-					? c.clients_state.clients.map((c) => ({
-							pubkey: new PublicKey(c.id.signer).toString(),
-							witness: false as const,
-						}))
+					? c.clients_state.clients
+							.filter((cl) => cl.active === c.clients_state.next_active)
+							.map((cl) => ({
+								pubkey: new PublicKey(cl.id.signer).toString(),
+								witness: false as const,
+							}))
 					: witnessStates
 			state = {
 				phase: c.coordinator.run_state,

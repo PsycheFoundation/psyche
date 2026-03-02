@@ -2,9 +2,11 @@ use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 
 use iroh::EndpointId;
+use iroh::endpoint::{AfterHandshakeOutcome, ConnectionInfo, EndpointHooks};
 
 pub trait Allowlist: std::fmt::Debug + Clone {
     fn allowed(&self, addr: EndpointId) -> bool;
+    fn force_allow(&self, addr: EndpointId);
 }
 
 #[derive(Debug, Clone)]
@@ -14,23 +16,29 @@ impl Allowlist for AllowAll {
     fn allowed(&self, _addr: EndpointId) -> bool {
         true
     }
+    fn force_allow(&self, _addr: EndpointId) {
+        // all allowed!
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct AllowDynamic {
     allowed_nodes: Arc<RwLock<HashSet<EndpointId>>>,
+    force_allowed_nodes: Arc<RwLock<HashSet<EndpointId>>>,
 }
 
 impl AllowDynamic {
     pub fn new() -> Self {
         AllowDynamic {
             allowed_nodes: Arc::new(RwLock::new(HashSet::new())),
+            force_allowed_nodes: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 
     pub fn with_nodes(nodes: impl IntoIterator<Item = EndpointId>) -> Self {
         AllowDynamic {
             allowed_nodes: Arc::new(RwLock::new(nodes.into_iter().collect())),
+            force_allowed_nodes: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 
@@ -63,11 +71,46 @@ impl Allowlist for AllowDynamic {
             .read()
             .expect("RwLock poisoned")
             .contains(&addr)
+            || self
+                .force_allowed_nodes
+                .read()
+                .expect("RwLock poisoned")
+                .contains(&addr)
+    }
+    fn force_allow(&self, addr: EndpointId) {
+        self.force_allowed_nodes
+            .write()
+            .expect("RwLock poisoned")
+            .insert(addr);
     }
 }
 
 impl Default for AllowDynamic {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AllowlistHook<A> {
+    allowlist: A,
+}
+
+impl<A: Allowlist> AllowlistHook<A> {
+    pub fn new(allowlist: A) -> Self {
+        Self { allowlist }
+    }
+}
+
+impl<A: Allowlist + Send + Sync> EndpointHooks for AllowlistHook<A> {
+    async fn after_handshake(&self, conn: &ConnectionInfo) -> AfterHandshakeOutcome {
+        if self.allowlist.allowed(conn.remote_id()) {
+            AfterHandshakeOutcome::Accept
+        } else {
+            AfterHandshakeOutcome::Reject {
+                error_code: 1u32.into(),
+                reason: b"not in allowlist".to_vec(),
+            }
+        }
     }
 }

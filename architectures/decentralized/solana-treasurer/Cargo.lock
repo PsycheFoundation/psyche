@@ -1602,7 +1602,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-coordinator"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anchor-lang",
  "async-trait",
@@ -1616,7 +1616,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anchor-lang",
  "anchor-lang-idl",
@@ -1635,7 +1635,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-solana-authorizer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
@@ -1643,7 +1643,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-solana-coordinator"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anchor-lang",
  "bytemuck",
@@ -1656,7 +1656,7 @@ dependencies = [
 
 [[package]]
 name = "psyche-solana-treasurer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",

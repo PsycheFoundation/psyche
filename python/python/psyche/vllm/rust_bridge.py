@@ -42,7 +42,7 @@ def create_engine(
 
 def run_inference(
     engine_id: str,
-    prompt: str,
+    messages: list,
     temperature: float = 1.0,
     top_p: float = 1.0,
     max_tokens: int = 100,
@@ -55,28 +55,64 @@ def run_inference(
 
         engine = _engines[engine_id]
 
+        tokenizer = engine.get_tokenizer()
+
+        # apply chat template if available
+        if hasattr(tokenizer, "chat_template") and tokenizer.chat_template:
+            formatted_prompt = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+        else:
+            # format messages manually for models without chat template
+            formatted_prompt = ""
+            for msg in messages:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if role == "system":
+                    formatted_prompt += f"System: {content}\n\n"
+                elif role == "user":
+                    formatted_prompt += f"User: {content}\n\n"
+                elif role == "assistant":
+                    formatted_prompt += f"Assistant: {content}\n\n"
+            formatted_prompt += "Assistant: "
+
+        stop_token_ids = []
+        if hasattr(tokenizer, "eos_token_id") and tokenizer.eos_token_id is not None:
+            stop_token_ids.append(tokenizer.eos_token_id)
+
+        stop_strings = []
+        if hasattr(tokenizer, "eos_token") and tokenizer.eos_token:
+            stop_strings.append(tokenizer.eos_token)
+
         sampling_params = {
             "temperature": temperature,
             "top_p": top_p,
             "max_tokens": max_tokens,
+            "stop_token_ids": stop_token_ids if stop_token_ids else None,
+            "stop": stop_strings if stop_strings else None,
         }
 
-        request_id = engine.add_request(prompt, sampling_params)
+        logger.info(f"Adding request with sampling_params: {sampling_params}")
+        request_id = engine.add_request(formatted_prompt, sampling_params)
 
-        # Process until complete
         outputs = []
         while engine.has_unfinished_requests():
             batch_outputs = engine.step()
             outputs.extend(batch_outputs)
 
         if outputs:
-            output = outputs[0].outputs[0]
+            # Use the last output as it contains the final result
+            final_output = outputs[-1]
+            logger.info(f"Final output has {len(final_output.outputs)} completions")
+            output = final_output.outputs[0]
+            logger.info(f"Final generated text: {repr(output.text)}")
+            logger.info(f"Final finish reason: {output.finish_reason}")
+
             return {
                 "status": "success",
                 "request_id": request_id,
                 "generated_text": output.text,
-                "prompt": prompt,
-                "full_text": prompt + output.text,
+                "full_text": formatted_prompt + output.text,
             }
         else:
             return {
