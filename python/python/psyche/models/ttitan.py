@@ -304,8 +304,8 @@ class TorchtitanAuto(CausalLM):
 
         job_config = JobConfig()
         job_config.training.seq_len = config_tt.max_seq_len
-        job_config.compile.enable = True
-        job_config.compile.components = ["model", "loss"]
+        job_config.compile.enable = False
+        job_config.compile.components = ["model"]
         job_config.compile.fullgraph = False
         job_config.activation_checkpoint.mode = "full"
         job_config.parallelism.data_parallel_shard_degree = dp
