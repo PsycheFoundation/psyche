@@ -11,6 +11,7 @@ on:
 jobs:
   solana-integration-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
@@ -120,3 +121,22 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           cd architectures/decentralized/testing/ && nix run .#test-psyche-decentralized-testing-integration_tests -- --nocapture "${{ inputs.test-name }}"
+
+      - name: Collect container logs
+        if: always()
+        run: |
+          mkdir -p /tmp/container-logs
+          for container in $(docker ps -a --format '{{.Names}}'); do
+            echo "Collecting logs from $container"
+            docker logs "$container" > "/tmp/container-logs/${container}.log" 2>&1 || true
+          done
+          echo "Collected logs:"
+          ls -la /tmp/container-logs/
+
+      - name: Upload container logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-logs-${{ inputs.test-name }}
+          path: /tmp/container-logs/
+          retention-days: 7

@@ -64,6 +64,22 @@ pub async fn e2e_testing_setup(
     e2e_testing_setup_with_min(docker_client, init_num_clients, init_num_clients, None).await
 }
 
+/// Setup with a custom ConfigBuilder for per-test configuration overrides.
+pub async fn e2e_testing_setup_with_config(
+    docker_client: Arc<Docker>,
+    init_num_clients: usize,
+    config_builder: ConfigBuilder,
+    owner_keypair_path: Option<&Path>,
+) -> DockerTestCleanup {
+    remove_old_client_containers(docker_client).await;
+
+    spawn_psyche_network_with_config(init_num_clients, config_builder, owner_keypair_path).unwrap();
+
+    spawn_ctrl_c_task();
+
+    DockerTestCleanup {}
+}
+
 /// Setup with explicit min_clients value and optional owner keypair path.
 /// Use this when you need different values (e.g., init_num_clients=0, min_clients=1)
 /// or when you need to provide a specific owner keypair for pause/resume operations.
@@ -301,6 +317,46 @@ pub fn spawn_psyche_network_with_min(
         .stderr(Stdio::inherit());
 
     // If owner keypair path is provided, pass it to the setup script
+    if let Some(path) = owner_keypair_path {
+        let abs_path =
+            std::fs::canonicalize(path).expect("Failed to canonicalize owner keypair path");
+        cmd = cmd.env("OWNER_KEYPAIR_PATH", abs_path);
+    }
+
+    let output = cmd
+        .output()
+        .expect("Failed to spawn docker compose instances");
+
+    if !output.status.success() {
+        panic!("Error: {}", String::from_utf8_lossy(&output.stderr));
+    }
+
+    println!("\n[+] Docker compose network spawned successfully!");
+    println!();
+    Ok(())
+}
+
+/// Spawn the psyche network with a custom ConfigBuilder and optional owner keypair.
+pub fn spawn_psyche_network_with_config(
+    init_num_clients: usize,
+    config_builder: ConfigBuilder,
+    owner_keypair_path: Option<&Path>,
+) -> Result<(), DockerWatcherError> {
+    #[cfg(feature = "python")]
+    let config_builder = config_builder
+        .with_architecture("HfAuto")
+        .with_batch_size(8 * std::cmp::max(init_num_clients, 1) as u32);
+
+    let config_file_path = config_builder.build();
+
+    println!("[+] Config file written to: {}", config_file_path.display());
+
+    let mut command = Command::new("just");
+    let mut cmd = command
+        .args(["run_test_infra", &format!("{init_num_clients}")])
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
+
     if let Some(path) = owner_keypair_path {
         let abs_path =
             std::fs::canonicalize(path).expect("Failed to canonicalize owner keypair path");

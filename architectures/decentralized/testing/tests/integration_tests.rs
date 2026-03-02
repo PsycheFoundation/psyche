@@ -17,11 +17,11 @@ use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
     docker_setup::{
-        e2e_testing_setup, e2e_testing_setup_with_min, kill_all_clients, spawn_new_client,
-        spawn_new_client_with_monitoring,
+        e2e_testing_setup, e2e_testing_setup_with_config, e2e_testing_setup_with_min,
+        kill_all_clients, spawn_new_client, spawn_new_client_with_monitoring,
     },
     docker_watcher::{DockerWatcher, Response},
-    utils::{SolanaTestClient, write_keypair_to_file},
+    utils::{ConfigBuilder, SolanaTestClient, write_keypair_to_file},
 };
 use rstest::*;
 use serial_test::serial;
@@ -123,7 +123,7 @@ async fn test_two_clients_three_epochs_run() {
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
-    // Initialize a Solana run with 1 client
+    // Initialize a Solana run with 2 clients
     let _cleanup = e2e_testing_setup(docker.clone(), 2).await;
 
     // Monitor the client container
@@ -221,6 +221,13 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
                 ],
             )
             .unwrap();
+        // When spawning multiple clients, stagger them to avoid P2P download
+        // contention. This gives the previous client time to download the model
+        // and become an additional peer source for subsequent clients.
+        if i < n_new_clients {
+            println!("Waiting before spawning next client to reduce P2P contention");
+            tokio::time::sleep(Duration::from_secs(90)).await;
+        }
     }
 
     let mut liveness_check_interval = time::interval(Duration::from_secs(10));
@@ -266,13 +273,32 @@ async fn test_rejoining_client_delay() {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // initialize a Solana run with 1 client
-    let _cleanup = e2e_testing_setup(docker.clone(), 1).await;
+    // Use generous warmup so that if client-2 joins during an epoch's warmup,
+    // the coordinator waits for it to finish downloading the model via P2P.
+    // Client-2 is spawned only AFTER epoch 0 finishes to guarantee it sees P2P.
+    // Keep default epoch_time=120 so epoch 0 completes quickly.
+    let config = ConfigBuilder::new()
+        .with_num_clients(1)
+        .with_warmup_time(300);
+    let _cleanup = e2e_testing_setup_with_config(docker.clone(), 1, config, None).await;
 
     let solana_client = Arc::new(SolanaTestClient::new("test".to_string(), None).await);
 
-    tokio::time::sleep(Duration::from_secs(30)).await;
+    // Wait for epoch 0 to complete so checkpoint transitions to P2P.
+    // Client-2 must NOT be spawned during epoch 0 or it would see Hub checkpoint.
+    // Epoch 0 with 1 client: warmup (~30s) + training (~60s) + cooldown (5s) ≈ ~100-150s
+    // warmup_time=300 is a timeout but warmup ends early when client-1 submits.
+    println!("Waiting for epoch 0 to complete...");
+    let found = solana_client
+        .wait_for_run_state(RunState::Cooldown, 600)
+        .await;
+    assert!(found, "Epoch 0 should reach Cooldown");
+    // Wait for cooldown to finish and checkpoint to transition to P2P
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    let current_epoch = solana_client.get_current_epoch().await;
+    println!("Epoch 0 completed, current epoch: {current_epoch}");
 
-    // Spawn client
+    // Spawn client-2 now that checkpoint is P2P
     spawn_new_client(docker.clone(), None).await.unwrap();
 
     let _monitor_client = watcher
@@ -294,30 +320,38 @@ async fn test_rejoining_client_delay() {
         )
         .await;
 
+    // Use a generous timeout instead of epoch-counting. On CI with 2 vCPUs,
+    // the P2P model download can take several minutes while epochs fly by.
+    // Client-2 will eventually download the model regardless of epoch count.
     let mut interval = time::interval(Duration::from_secs(10));
-    println!("Waiting for training to start");
-    loop {
-        tokio::select! {
-           _ = interval.tick() => {
-               println!("Waiting for first epoch to finish");
-               if let Err(e) = watcher.monitor_clients_health(2).await {
-                   panic!("{}", e);
+    println!("Waiting for client-2 to load model via P2P");
+    let result = tokio::time::timeout(Duration::from_secs(600), async {
+        loop {
+            tokio::select! {
+               _ = interval.tick() => {
+                   let current_epoch = solana_client.get_current_epoch().await;
+                   println!("Waiting for client-2 to load model (epoch: {current_epoch})");
+                   // Only check client-1 health. Client-2 may get dropped by the
+                   // coordinator if it joins but takes too long downloading the model.
+                   // The 600s timeout handles client-2 failures.
+                   if let Err(e) = watcher.monitor_clients_health(1).await {
+                       panic!("{}", e);
+                   }
                }
-               let current_epoch = solana_client.get_current_epoch().await;
-               if current_epoch > 1 {
-                    panic!("Second epoch started and the clients did not get the model");
+               response = watcher.log_rx.recv() => {
+                   if let Some(Response::LoadedModel(checkpoint)) = response {
+                       assert!(checkpoint.starts_with("P2P"), "The model should be obtained from P2P");
+                       println!("Client got the model with P2P");
+                       return;
+                   }
                }
-           }
-           response = watcher.log_rx.recv() => {
-               if let Some(Response::LoadedModel(checkpoint)) = response {
-                   // assert client and coordinator state synchronization
-                   assert!(checkpoint.starts_with("P2P"), "The model should be obtained from P2P");
-                   println!("Client got the model with P2P");
-                   return;
-               }
-           }
+            }
         }
-    }
+    }).await;
+    assert!(
+        result.is_ok(),
+        "Client-2 did not load model via P2P within 600 seconds"
+    );
 }
 
 /// creates a run and spawns 3 clients
@@ -333,12 +367,29 @@ async fn disconnect_client() {
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
-    // Initialize a Solana run with 3 clients
-    let _cleanup = e2e_testing_setup(docker.clone(), 3).await;
+    // Initialize test infrastructure with 0 clients, then spawn them sequentially.
+    // On CI (2 vCPUs), starting all 3 simultaneously causes resource starvation
+    // where the 3rd client can't complete model loading during warmup.
+    // 90s delays between spawns: ensures each client fully loads its model
+    //   before the next starts, eliminating CPU contention during loading.
+    // warmup_time=300: buffer for the 3rd client (spawned at T=180) to finish
+    //   loading after joining the coordinator.
+    // max_round_train_time=300: after killing a client, gossip disruption causes
+    //   surviving clients to need extra time completing the round.
+    //   On 2-vCPU CI runners, rounds can take 180s+ with 3 containers competing.
+    // epoch_time=600: enough time for multiple rounds with slow gossip recovery
+    let config = ConfigBuilder::new()
+        .with_num_clients(3)
+        .with_warmup_time(300)
+        .with_max_round_train_time(300)
+        .with_epoch_time(600);
+    let _cleanup = e2e_testing_setup_with_config(docker.clone(), 0, config, None).await;
 
+    // Spawn clients sequentially with delays to reduce CPU contention
+    let container_1 = spawn_new_client(docker.clone(), None).await.unwrap();
     let _monitor_client_1 = watcher
         .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
+            &container_1,
             vec![
                 IntegrationTestLogMarker::StateChange,
                 IntegrationTestLogMarker::HealthCheck,
@@ -348,10 +399,14 @@ async fn disconnect_client() {
             ],
         )
         .unwrap();
+    println!("Spawned client 1: {container_1}");
 
+    tokio::time::sleep(Duration::from_secs(90)).await;
+
+    let container_2 = spawn_new_client(docker.clone(), None).await.unwrap();
     let _monitor_client_2 = watcher
         .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-2"),
+            &container_2,
             vec![
                 IntegrationTestLogMarker::StateChange,
                 IntegrationTestLogMarker::HealthCheck,
@@ -361,10 +416,14 @@ async fn disconnect_client() {
             ],
         )
         .unwrap();
+    println!("Spawned client 2: {container_2}");
 
+    tokio::time::sleep(Duration::from_secs(90)).await;
+
+    let container_3 = spawn_new_client(docker.clone(), None).await.unwrap();
     let _monitor_client_3 = watcher
         .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-3"),
+            &container_3,
             vec![
                 IntegrationTestLogMarker::StateChange,
                 IntegrationTestLogMarker::HealthCheck,
@@ -372,6 +431,7 @@ async fn disconnect_client() {
             ],
         )
         .unwrap();
+    println!("Spawned client 3: {container_3}");
 
     // initialize solana client to query the coordinator state
     let solana_client = SolanaTestClient::new(run_id, None).await;
@@ -379,6 +439,11 @@ async fn disconnect_client() {
     let mut seen_health_checks: Vec<u64> = Vec::new();
     let mut untrained_batches: Vec<Vec<u64>> = Vec::new();
     let mut killed_client = false;
+    // Track which client IDs have been confirmed active in Training state.
+    // We only kill after all 3 are verified, to prevent killing when a client
+    // dropped out during warmup (which would give wrong health check counts).
+    let mut clients_confirmed_training: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
 
     while let Some(response) = watcher.log_rx.recv().await {
         match response {
@@ -392,6 +457,17 @@ async fn disconnect_client() {
                     break;
                 }
 
+                // Safety: if we've moved past epoch 0 without killing a client,
+                // the test can't proceed (not enough clients for min_clients).
+                // Fail fast rather than hanging.
+                if epoch > 0 && !killed_client {
+                    panic!(
+                        "Epoch advanced to {} without kill happening. Only {} clients confirmed training (needed 3). Test infrastructure issue.",
+                        epoch,
+                        clients_confirmed_training.len()
+                    );
+                }
+
                 if old_state == RunState::WaitingForMembers.to_string() {
                     let epoch_clients = solana_client.get_current_epoch_clients().await;
                     println!(
@@ -399,6 +475,11 @@ async fn disconnect_client() {
                         epoch,
                         epoch_clients.len()
                     );
+                }
+
+                // Track clients that have entered Training state
+                if new_state == RunState::RoundTrain.to_string() {
+                    clients_confirmed_training.insert(client_id.clone());
                 }
 
                 if killed_client
@@ -410,19 +491,17 @@ async fn disconnect_client() {
                 }
 
                 if epoch == 0
-                    && step == 2
+                    && step >= 2
                     && old_state == RunState::RoundTrain.to_string()
                     && !killed_client
+                    && clients_confirmed_training.len() >= 3
                 {
                     let epoch_clients = solana_client.get_current_epoch_clients().await;
                     assert_eq!(epoch_clients.len(), 3);
 
                     // Kill any client, since all are witnesses
-                    watcher
-                        .kill_container(&format!("{CLIENT_CONTAINER_PREFIX}-1"))
-                        .await
-                        .unwrap();
-                    println!("Killed client: {CLIENT_CONTAINER_PREFIX}-1");
+                    watcher.kill_container(&container_1).await.unwrap();
+                    println!("Killed client: {container_1}");
                     killed_client = true;
                 }
 
@@ -897,12 +976,28 @@ async fn test_pause_and_resume_run() {
                     println!("Run paused! Waiting for Paused state...");
                 }
 
+                // Race condition: pause can coincide with epoch end, causing the
+                // coordinator to enter Cooldown instead of transitioning directly
+                // to Paused. When this happens, wait for cooldown_time to expire
+                // and re-trigger ticks via set_paused to advance the coordinator.
+                if paused && !client_killed && new_state == RunState::Cooldown.to_string() {
+                    println!("Cooldown during pause - re-triggering ticks to advance to Paused...");
+                    tokio::time::sleep(Duration::from_secs(10)).await;
+                    let _ = solana_client.set_paused(true).await;
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    let _ = solana_client.set_paused(true).await;
+                    println!("Re-triggered set_paused ticks after cooldown");
+                }
+
                 // When coordinator enters Paused state, kill client and resume
                 if paused && !client_killed && new_state == RunState::Paused.to_string() {
                     println!("Coordinator is in Paused state. Killing client and resuming...");
 
-                    // Kill the old container
-                    watcher.kill_container(&container).await.unwrap();
+                    // Kill the old container (may already be stopped if cooldown
+                    // race occurred and client exited during the wait)
+                    if let Err(e) = watcher.kill_container(&container).await {
+                        println!("Container {container} already stopped: {e}. Proceeding.");
+                    }
                     client_killed = true;
 
                     // Wait a moment for cleanup

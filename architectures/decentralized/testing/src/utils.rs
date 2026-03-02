@@ -159,6 +159,9 @@ pub struct ConfigBuilder {
     min_clients: Option<usize>,
     batch_size: u32,
     architecture: String,
+    warmup_time: Option<u32>,
+    epoch_time: Option<u32>,
+    max_round_train_time: Option<u32>,
 }
 
 impl Default for ConfigBuilder {
@@ -187,6 +190,9 @@ impl ConfigBuilder {
             min_clients: None,
             batch_size: 4,
             architecture: String::from("HfLlama"),
+            warmup_time: None,
+            epoch_time: None,
+            max_round_train_time: None,
         }
     }
 
@@ -211,6 +217,21 @@ impl ConfigBuilder {
         self
     }
 
+    pub fn with_warmup_time(mut self, warmup_time: u32) -> Self {
+        self.warmup_time = Some(warmup_time);
+        self
+    }
+
+    pub fn with_epoch_time(mut self, epoch_time: u32) -> Self {
+        self.epoch_time = Some(epoch_time);
+        self
+    }
+
+    pub fn with_max_round_train_time(mut self, max_round_train_time: u32) -> Self {
+        self.max_round_train_time = Some(max_round_train_time);
+        self
+    }
+
     pub fn build(mut self) -> PathBuf {
         // Use min_clients if set, otherwise default to num_clients
         let min_clients = self.min_clients.unwrap_or(self.num_clients);
@@ -228,6 +249,16 @@ impl ConfigBuilder {
 
         #[cfg(feature = "python")]
         self.set_value("config.warmup_time", 100);
+
+        if let Some(warmup_time) = self.warmup_time {
+            self.set_value("config.warmup_time", warmup_time);
+        }
+        if let Some(epoch_time) = self.epoch_time {
+            self.set_value("config.epoch_time", epoch_time);
+        }
+        if let Some(max_round_train_time) = self.max_round_train_time {
+            self.set_value("config.max_round_train_time", max_round_train_time);
+        }
 
         let config_content = toml::to_string(&self.base_config).unwrap();
         let config_file_path = PathBuf::from("../../../config/solana-test/test-config.toml");

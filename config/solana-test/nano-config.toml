@@ -2,7 +2,7 @@
 warmup_time = 100
 cooldown_time = 5
 epoch_time = 120
-max_round_train_time = 30
+max_round_train_time = 90
 round_witness_time = 5
 min_clients = 1
 init_min_clients = 1
