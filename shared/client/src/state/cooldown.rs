@@ -212,7 +212,7 @@ impl CooldownStepMetadata {
                     // When skip_upload is true (testing), skip all checkpoint saving
                     if skip_upload {
                         info!("Skipping checkpoint save and upload (skip_upload flag is set)");
-                        checkpoint_completed.store(true, Ordering::SeqCst);
+                        checkpoint_completed.store(true, Ordering::Release);
                         return Ok(evals);
                     }
 
@@ -259,11 +259,11 @@ impl CooldownStepMetadata {
                         if let Err(err) = result {
                             error!("Error uploading checkpoint: {}", err);
                         } else {
-                            checkpoint_completed.store(true, Ordering::SeqCst);
+                            checkpoint_completed.store(true, Ordering::Release);
                         }
                     } else {
                         // No upload configured, but local save succeeded
-                        checkpoint_completed.store(true, Ordering::SeqCst);
+                        checkpoint_completed.store(true, Ordering::Release);
                     }
 
                     cleanup_dirs(
@@ -362,6 +362,6 @@ impl CooldownStep {
     }
 
     pub fn checkpoint_complete(&self) -> bool {
-        self.checkpoint_completed.load(Ordering::SeqCst)
+        self.checkpoint_completed.load(Ordering::Acquire)
     }
 }
