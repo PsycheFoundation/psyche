@@ -293,10 +293,15 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                     let mut round_losses: Vec<f32> = Vec::new();
                     let mut optim_stats: HashMap<String, f64> = HashMap::new();
 
+                    info!("Waiting for apply of previous results (step {step})...");
                     let mut available_trainers =
                         applying.await.map_err(|_| TrainError::ApplyCrashed)??;
+                    info!("Apply complete, {} trainers ready. Waiting for data...", available_trainers.len());
 
+                    let mut batch_count = 0u32;
                     while let Some(data) = next_sample.recv().await {
+                        batch_count += 1;
+                        info!("Received batch {} (id={}), dispatching to {} trainers", batch_count, data.id, available_trainers.len());
                         let mut in_progress = FuturesUnordered::new();
 
                         // reset the DP barriers
@@ -451,15 +456,17 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                         }
                     }
 
-                    let evals = if cancel_training.is_cancelled() {
-                        // we got timed out, don't bother starting evals
+                    let cancelled = cancel_training.is_cancelled();
+                    let evals = if cancelled {
                         MaybeRunningEvals::NotRunning(available_trainers)
                     } else {
-                        // we finished before getting cancelled, have some time to start evals.
                         MaybeRunningEvals::Running(model_task_runner.start(available_trainers))
                     };
                     let round_duration = Instant::now() - round_start;
-                    debug!("Training for round finished, duration {:?}", round_duration);
+                    info!(
+                        "Training for round finished: {} batches trained, {} losses, cancelled={}, duration {:?}",
+                        batch_count, round_losses.len(), cancelled, round_duration
+                    );
                     finished.store(true, Ordering::SeqCst);
                     Ok(FinishedTrainers {
                         evals_or_trainers: evals,

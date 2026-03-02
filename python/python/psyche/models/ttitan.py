@@ -400,9 +400,31 @@ class TorchtitanAuto(CausalLM):
 
         loss_fn = build_cross_entropy_loss(job_config)
 
-        return TorchtitanAuto(
+        result = TorchtitanAuto(
             model, loss_fn, config, config_tt, job_config, device, amp, parallel_dims
         )
+
+        if job_config.compile.enable:
+            t_compile = time.monotonic()
+            print(f"[rank {device}] starting torch.compile warmup forward+backward...")
+            seq_len = min(256, config_tt.max_seq_len)
+            batch_size = max(dp, 1)
+            dummy_input = torch.randint(
+                0, config_tt.vocab_size, (batch_size, seq_len), device=device
+            )
+            _, warmup_loss = result.forward(dummy_input, dummy_input)
+            if warmup_loss is not None:
+                warmup_loss.backward()
+            for p in model.parameters():
+                if p.grad is not None:
+                    p.grad = None
+            torch.cuda.synchronize(device)
+            print(
+                f"[rank {device}] torch.compile warmup took"
+                f" {time.monotonic()-t_compile:.1f}s"
+            )
+
+        return result
 
     def named_parameters(self) -> dict[str, torch.Tensor]:
         params = dict(self.model.named_parameters())
