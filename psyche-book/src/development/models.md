@@ -9,15 +9,15 @@ The `train` example, documented below, is useful to test how your model trains u
 ## Running
 
 ```bash
-cargo run --example train -- ---help
+cargo run --example train -- --help
 ```
 
-You'll need a pre-tokenized dataset downloaded to your disk for training.
-
-> A PR is welcome to add an option to the trainer to use the HTTP data provider! You can refer to the http example in the data-provider crate for a sample implementation.
+You'll need a pre-tokenized dataset for training. The `train` example supports multiple data sources: local files, HTTP URLs, GCP buckets, and weighted configurations.
 
 For a Llama 2 model, a pre-tokenized dataset to test with is available at [https://huggingface.co/datasets/emozilla/fineweb-10bt-tokenized-datatrove-llama2/](https://huggingface.co/datasets/emozilla/fineweb-10bt-tokenized-datatrove-llama2/tree/main).
-Psyche only needs the `.ds` files, and will load any/all `.ds` files in the specified folder - you can download just one for smaller tests.
+Psyche only needs the `.ds` files, and will load any/all `.ds` files in the specified folder - you can use just one for smaller tests.
+
+### Local data
 
 If you've downloaded part or all of the above dataset into a folder `data/fineweb-10bt` inside the Psyche repo, you can start a simple training run on a 20m parameter Llama 2 model:
 
@@ -27,6 +27,68 @@ cargo run --example train -- \
     --data-path ./data/fineweb-10bt/ \
     --total-batch 2 \
     --micro-batch 1
+```
+
+#### Local preprocessed data
+
+For preprocessed data in parquet format (with `inputs` column), use `local-preprocessed`:
+
+```bash
+cargo run --example train -- \
+    --model emozilla/llama2-20m-init \
+    --total-batch 2 \
+    --micro-batch 1 \
+    local-preprocessed --path ./data/parquet/
+```
+
+### HTTP
+
+You can stream data directly from HTTP URLs without downloading the dataset first. There are several ways to specify HTTP data sources:
+
+#### URL template
+
+Use a template with `{}` placeholder that gets replaced with padded numbers:
+
+```bash
+cargo run --example train -- \
+    --model emozilla/llama2-20m-init \
+    --total-batch 2 \
+    --micro-batch 1 \
+    http-template \
+        --template "https://example.com/data/{}.ds" \
+        --start 0 \
+        --end 10 \
+        --left-pad-zeros 5
+```
+
+This would load files from `https://example.com/data/00000.ds` through `https://example.com/data/00009.ds`.
+
+#### Explicit URLs
+
+Provide a list of URLs directly:
+
+```bash
+cargo run --example train -- \
+    --model emozilla/llama2-20m-init \
+    --total-batch 2 \
+    --micro-batch 1 \
+    urls \
+        https://example.com/data/file1.ds \
+        https://example.com/data/file2.ds
+```
+
+#### GCP bucket
+
+Load all `.ds` files from a Google Cloud Storage bucket:
+
+```bash
+cargo run --example train -- \
+    --model emozilla/llama2-20m-init \
+    --total-batch 2 \
+    --micro-batch 1 \
+    gcp \
+        --bucket-name my-bucket \
+        --directory data/tokenized
 ```
 
 ## Adding a new model type
