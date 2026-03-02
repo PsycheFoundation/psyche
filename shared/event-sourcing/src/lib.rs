@@ -1,4 +1,3 @@
-pub mod coordinator_source;
 pub mod events;
 pub mod projection;
 pub mod store;

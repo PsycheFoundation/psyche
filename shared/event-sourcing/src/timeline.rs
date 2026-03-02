@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
@@ -82,8 +83,10 @@ impl TimelineEntry {
 /// can incrementally read only new events.
 struct LiveSource {
     dir: PathBuf,
-    /// Maps each .postcard file → bytes successfully decoded so far.
-    file_positions: HashMap<PathBuf, u64>,
+    /// Maps each .postcard file → (bytes decoded, last mtime).
+    file_positions: HashMap<PathBuf, (u64, SystemTime)>,
+    /// Per-node total .postcard file bytes on disk, updated during refresh.
+    node_file_sizes: HashMap<String, u64>,
 }
 
 /// Per-node first and last event timestamps.
@@ -148,6 +151,7 @@ impl ClusterTimeline {
         // ── Phase 0: scan directory, count total bytes ───────────────────
         progress(&p);
         let mut all_files: Vec<(PathBuf, String, bool)> = Vec::new();
+        let mut node_file_sizes: HashMap<String, u64> = HashMap::new();
 
         for dir_entry in std::fs::read_dir(dir)? {
             let dir_entry = dir_entry?;
@@ -173,6 +177,7 @@ impl ClusterTimeline {
             for file_path in postcard_files {
                 if let Ok(meta) = std::fs::metadata(&file_path) {
                     p.total_bytes += meta.len();
+                    *node_file_sizes.entry(node_id.clone()).or_default() += meta.len();
                 }
                 p.files += 1;
                 all_files.push((file_path, node_id.clone(), is_coord));
@@ -183,12 +188,15 @@ impl ClusterTimeline {
         // ── Phase 1: read & decode ───────────────────────────────────────
         p.phase = "reading";
         p.fraction = 0.0;
-        let mut file_positions: HashMap<PathBuf, u64> = HashMap::new();
+        let mut file_positions: HashMap<PathBuf, (u64, SystemTime)> = HashMap::new();
         let mut raw_entries: Vec<TimelineEntry> = Vec::new();
 
         for (file_path, node_id, is_coord) in &all_files {
             let data = std::fs::read(file_path)?;
             let file_len = data.len() as u64;
+            let mtime = std::fs::metadata(file_path)
+                .and_then(|m| m.modified())
+                .unwrap_or(SystemTime::UNIX_EPOCH);
             let mut cursor = 0;
 
             if *is_coord {
@@ -219,7 +227,7 @@ impl ClusterTimeline {
                 }
             }
 
-            file_positions.insert(file_path.clone(), cursor as u64);
+            file_positions.insert(file_path.clone(), (cursor as u64, mtime));
             p.bytes_read += file_len;
             p.entries = raw_entries.len();
             if p.total_bytes > 0 {
@@ -245,6 +253,7 @@ impl ClusterTimeline {
             live_source: Some(LiveSource {
                 dir: dir.to_path_buf(),
                 file_positions,
+                node_file_sizes,
             }),
             cached_entity_ids: Vec::new(),
             seen_entity_ids: HashSet::new(),
@@ -271,7 +280,8 @@ impl ClusterTimeline {
         };
 
         let mut new_entries: Vec<TimelineEntry> = Vec::new();
-        let mut updated_positions: HashMap<PathBuf, u64> = HashMap::new();
+        let mut updated_positions: HashMap<PathBuf, (u64, SystemTime)> = HashMap::new();
+        let mut refreshed_file_sizes: HashMap<String, u64> = HashMap::new();
 
         // Walk node subdirectories — new nodes may have appeared since last scan.
         let Ok(read_dir) = std::fs::read_dir(&dir) else {
@@ -289,10 +299,7 @@ impl ClusterTimeline {
                 .unwrap_or("")
                 .to_string();
 
-            // Coordinator subdir handled separately below.
-            if node_id == COORDINATOR_SUBDIR {
-                continue;
-            }
+            let is_coord = node_id == COORDINATOR_SUBDIR;
 
             let mut postcard_files: Vec<PathBuf> = std::fs::read_dir(&node_dir)
                 .ok()
@@ -305,15 +312,25 @@ impl ClusterTimeline {
             postcard_files.sort();
 
             for file_path in postcard_files {
-                let start_pos = *current_positions.get(&file_path).unwrap_or(&0);
-
-                // Cheap size check before opening the file.
                 let Ok(meta) = std::fs::metadata(&file_path) else {
                     continue;
                 };
-                if meta.len() <= start_pos {
-                    continue;
+                let file_mtime = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+
+                // Accumulate per-node file sizes from the stat we already did.
+                *refreshed_file_sizes.entry(node_id.clone()).or_default() += meta.len();
+
+                // Skip files whose mtime hasn't changed — no new data to read.
+                if let Some(&(_, cached_mtime)) = current_positions.get(&file_path) {
+                    if file_mtime == cached_mtime {
+                        continue;
+                    }
                 }
+
+                let start_pos = current_positions
+                    .get(&file_path)
+                    .map(|&(pos, _)| pos)
+                    .unwrap_or(0);
 
                 // Read only the new bytes.
                 let Ok(mut file) = std::fs::File::open(&file_path) else {
@@ -328,78 +345,42 @@ impl ClusterTimeline {
                 }
 
                 let mut cursor = 0;
-                while cursor < new_data.len() {
-                    match try_decode_cobs_frame::<Event>(&new_data, &mut cursor) {
-                        Some(event) => {
-                            new_entries.push(TimelineEntry::Node {
-                                timestamp: event.timestamp,
-                                node_id: node_id.clone(),
-                                event,
-                            });
+                if is_coord {
+                    while cursor < new_data.len() {
+                        match try_decode_cobs_frame::<CoordinatorRecord>(&new_data, &mut cursor) {
+                            Some(rec) => {
+                                let snapshot = coordinator_record_to_snapshot(rec);
+                                new_entries.push(TimelineEntry::Coordinator {
+                                    timestamp: snapshot.timestamp,
+                                    state: snapshot,
+                                });
+                            }
+                            None => break,
                         }
-                        None => break,
+                    }
+                } else {
+                    while cursor < new_data.len() {
+                        match try_decode_cobs_frame::<Event>(&new_data, &mut cursor) {
+                            Some(event) => {
+                                new_entries.push(TimelineEntry::Node {
+                                    timestamp: event.timestamp,
+                                    node_id: node_id.clone(),
+                                    event,
+                                });
+                            }
+                            None => break,
+                        }
                     }
                 }
 
-                updated_positions.insert(file_path, start_pos + cursor as u64);
+                updated_positions.insert(file_path, (start_pos + cursor as u64, file_mtime));
             }
         }
 
-        // Incrementally scan the coordinator subdirectory.
-        let coordinator_dir = dir.join(COORDINATOR_SUBDIR);
-        if coordinator_dir.is_dir() {
-            let postcard_files: Vec<PathBuf> = std::fs::read_dir(&coordinator_dir)
-                .ok()
-                .into_iter()
-                .flatten()
-                .filter_map(|e| e.ok())
-                .map(|e| e.path())
-                .filter(|p| p.extension().is_some_and(|ext| ext == "postcard"))
-                .collect();
-
-            for file_path in postcard_files {
-                let start_pos = *current_positions.get(&file_path).unwrap_or(&0);
-
-                let Ok(meta) = std::fs::metadata(&file_path) else {
-                    continue;
-                };
-                if meta.len() <= start_pos {
-                    continue;
-                }
-
-                let Ok(mut file) = std::fs::File::open(&file_path) else {
-                    continue;
-                };
-                if file.seek(SeekFrom::Start(start_pos)).is_err() {
-                    continue;
-                }
-                let mut new_data = Vec::new();
-                if file.read_to_end(&mut new_data).is_err() {
-                    continue;
-                }
-
-                let mut cursor = 0;
-                while cursor < new_data.len() {
-                    match try_decode_cobs_frame::<CoordinatorRecord>(&new_data, &mut cursor) {
-                        Some(rec) => {
-                            let snapshot = coordinator_record_to_snapshot(rec);
-                            new_entries.push(TimelineEntry::Coordinator {
-                                timestamp: snapshot.timestamp,
-                                state: snapshot,
-                            });
-                        }
-                        None => break,
-                    }
-                }
-
-                updated_positions.insert(file_path, start_pos + cursor as u64);
-            }
-        }
-
-        // Apply position updates regardless of whether we got new entries
-        // (advances past any partial frames we already tried).
+        // Apply position and size updates.
         if let Some(live) = &mut self.live_source {
             live.file_positions.extend(updated_positions);
+            live.node_file_sizes = refreshed_file_sizes;
         }
 
         if new_entries.is_empty() {
@@ -657,6 +638,17 @@ impl ClusterTimeline {
         let first = self.entries.first()?.timestamp();
         let last = self.entries.last()?.timestamp();
         Some((first, last))
+    }
+
+    /// Per-node total .postcard bytes on disk, updated during `refresh()`.
+    /// Returns an empty map when the timeline has no live source.
+    pub fn node_file_sizes(&self) -> &HashMap<String, u64> {
+        static EMPTY: std::sync::LazyLock<HashMap<String, u64>> =
+            std::sync::LazyLock::new(HashMap::new);
+        match &self.live_source {
+            Some(live) => &live.node_file_sizes,
+            None => &EMPTY,
+        }
     }
 }
 
