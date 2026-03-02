@@ -7514,8 +7514,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tikv-jemallocator",
- "solana-account-decoder-client-types",
- "solana-transaction-status-client-types",
  "time",
  "tokio",
  "tokio-util 0.7.18",
