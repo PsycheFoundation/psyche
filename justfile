@@ -21,7 +21,10 @@ fmt:
 
 # spin up a local testnet
 local-testnet *args='':
-    OLTP_METRICS_URL="http://localhost:4318/v1/metrics" OLTP_TRACING_URL="http://localhost:4318/v1/traces" OLTP_LOGS_URL="http://localhost:4318/v1/logs" cargo run -p psyche-centralized-local-testnet -- start {{ args }}
+    cargo run -p psyche-centralized-local-testnet -- start --events-dir ./events/local-testnet {{ args }}
+
+local-testnet-with-metrics *args='':
+    OLTP_METRICS_URL="http://localhost:4318/v1/metrics" OLTP_TRACING_URL="http://localhost:4318/v1/traces" OLTP_LOGS_URL="http://localhost:4318/v1/logs" just local-testnet {{ args }}
 
 # run integration tests
 integration-test test_name="":
