@@ -1,0 +1,16 @@
+{
+	"name": "check-authorization",
+	"version": "1.0.0",
+	"description": "Check if a Solana client pubkey is authorized for a Psyche training run",
+	"private": true,
+	"type": "module",
+	"dependencies": {
+		"@solana/web3.js": "^1.98.0",
+		"@noble/hashes": "^1.7.0"
+	},
+	"devDependencies": {
+		"typescript": "^5.7.0",
+		"ts-node": "^10.9.0",
+		"@types/node": "^22.0.0"
+	}
+}
