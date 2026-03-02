@@ -92,7 +92,10 @@ jobs:
 
           # download from Garnix cache first
           echo "Attempting to fetch from Garnix cache"
-          nix-store --realise $OUT_PATH --option substitute true
+          nix-store --realise $OUT_PATH \
+            --option substitute true \
+            --option extra-substituters "https://cache.garnix.io" \
+            --option extra-trusted-public-keys "cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g="
 
           # Load the image into Docker
           $OUT_PATH | docker load
