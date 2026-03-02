@@ -33,6 +33,7 @@ psyche-python-extension-impl = { path = "./python/extension-impl" }
 psyche-tui = { path = "./shared/tui" }
 psyche-watcher = { path = "./shared/watcher" }
 psyche-metrics = { path = "./shared/metrics" }
+psyche-event-sourcing = { path = "./shared/event-sourcing" }
 
 psyche-solana-client = { path = "./architectures/decentralized/solana-client" }
 psyche-solana-rpc = { path = "./architectures/decentralized/solana-common" }
@@ -93,6 +94,8 @@ serde_with = { version = "3.11.0", features = ["macros"] }
 bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
 thiserror = "2.0.3"
 toml = "0.8.19"
+ratatui = "0.28.1"
+indexmap = { version = "2", features = ["serde"] }
 clap-markdown = "0.1.4"
 pyo3 = { version = "0.24" }
 anchor-lang = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5" }
