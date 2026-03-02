@@ -76,6 +76,11 @@ struct RunArgs {
     #[clap(long)]
     save_state_dir: Option<PathBuf>,
 
+    /// Directory to write event files for the observer.
+    /// Coordinator state changes are appended to `{events_dir}/coordinator/state.bin`.
+    #[clap(long)]
+    events_dir: Option<PathBuf>,
+
     /// Sets the warmup time for the run. This overrides the `warmup_time` declared in the state file.
     #[clap(long)]
     init_warmup_time: Option<u64>,
@@ -211,6 +216,7 @@ async fn main() -> Result<()> {
                         config.1,
                         run_args.server_port,
                         run_args.save_state_dir,
+                        run_args.events_dir,
                         run_args.init_warmup_time,
                         run_args.withdraw_on_disconnect,
                     )
