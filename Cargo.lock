@@ -2836,6 +2836,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 
 [[package]]
+name = "first-class-variants"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b06c71aec8b5c39ae2974435a3749578e518775b1fbbb6890d7172962331e8c8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "five8_const"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6149,6 +6160,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "observer"
+version = "0.2.0"
+dependencies = [
+ "chrono",
+ "clap",
+ "crossterm",
+ "indexmap 2.13.0",
+ "psyche-core",
+ "psyche-event-sourcing",
+ "ratatui",
+ "strum 0.28.0",
+]
+
+[[package]]
 name = "oid-registry"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7036,6 +7061,7 @@ dependencies = [
  "psyche-client",
  "psyche-coordinator",
  "psyche-eval",
+ "psyche-event-sourcing",
  "psyche-metrics",
  "psyche-modeling",
  "psyche-network",
@@ -7083,6 +7109,7 @@ dependencies = [
  "psyche-coordinator",
  "psyche-core",
  "psyche-data-provider",
+ "psyche-event-sourcing",
  "psyche-network",
  "psyche-python-extension-impl",
  "psyche-tui",
@@ -7142,6 +7169,7 @@ name = "psyche-client"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "futures",
  "hex",
@@ -7154,6 +7182,7 @@ dependencies = [
  "psyche-core",
  "psyche-data-provider",
  "psyche-eval",
+ "psyche-event-sourcing",
  "psyche-metrics",
  "psyche-modeling",
  "psyche-network",
@@ -7310,6 +7339,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "psyche-event-sourcing"
+version = "0.2.0"
+dependencies = [
+ "chrono",
+ "derive_more",
+ "first-class-variants",
+ "indexmap 2.13.0",
+ "iroh",
+ "iroh-blobs",
+ "parking_lot",
+ "postcard",
+ "psyche-coordinator",
+ "psyche-core",
+ "psyche-metrics",
+ "rand 0.9.2",
+ "serde",
+ "serial_test",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "psyche-inference"
 version = "0.2.0"
 dependencies = [
@@ -7422,6 +7475,7 @@ dependencies = [
  "n0-future",
  "postcard",
  "psyche-core",
+ "psyche-event-sourcing",
  "psyche-metrics",
  "psyche-modeling",
  "psyche-tui",
@@ -7501,6 +7555,7 @@ dependencies = [
  "psyche-core",
  "psyche-data-provider",
  "psyche-eval",
+ "psyche-event-sourcing",
  "psyche-metrics",
  "psyche-modeling",
  "psyche-network",
@@ -7553,6 +7608,7 @@ dependencies = [
  "futures-util",
  "psyche-coordinator",
  "psyche-core",
+ "psyche-event-sourcing",
  "psyche-solana-authorizer",
  "psyche-solana-coordinator",
  "psyche-solana-treasurer",
@@ -7611,6 +7667,7 @@ dependencies = [
  "opentelemetry-appender-tracing",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
+ "psyche-event-sourcing",
  "rand 0.9.2",
  "ratatui",
  "tokio",
@@ -7627,6 +7684,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "postcard",
  "psyche-coordinator",
  "psyche-core",
  "psyche-tui",
@@ -11777,6 +11835,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "strum"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
+dependencies = [
+ "strum_macros 0.28.0",
+]
+
+[[package]]
 name = "strum_macros"
 version = "0.24.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11807,6 +11874,18 @@ name = "strum_macros"
 version = "0.27.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7695ce3845ea4b33927c055a39dc438a45b059f7c1b3d91d38d10355fb8cbca7"
+dependencies = [
+ "heck 0.5.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.115",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab85eea0270ee17587ed4156089e10b9e6880ee688791d45a905f5b1ca36f664"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",

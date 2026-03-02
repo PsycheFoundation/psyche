@@ -1,0 +1,36 @@
+[package]
+name = "psyche-event-sourcing"
+version.workspace = true
+edition = "2021"
+
+[dependencies]
+serde.workspace = true
+postcard.workspace = true
+
+chrono = { workspace = true, features = ["serde", "now"] }
+
+iroh.workspace = true
+iroh-blobs.workspace = true
+
+psyche-core.workspace = true
+psyche-coordinator.workspace = true
+
+parking_lot = "0.12"
+derive_more = { version = "2.1.1", features = ["from", "display"] }
+first-class-variants = "1.1.0"
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", default-features = false }
+indexmap.workspace = true
+psyche-metrics.workspace = true
+
+[dev-dependencies]
+serial_test.workspace = true
+rand.workspace = true
+tempfile = "3"
+tokio = { workspace = true, features = [
+  "sync",
+  "rt",
+  "rt-multi-thread",
+  "macros",
+] }
