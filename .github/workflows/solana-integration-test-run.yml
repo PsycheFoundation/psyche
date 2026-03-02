@@ -52,6 +52,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Clean up leftover Docker containers
+        run: |
+          # Stop and remove any leftover test containers from previous runs
+          cd docker/test && docker compose down --remove-orphans 2>/dev/null || true
+          docker ps --filter name=test-psyche -q | xargs -r docker stop || true
+          docker ps -a --filter name=test-psyche -q | xargs -r docker rm || true
+
       - name: Get Validator Image from cache
         id: cache-validator
         uses: actions/cache/restore@v4
