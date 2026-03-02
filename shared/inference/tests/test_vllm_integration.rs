@@ -102,13 +102,20 @@ fn test_run_inference() {
         }
 
         // Run inference
+        use psyche_inference::protocol::ChatMessage;
+        let messages = vec![ChatMessage {
+            role: "user".to_string(),
+            content: "Once upon a time".to_string(),
+        }];
+
         let result = vllm::run_inference(
             py,
             "inference_test",
-            "Once upon a time",
-            Some(0.7), // temperature
-            Some(0.9), // top_p
-            Some(20),  // max_tokens
+            messages,
+            Some(0.7),                     // temperature
+            Some(0.9),                     // top_p
+            Some(20),                      // max_tokens
+            None::<fn(vllm::StreamChunk)>, // Non-streaming mode
         );
 
         assert!(result.is_ok(), "Inference failed: {:?}", result.err());
