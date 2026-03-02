@@ -23,6 +23,15 @@ impl InferenceProtocol {
         Self { inference_node }
     }
 
+    fn create_error_response(request_id: String, error: &str) -> InferenceResponse {
+        InferenceResponse {
+            request_id,
+            generated_text: String::new(),
+            full_text: String::new(),
+            finish_reason: Some(format!("error: {}", error)),
+        }
+    }
+
     async fn handle_connection(&self, connection: Connection) -> Result<()> {
         let peer_id = connection.remote_id();
         debug!(
@@ -40,44 +49,51 @@ impl InferenceProtocol {
         match message {
             InferenceMessage::Request(request) => {
                 info!(
-                    "Received inference request {} from {}",
+                    "Received inference request {} from {} (streaming: {})",
                     request.request_id,
-                    peer_id.fmt_short()
+                    peer_id.fmt_short(),
+                    request.stream
                 );
 
-                let response = self.process_request(request).await?;
+                if request.stream {
+                    // Streaming mode: send chunks as they arrive
+                    self.handle_streaming_request(request, send).await?;
+                } else {
+                    // Non-streaming mode: send single response
+                    let response = self.process_request(request).await?;
 
-                info!("Serializing response for {}", peer_id.fmt_short());
-                let response_msg = InferenceMessage::Response(response);
-                let response_bytes =
-                    postcard::to_allocvec(&response_msg).context("Failed to serialize response")?;
+                    info!("Serializing response for {}", peer_id.fmt_short());
+                    let response_msg = InferenceMessage::Response(response);
+                    let response_bytes = postcard::to_allocvec(&response_msg)
+                        .context("Failed to serialize response")?;
 
-                info!(
-                    "Writing {} bytes to {}",
-                    response_bytes.len(),
-                    peer_id.fmt_short()
-                );
-                send.write_all(&response_bytes).await?;
+                    info!(
+                        "Writing {} bytes to {}",
+                        response_bytes.len(),
+                        peer_id.fmt_short()
+                    );
+                    send.write_all(&response_bytes).await?;
 
-                info!("Finishing send stream to {}", peer_id.fmt_short());
-                send.finish()?;
+                    info!("Finishing send stream to {}", peer_id.fmt_short());
+                    send.finish()?;
 
-                // adaptive delay to ensure data is flushed before connection is dropped
-                // without this, the connection might close before the peer reads all bytes
-                // base 50ms + 10ms per MB of data
-                let size_mb = response_bytes.len() as f64 / (1024.0 * 1024.0);
-                let delay_ms = 50 + (size_mb * 10.0) as u64;
-                debug!(
-                    "Waiting {}ms for {} bytes to flush",
-                    delay_ms,
-                    response_bytes.len()
-                );
-                tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+                    // adaptive delay to ensure data is flushed before connection is dropped
+                    // without this, the connection might close before the peer reads all bytes
+                    // base 50ms + 10ms per MB of data
+                    let size_mb = response_bytes.len() as f64 / (1024.0 * 1024.0);
+                    let delay_ms = 50 + (size_mb * 10.0) as u64;
+                    debug!(
+                        "Waiting {}ms for {} bytes to flush",
+                        delay_ms,
+                        response_bytes.len()
+                    );
+                    tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
 
-                info!(
-                    "Successfully sent inference response to {}",
-                    peer_id.fmt_short()
-                );
+                    info!(
+                        "Successfully sent inference response to {}",
+                        peer_id.fmt_short()
+                    );
+                }
             }
             _ => {
                 error!("Unexpected message type from {}", peer_id.fmt_short());
@@ -97,12 +113,100 @@ impl InferenceProtocol {
             }
             None => {
                 error!("Inference node not initialized");
-                Ok(InferenceResponse {
-                    request_id: request.request_id,
-                    generated_text: String::new(),
-                    full_text: String::new(),
-                    finish_reason: Some("error: node not initialized".to_string()),
-                })
+                Ok(Self::create_error_response(
+                    request.request_id,
+                    "node not initialized",
+                ))
+            }
+        }
+    }
+
+    async fn handle_streaming_request(
+        &self,
+        request: InferenceRequest,
+        mut send: iroh::endpoint::SendStream,
+    ) -> Result<()> {
+        use crate::vllm::StreamChunk;
+
+        let node = self.inference_node.read().await;
+
+        match node.as_ref() {
+            Some(node) => {
+                info!(
+                    "Processing streaming inference request: {}",
+                    request.request_id
+                );
+
+                // Create a channel to send chunks from the callback to the async stream writer
+                let (chunk_tx, mut chunk_rx) =
+                    tokio::sync::mpsc::unbounded_channel::<StreamChunk>();
+
+                let request_id = request.request_id.clone();
+
+                // Spawn a blocking task to run the inference (Python GIL blocking)
+                let node_clone = node.clone();
+                let handle = tokio::task::spawn_blocking(move || {
+                    node_clone.inference_streaming(&request, |chunk: StreamChunk| {
+                        // Send chunk through channel
+                        let _ = chunk_tx.send(chunk);
+                    })
+                });
+
+                // Stream chunks as they arrive
+                while let Some(chunk) = chunk_rx.recv().await {
+                    let chunk_msg = InferenceMessage::StreamChunk {
+                        request_id: request_id.clone(),
+                        text: chunk.text,
+                    };
+
+                    let chunk_bytes = postcard::to_allocvec(&chunk_msg)
+                        .context("Failed to serialize stream chunk")?;
+
+                    debug!(
+                        "Sending chunk ({} bytes) for request {}",
+                        chunk_bytes.len(),
+                        request_id
+                    );
+
+                    send.write_all(&chunk_bytes).await?;
+                }
+
+                // Wait for inference to complete
+                let response = handle.await.context("Inference task panicked")??;
+
+                // Send final response
+                info!(
+                    "Sending final response for streaming request {}",
+                    request_id
+                );
+                let response_msg = InferenceMessage::Response(response);
+                let response_bytes =
+                    postcard::to_allocvec(&response_msg).context("Failed to serialize response")?;
+
+                send.write_all(&response_bytes).await?;
+                send.finish()?;
+
+                // Adaptive delay
+                let size_mb = response_bytes.len() as f64 / (1024.0 * 1024.0);
+                let delay_ms = 50 + (size_mb * 10.0) as u64;
+                tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+
+                info!("Successfully completed streaming request {}", request_id);
+                Ok(())
+            }
+            None => {
+                error!("Inference node not initialized");
+                let error_response =
+                    Self::create_error_response(request.request_id, "node not initialized");
+
+                let response_msg = InferenceMessage::Response(error_response);
+                let response_bytes =
+                    postcard::to_allocvec(&response_msg).context("Failed to serialize response")?;
+
+                send.write_all(&response_bytes).await?;
+                send.finish()?;
+
+                Ok(())
             }
         }
     }
