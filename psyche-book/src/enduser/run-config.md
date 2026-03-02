@@ -70,13 +70,15 @@ architecture = "HfLlama"
 data_type = "Pretraining"
 max_seq_len = 2048
 
+# Use one of the following checkpoint options (Hub or Gcs, not both):
+
 [model.LLM.checkpoint.Hub]
-# Repo where the model is located in HugggingFace, will be used to download the model at the beginning of training.
+# Repo where the model is located in HuggingFace, will be used to download the model at the beginning of training.
 repo_id = "emozilla/llama2-20m-init"
 
-# Google Cloud Storage is also supported
-[model.LLM.checkpoint.Gcs]
-bucket = "bucket_name"
+# Or, use Google Cloud Storage instead:
+# [model.LLM.checkpoint.Gcs]
+# bucket = "bucket_name"
 
 [model.LLM.data_location.Http]
 # Token size in bytes, can be "TwoBytes" or "FourBytes"

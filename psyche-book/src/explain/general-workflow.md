@@ -150,6 +150,7 @@ flowchart LR
     g -->|Yes| WFM
     g -->|No|h
     h -->|Yes| WFM
+    h -->|No| CD
 ```
 
 And this is how it fits with real the real clients and how they interact in each of the stages. The committee in this case is the structure that contains all the witness data for the round.
