@@ -6,6 +6,7 @@ from contextlib import contextmanager, nullcontext
 
 import torch.distributed.checkpoint as dcp
 import torch.nn.functional as F
+from safetensors.torch import load_file as safetensors_load_file
 
 from .causal_lm import CausalLM, PretrainedSourceRepoFiles, PretrainedSourceStateDict
 from typing import Tuple, Union, Iterable, Optional
@@ -361,42 +362,29 @@ class TorchtitanAuto(CausalLM):
             sd_adapter = train_spec.state_dict_adapter(config_tt, hf_assets_path=None)
 
             t0 = time.monotonic()
-            model_sd_clean = {
-                k.replace(_CHECKPOINT_PREFIX, "").replace(COMPILE_PREFIX, ""): v
-                for k, v in model.state_dict().items()
-            }
-            hf_state_dict = sd_adapter.to_hf(model_sd_clean)
+            hf_state_dict = {}
+            safetensor_files = [
+                f for f in source.files
+                if os.path.basename(f).lower().endswith(".safetensors")
+            ]
+            for f in safetensor_files:
+                hf_state_dict.update(safetensors_load_file(f, device="cpu"))
             print(
-                f"[rank {device}] to_hf conversion took {time.monotonic()-t0:.1f}s"
-                f" ({len(hf_state_dict)} tensors)"
+                f"[rank {device}] safetensors load took {time.monotonic()-t0:.1f}s"
+                f" ({len(hf_state_dict)} tensors from {len(safetensor_files)} files)"
             )
 
-            path = None
-            for x in source.files:
-                if os.path.basename(x).lower().endswith(".safetensors"):
-                    path = os.path.dirname(x)
-            if path is None:
-                raise RuntimeError(
-                    f"Could not determine .safetensors root directory for `{source.files}`"
-                )
-
             t1 = time.monotonic()
-            hf_storage_reader = dcp.HuggingFaceStorageReader(path)
-            dcp.load(hf_state_dict, storage_reader=hf_storage_reader)
+            state_dict = sd_adapter.from_hf(hf_state_dict)
             print(
-                f"[rank {device}] dcp.load took {time.monotonic()-t1:.1f}s"
+                f"[rank {device}] from_hf conversion took {time.monotonic()-t1:.1f}s"
+                f" ({len(state_dict)} tensors)"
             )
 
             t2 = time.monotonic()
-            state_dict = sd_adapter.from_hf(hf_state_dict)
-            print(
-                f"[rank {device}] from_hf conversion took {time.monotonic()-t2:.1f}s"
-            )
-
-            t3 = time.monotonic()
             TorchtitanAuto._load_into_model(model, state_dict)
             print(
-                f"[rank {device}] _load_into_model took {time.monotonic()-t3:.1f}s"
+                f"[rank {device}] _load_into_model took {time.monotonic()-t2:.1f}s"
             )
 
             print(
