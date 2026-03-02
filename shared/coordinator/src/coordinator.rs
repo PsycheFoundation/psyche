@@ -3,7 +3,10 @@ use crate::{
     model::{Checkpoint, Model},
 };
 
-use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
+use anchor_lang::{
+    AnchorDeserialize, AnchorSerialize, InitSpace,
+    prelude::{borsh, msg},
+};
 use bytemuck::{Pod, Zeroable};
 use psyche_core::{Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean, sha256};
 use serde::{Deserialize, Serialize};
@@ -891,6 +894,28 @@ impl<T: NodeIdentity> Coordinator<T> {
         ))
     }
 
+    /// Check that cold_start_warmup_steps can be completed within a single epoch.
+    pub fn check_cold_start_warmup_steps(&self) -> bool {
+        let Model::LLM(llm) = &self.model;
+        if llm.cold_start_warmup_steps == 0 {
+            return true;
+        }
+        let training_time = self.config.epoch_time - self.config.warmup_time;
+        let estimated_training_rounds = training_time / self.config.max_round_train_time;
+        if llm.cold_start_warmup_steps as u64 > estimated_training_rounds {
+            msg!(
+                "cold_start_warmup_steps ({}) exceeds estimated training rounds per epoch ((epoch_time={} - warmup_time={}) / max_round_train_time={} = {})",
+                llm.cold_start_warmup_steps,
+                self.config.epoch_time,
+                self.config.warmup_time,
+                self.config.max_round_train_time,
+                estimated_training_rounds
+            );
+            return false;
+        }
+        true
+    }
+
     fn get_global_batch_size_for_tokens(&self, tokens_processed: u64) -> u16 {
         self.config.get_batch_size(tokens_processed)
     }
@@ -1189,7 +1214,10 @@ impl<T> CoordinatorEpochState<T> {
 
 impl CoordinatorConfig {
     pub fn check(&self) -> bool {
-        self.max_round_train_time != 0
+        self.epoch_time > 0
+            && self.warmup_time < self.epoch_time
+            && self.max_round_train_time != 0
+            && self.max_round_train_time < self.epoch_time
             && self.round_witness_time != 0
             && self.min_clients != 0
             && self.init_min_clients >= self.min_clients
