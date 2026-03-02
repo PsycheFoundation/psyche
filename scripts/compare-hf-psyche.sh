@@ -11,7 +11,7 @@ mkdir -p ./txt/psyche
 
 test_args=(--model emozilla/llama2-20m-init --data-path ./data/fineweb-10bt/ --total-batch 2 --micro-batch 1  --total-steps 2 --cpu --print-tensors)
 
-RUSTFLAGS=-Awarnings cargo run --release -q -p psyche-modeling --example train -- "${test_args[@]}" | csplit -f "./txt/psyche/part" -  "/^.*:.*$/+0" "{*}" > /dev/null &
+RUSTFLAGS=-Awarnings cargo run --release -q --bin train -- "${test_args[@]}" | csplit -f "./txt/psyche/part" -  "/^.*:.*$/+0" "{*}" > /dev/null &
 cargo_pid=$!
 
 python train-dupe.py "${test_args[@]}" | csplit -f "./txt/hf/part" - "/^.*:.*$/+0" "{*}" > /dev/null &
