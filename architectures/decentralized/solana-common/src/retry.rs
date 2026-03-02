@@ -213,7 +213,7 @@ where
         .with_min_delay(Duration::from_millis(min_delay))
         .with_max_times(max_times)
         .with_factor(factor)
-        .with_max_delay(Duration::from_secs(max_delay));
+        .with_max_delay(Duration::from_millis(max_delay));
 
     function
         .retry(backoff)
