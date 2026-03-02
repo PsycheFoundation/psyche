@@ -32,6 +32,13 @@ in
             liger-kernel = pyfinal.callPackage ../python/liger-kernel.nix { };
             torchtitan = pyfinal.callPackage ../python/torchtitan.nix { };
             torchdata = pyfinal.callPackage ../python/torchdata.nix { };
+
+            # pyside6 brings in a whole massive qt webkit thing. better to just keep it out.
+            gguf = pyprev.gguf.overrideAttrs (old: {
+              propagatedBuildInputs = prev.lib.filter (dep: !(dep ? pname && dep.pname == "pyside6")) (
+                old.propagatedBuildInputs or [ ]
+              );
+            });
           };
         };
       })
