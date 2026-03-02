@@ -3,9 +3,10 @@ use async_trait::async_trait;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
 use psyche_coordinator::model::{self, Checkpoint, LLM, LLMTrainingDataLocation, Model};
 use psyche_coordinator::{
-    Client, ClientState, Coordinator, CoordinatorError, HealthChecks, Round, RunState,
-    SOLANA_MAX_NUM_CLIENTS, TickResult,
+    Client, ClientState, CommitteeSelection, Coordinator, CoordinatorError, HealthChecks, Round,
+    RunState, SOLANA_MAX_NUM_CLIENTS, TickResult, assign_data_for_state,
 };
+use psyche_event_sourcing::events::{CoordinatorClientRecord, CoordinatorRecord};
 
 use psyche_core::{FixedVec, Shuffle, SizedIterator, TokenSize};
 use psyche_data_provider::{
@@ -98,6 +99,7 @@ pub struct App {
     backend: Backend,
     training_data_server: Option<(Sender<Coordinator<ClientId>>, DataServer)>,
     save_state_dir: Option<PathBuf>,
+    events_dir: Option<PathBuf>,
     original_warmup_time: u64,
     withdraw_on_disconnect: bool,
     pause: Option<Arc<Notify>>,
@@ -164,6 +166,7 @@ impl App {
         data_server_config: Option<DataServerInfo>,
         coordinator_server_port: Option<u16>,
         save_state_dir: Option<PathBuf>,
+        events_dir: Option<PathBuf>,
         init_warmup_time: Option<u64>,
         withdraw_on_disconnect: bool,
     ) -> Result<Self> {
@@ -289,6 +292,7 @@ impl App {
                     pending_clients: HashSet::new(),
                 },
                 save_state_dir,
+                events_dir,
                 original_warmup_time,
                 withdraw_on_disconnect,
                 pause,
@@ -512,6 +516,70 @@ impl App {
             if let Some((ref sender, _)) = self.training_data_server {
                 sender.send(self.coordinator).await.unwrap();
             }
+        }
+        self.write_coordinator_record();
+    }
+
+    fn build_coordinator_record(&self) -> CoordinatorRecord {
+        let checkpoint = match self.coordinator.model {
+            Model::LLM(llm) => llm.checkpoint,
+        };
+        let clients = self
+            .coordinator
+            .epoch_state
+            .clients
+            .iter()
+            .map(|c| CoordinatorClientRecord {
+                id: c.id.to_string(),
+                state: c.state,
+            })
+            .collect();
+        // Compute current-step batch assignments from coordinator state.
+        let batch_assignments: std::collections::BTreeMap<_, _> =
+            CommitteeSelection::from_coordinator(&self.coordinator, 0)
+                .map(|sel| {
+                    assign_data_for_state(&self.coordinator, &sel)
+                        .into_iter()
+                        .map(|(batch_id, node_id)| (batch_id, node_id.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+        CoordinatorRecord {
+            timestamp: chrono::Utc::now(),
+            run_state: self.coordinator.run_state,
+            epoch: self.coordinator.progress.epoch,
+            step: self.coordinator.progress.step,
+            checkpoint,
+            min_clients: self.coordinator.config.min_clients,
+            clients,
+            batch_assignments,
+        }
+    }
+
+    fn write_coordinator_record(&self) {
+        let Some(events_dir) = &self.events_dir else {
+            return;
+        };
+        let coordinator_dir = events_dir.join("coordinator");
+        if let Err(e) = std::fs::create_dir_all(&coordinator_dir) {
+            warn!("Failed to create coordinator events dir: {e}");
+            return;
+        }
+        let record = self.build_coordinator_record();
+        match postcard::to_stdvec_cobs(&record) {
+            Ok(bytes) => {
+                use std::io::Write;
+                let file_path = coordinator_dir.join("events.postcard");
+                if let Err(e) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&file_path)
+                    .and_then(|mut f| f.write_all(&bytes))
+                {
+                    warn!("Failed to write coordinator record: {e}");
+                }
+            }
+            Err(e) => warn!("Failed to serialize coordinator record: {e}"),
         }
     }
 
