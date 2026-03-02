@@ -4,11 +4,13 @@ mod dummy;
 mod errors;
 mod file_extensions;
 mod gcs;
+mod gcs_signed;
 pub mod http;
 mod hub;
 mod local;
 mod preprocessed;
 mod remote;
+pub mod run_down;
 mod traits;
 mod weighted;
 
@@ -21,6 +23,7 @@ pub use gcs::{
     GcsCheckpointManifest, GcsManifestMetadata, GcsUploadInfo, ManifestFileEntry, ManifestMetadata,
     download_model_from_gcs_async, download_model_from_gcs_sync, upload_to_gcs,
 };
+pub use gcs_signed::{download_model_from_gcs_signed_async, upload_to_gcs_signed};
 pub use hub::{
     HubUploadInfo, download_dataset_repo_async, download_dataset_repo_sync,
     download_model_repo_async, download_model_repo_sync, upload_to_hub,
@@ -29,5 +32,6 @@ pub use local::LocalDataProvider;
 pub use parquet::record::{ListAccessor, MapAccessor, RowAccessor};
 pub use preprocessed::PreprocessedDataProvider;
 pub use remote::{DataProviderTcpClient, DataProviderTcpServer, DataServerTui};
+pub use run_down::RunDownClient;
 pub use traits::{LengthKnownDataProvider, TokenizedData, TokenizedDataProvider};
 pub use weighted::{WeightedDataProvider, http::WeightedHttpProvidersConfig};

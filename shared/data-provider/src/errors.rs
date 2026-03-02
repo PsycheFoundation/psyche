@@ -27,6 +27,9 @@ pub enum UploadError {
 
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+
+    #[error("run-down service error: {0}")]
+    RunDown(String),
 }
 
 #[derive(Error, Debug)]
@@ -42,4 +45,7 @@ pub enum DownloadError {
 
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+
+    #[error("run-down service error: {0}")]
+    RunDown(String),
 }
