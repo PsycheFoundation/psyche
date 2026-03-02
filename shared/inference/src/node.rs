@@ -6,7 +6,7 @@ use anyhow::{Context, Result, anyhow};
 use pyo3::prelude::*;
 use tracing::{debug, info, warn};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InferenceNode {
     engine_id: String,
     model_name: String,
@@ -70,14 +70,41 @@ impl InferenceNode {
 
     /// Run inference on a request
     pub fn inference(&self, request: &InferenceRequest) -> Result<InferenceResponse> {
+        self.inference_internal(request, None::<fn(vllm::StreamChunk)>)
+    }
+
+    /// Run inference on a request with streaming support
+    ///
+    /// If a callback is provided, it will be invoked for each chunk of generated text.
+    pub fn inference_streaming<F>(
+        &self,
+        request: &InferenceRequest,
+        callback: F,
+    ) -> Result<InferenceResponse>
+    where
+        F: FnMut(vllm::StreamChunk),
+    {
+        self.inference_internal(request, Some(callback))
+    }
+
+    /// Internal inference implementation that supports both streaming and non-streaming
+    fn inference_internal<F>(
+        &self,
+        request: &InferenceRequest,
+        stream_callback: Option<F>,
+    ) -> Result<InferenceResponse>
+    where
+        F: FnMut(vllm::StreamChunk),
+    {
         if !self.initialized {
             return Err(anyhow!("Engine not initialized. Call initialize() first."));
         }
 
         debug!(
-            "Running inference for request: {} with {} messages",
+            "Running inference for request: {} with {} messages (streaming: {})",
             request.request_id,
-            request.messages.len()
+            request.messages.len(),
+            stream_callback.is_some()
         );
 
         Python::with_gil(|py| {
@@ -88,6 +115,7 @@ impl InferenceNode {
                 Some(request.temperature),
                 Some(request.top_p),
                 Some(request.max_tokens as i32),
+                stream_callback,
             )
             .context("Failed to run inference")?;
 
