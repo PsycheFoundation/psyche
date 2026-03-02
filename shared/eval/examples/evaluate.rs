@@ -248,7 +248,7 @@ fn run_data_parallel(
                         },
                         None,
                         None,
-                        Some(data_parallelism as i64),
+                        None,
                     )?) as Box<dyn CausalLM>
                 }
 
