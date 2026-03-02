@@ -82,20 +82,10 @@ jobs:
           df -h
 
           sleep 500
-          # Calculate the derivation hash
-          echo "Calculating derivation path"
-          DRV_PATH=$(nix eval --raw .#docker-psyche-solana-test-client.drvPath)
-          echo "Derivation path: $DRV_PATH"
 
-          OUT_PATH=$(nix derivation show $DRV_PATH | jq -r '.[].outputs.out.path')
-          echo "Output path: $OUT_PATH"
-
-          # download from Garnix cache first
+          # download from Garnix cache (falls back to local build if not cached)
           echo "Attempting to fetch from Garnix cache"
-          nix-store --realise $OUT_PATH \
-            --option substitute true \
-            --option extra-substituters "https://cache.garnix.io" \
-            --option extra-trusted-public-keys "cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g="
+          OUT_PATH=$(nix build .#docker-psyche-solana-test-client --no-link --print-out-paths)
 
           # Load the image into Docker
           $OUT_PATH | docker load
