@@ -103,6 +103,11 @@ struct StartArgs {
 
     #[clap(long, env)]
     eval_tasks: Option<String>,
+
+    /// Each client writes events to a subdir of this path, named after its node ID.
+    /// Pass this dir to `observer --events-dir` to inspect the run.
+    #[clap(long)]
+    events_dir: Option<PathBuf>,
 }
 
 fn validate_num_clients(s: &str) -> Result<usize> {
@@ -262,6 +267,10 @@ fn main() -> Result<()> {
             );
             if data_path.exists() {
                 server_cmd.push_str(&format!(" --data-config {}", data_path.display()));
+            }
+
+            if let Some(dir) = &start_args.events_dir {
+                server_cmd.push_str(&format!(" --events-dir {}", dir.display()));
             }
 
             println!("starting server: {server_cmd:?}");
@@ -462,6 +471,11 @@ fn start_client(
 
     if let Some(evals) = &args.eval_tasks {
         cmd.push(format!(" --eval-tasks {evals}"))
+    }
+
+    if let Some(dir) = &args.events_dir {
+        cmd.push(" --events-dir ");
+        cmd.push(dir);
     }
 
     if print {

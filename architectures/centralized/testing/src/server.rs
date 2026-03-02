@@ -105,6 +105,7 @@ impl CoordinatorServer {
             None,
             None,
             None,
+            None,
             Some(WARMUP_TIME),
             true,
         )

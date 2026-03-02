@@ -643,6 +643,9 @@ fn init_logging_core(
         );
     }
 
+    // Forward error! events to the EventStore so they appear in event files.
+    layers.push(psyche_event_sourcing::EventStoreTracingLayer.boxed());
+
     // build all into one subscriber, set as global default
     let subscriber = tracing_subscriber::registry().with(layers);
     tracing::subscriber::set_global_default(subscriber)?;

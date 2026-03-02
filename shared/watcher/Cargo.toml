@@ -10,3 +10,4 @@ psyche-tui.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 serde.workspace = true
+postcard.workspace = true

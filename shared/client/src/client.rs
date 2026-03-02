@@ -7,6 +7,8 @@ use anyhow::anyhow;
 use anyhow::{Error, Result, bail};
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
 use psyche_core::{IntegrationTestLogMarker, NodeIdentity};
+use psyche_event_sourcing::event;
+
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
     AuthenticatableIdentity, DownloadComplete, DownloadSchedulerHandle, DownloadType, EndpointId,
@@ -21,6 +23,7 @@ use iroh_blobs::api::Tag;
 use rand::{Rng, RngCore, seq::SliceRandom};
 use std::{
     collections::BTreeSet,
+    hash::{DefaultHasher, Hash, Hasher},
     marker::PhantomData,
     sync::Arc,
     time::{Duration, SystemTime},
@@ -157,16 +160,37 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                         },
 
                         state = watcher.poll_next() => {
-                            let (old_state, new_state) = state?;
-                            let old_run_state = old_state
-                                .map(|s| s.run_state.to_string())
+                            let (old_state, (new_state, new_state_hash)) = state?;
+                            if let Some((_, old_state_hash)) = old_state.as_ref() {
+                                if old_state_hash == new_state_hash {
+                                    continue;
+                                }
+                            }
+                            {
+                                let mut hasher = DefaultHasher::new();
+                                new_state_hash.hash(&mut hasher);
+                                let new_state_hash = hasher.finish().to_string();
+                                event!(coordinator::CoordinatorStateChanged { new_state_hash });
+                            }
+
+                            let old_run_state = old_state.as_ref()
+                                .map(|s| s.0.run_state).unwrap_or_default();
+
+                            let old_run_state_str = old_state.as_ref()
+                                .map(|s| s.0.run_state.to_string())
                                 .unwrap_or_else(|| String::from(" - "));
 
-                            if old_state.map(|s| s.run_state).unwrap_or_default() != new_state.run_state {
+                            if old_run_state != new_state.run_state {
+                                event!(client::StateChanged {
+                                    old_state: old_run_state,
+                                    new_state: new_state.run_state,
+                                    epoch: new_state.progress.epoch as u64,
+                                    step: new_state.progress.step as u64,
+                                });
                                 info!(
                                     integration_test_log_marker = %IntegrationTestLogMarker::StateChange,
                                     client_id = %identity,
-                                    old_state = old_run_state,
+                                    old_state = old_run_state_str,
                                     new_state = %new_state.run_state,
                                     epoch = new_state.progress.epoch,
                                     step = new_state.progress.step,
@@ -182,7 +206,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             allowlist.set(run_participating_endpoint_ids);
                             ensure_gossip_connected(new_state, &mut p2p, &mut last_gossip_connection_time);
 
-                            if old_state.map(|s| s.run_state) != Some(new_state.run_state) && new_state.run_state == RunState::RoundTrain {
+                            if old_state.map(|s| s.0.run_state) != Some(new_state.run_state) && new_state.run_state == RunState::RoundTrain {
                                 trace!("Updating p2p");
                                 let last_needed_step_blobs = new_state.progress.step.saturating_sub(2);
                                 if let Err(err) = p2p.remove_staled_tags(last_needed_step_blobs).await {
@@ -242,9 +266,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 match &broadcast.data {
                                                     BroadcastType::TrainingResult(training_result) => {
                                                         trace!("Got training result gossip message from {from}: step {} batch id {}", broadcast.step, training_result.batch_id);
+                                                        event!(p2p::GossipTrainingResultReceived {
+                                                            blob: training_result.ticket.hash(),
+                                                            batch_id: training_result.batch_id,
+                                                        });
                                                     }
                                                     BroadcastType::Finished(_) => {
                                                         trace!("Got finished gossip message from {from}: step {}", broadcast.step);
+                                                        event!(p2p::GossipFinishedReceived);
                                                     }
                                                 }
                                                 let apply_result = run.apply_message(client.id, broadcast)?;
@@ -380,6 +409,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 }
                                             },
                                             Ok(ticket) => {
+                                                event!(warmup::P2PParamInfoResponse);
                                                 info!(parameter = parameter_name, hash = %ticket.hash(), "Sending requested model parameter blob ticket");
                                                 if let Err(e) = protocol_req_tx.send(Ok(ticket)) {
                                                     warn!("Could not send model parameter {parameter_name} blob ticket. Error: {e:?}");
@@ -396,6 +426,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                                 }
                                             },
                                             Ok(config_ticket) => {
+                                                event!(warmup::P2PParamInfoResponse);
                                                 info!(hash = %config_ticket.hash(), "Sending requested model config blob ticket");
                                                 if let Err(e) = protocol_req_tx.send(Ok(config_ticket)) {
                                                     warn!("Could not send model config blob ticket. Error: {e:?}");
@@ -421,6 +452,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                             })};
 
                             p2p.broadcast(&training_result)?;
+                            event!(p2p::GossipFinishedSent);
                             broadcasts.push((training_result.clone(), step));
 
                             // simulate us recving it & apply like anyone else's
@@ -444,10 +476,18 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                             let signature = network_identity.raw_p2p_sign(&private_key, &commitment_data_hash);
                             let commitment = Commitment { data_hash: commitment_data_hash, signature};
+
+                            let hash = ticket.hash();
+                            event!(p2p::BlobAddedToStore {
+                                blob: hash,
+                                model_parameter: format!("distro-result-batch-{batch_id}"),
+                            });
                             let training_result = Broadcast { step, proof, nonce: rand::rng().random(), commitment, data: BroadcastType::TrainingResult(TrainingResult { batch_id, ticket })};
 
                             p2p.broadcast(&training_result)?;
                             broadcasts.push((training_result.clone(), step));
+
+                            event!(p2p::GossipTrainingResultSent);
 
                             // simulate us recving it & apply like anyone else's
                             run.apply_message(identity, training_result)?;
@@ -558,6 +598,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
 
                                     let router = router.clone();
 
+                                    event!(warmup::P2PParamInfoRequest { from: router.endpoint().id() });
                                     match blob_ticket_param_request_task(
                                         ModelRequestType::Parameter(param_name.clone()),
                                         router,
