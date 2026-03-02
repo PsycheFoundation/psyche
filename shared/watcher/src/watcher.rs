@@ -1,23 +1,20 @@
 use crate::traits::Backend;
 use anyhow::Result;
 use psyche_coordinator::{Client, Coordinator, RunState};
-use psyche_core::NodeIdentity;
 use std::collections::HashMap;
 
-pub struct BackendWatcher<T, B>
+pub struct BackendWatcher<B>
 where
-    T: NodeIdentity,
-    B: Backend<T> + Send + 'static,
+    B: Backend + Send + 'static,
 {
     backend: B,
-    client_lookup: HashMap<[u8; 32], Client<T>>,
-    state: Option<Coordinator<T>>,
+    client_lookup: HashMap<[u8; 32], Client>,
+    state: Option<Coordinator>,
 }
 
-impl<T, B> BackendWatcher<T, B>
+impl<B> BackendWatcher<B>
 where
-    T: NodeIdentity,
-    B: Backend<T> + Send + 'static,
+    B: Backend + Send + 'static,
 {
     pub fn new(backend: B) -> Self {
         Self {
@@ -32,7 +29,7 @@ where
     /// This method is cancel safe. If `poll_next` is used as the event in a
     /// [`tokio::select!`](crate::select) statement and some other branch
     /// completes first, it is guaranteed that no state changes are missed.
-    pub async fn poll_next(&mut self) -> Result<(Option<Coordinator<T>>, &Coordinator<T>)> {
+    pub async fn poll_next(&mut self) -> Result<(Option<Coordinator>, &Coordinator)> {
         let new_state = self.backend.wait_for_new_state().await?;
         if new_state.run_state == RunState::Warmup {
             self.client_lookup = HashMap::from_iter(
@@ -49,7 +46,7 @@ where
         Ok((old_state, new_state))
     }
 
-    pub fn coordinator_state(&self) -> Option<Coordinator<T>> {
+    pub fn coordinator_state(&self) -> Option<Coordinator> {
         self.state
     }
 
@@ -61,7 +58,7 @@ where
         &mut self.backend
     }
 
-    pub fn get_client_for_p2p_public_key(&self, p2p_public_key: &[u8; 32]) -> Option<&Client<T>> {
+    pub fn get_client_for_p2p_public_key(&self, p2p_public_key: &[u8; 32]) -> Option<&Client> {
         self.client_lookup.get(p2p_public_key)
     }
 }

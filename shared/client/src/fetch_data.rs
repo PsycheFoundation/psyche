@@ -5,7 +5,6 @@ use psyche_modeling::{Batch, BatchData, BatchDataCPU};
 use psyche_network::AuthenticatableIdentity;
 use std::{
     collections::{BTreeMap, HashSet},
-    marker::PhantomData,
     sync::Arc,
     time::Duration,
 };
@@ -22,28 +21,26 @@ pub type BatchIdSet = HashSet<BatchId>;
 const MAX_RETRIES: u32 = 7;
 const BASE_DELAY_MS: u64 = 2000;
 
-pub struct DataFetcher<T: NodeIdentity, A: AuthenticatableIdentity> {
+pub struct DataFetcher<A: AuthenticatableIdentity> {
     data_provider: Arc<Mutex<DataProvider<A>>>,
     active_fetch_task: Option<(BatchStep, JoinHandle<()>)>,
     buffer_size: usize,
-    _phantom: PhantomData<T>,
 }
 
-impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
+impl<A: AuthenticatableIdentity + 'static> DataFetcher<A> {
     pub fn new(data_provider: DataProvider<A>, buffer_size: usize) -> Self {
         Self {
             data_provider: Arc::new(Mutex::new(data_provider)),
             active_fetch_task: None,
             buffer_size,
-            _phantom: Default::default(),
         }
     }
 
     pub fn fetch_data(
         &mut self,
-        state: &Coordinator<T>,
-        data_assignments: &BTreeMap<BatchId, T>,
-        identity: &T,
+        state: &Coordinator,
+        data_assignments: &BTreeMap<BatchId, NodeIdentity>,
+        identity: &NodeIdentity,
     ) -> TrainingDataForStep {
         let step = state.progress.step;
 

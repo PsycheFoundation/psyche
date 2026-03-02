@@ -1,11 +1,10 @@
-use anchor_lang::prelude::*;
 use anyhow::{Result, bail};
 use async_trait::async_trait;
 use bytemuck::Zeroable;
 use futures::future::try_join_all;
 use parquet::data_type::AsBytes;
 use psyche_coordinator::{Coordinator, HealthChecks, model};
-use psyche_core::{BatchId, NodeIdentity};
+use psyche_core::BatchId;
 use psyche_data_provider::{
     DataProviderTcpClient, DataProviderTcpServer, LengthKnownDataProvider, TokenizedData,
     TokenizedDataProvider,
@@ -17,15 +16,14 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use tracing::info;
-use ts_rs::TS;
 
 // Simulated backend for demonstration
 #[allow(dead_code)]
-struct DummyBackend<T: NodeIdentity>(Vec<T>);
+struct DummyBackend;
 
 #[async_trait]
-impl<T: NodeIdentity> WatcherBackend<T> for DummyBackend<T> {
-    async fn wait_for_new_state(&mut self) -> anyhow::Result<Coordinator<T>> {
+impl WatcherBackend for DummyBackend {
+    async fn wait_for_new_state(&mut self) -> anyhow::Result<Coordinator> {
         Ok(Coordinator::zeroed())
     }
 
@@ -33,7 +31,7 @@ impl<T: NodeIdentity> WatcherBackend<T> for DummyBackend<T> {
         bail!("Data provider does not send witnesses");
     }
 
-    async fn send_health_check(&mut self, _health_checks: HealthChecks<T>) -> anyhow::Result<()> {
+    async fn send_health_check(&mut self, _health_checks: HealthChecks) -> anyhow::Result<()> {
         bail!("Data provider does not send health check");
     }
 
@@ -42,20 +40,13 @@ impl<T: NodeIdentity> WatcherBackend<T> for DummyBackend<T> {
     }
 }
 
-#[derive(
-    Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq, Default, Copy, Zeroable, TS,
-)]
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq, Copy)]
 struct DummyNodeIdentity(u64);
 
 impl Display for DummyNodeIdentity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}", self.0))?;
         Ok(())
-    }
-}
-impl NodeIdentity for DummyNodeIdentity {
-    fn get_p2p_public_key(&self) -> &[u8; 32] {
-        todo!()
     }
 }
 
@@ -97,22 +88,6 @@ impl AsRef<[u8]> for DummyNodeIdentity {
     }
 }
 
-impl AnchorSerialize for DummyNodeIdentity {
-    fn serialize<W: std::io::Write>(&self, _: &mut W) -> std::io::Result<()> {
-        unimplemented!()
-    }
-}
-
-impl AnchorDeserialize for DummyNodeIdentity {
-    fn deserialize_reader<R: std::io::Read>(_: &mut R) -> std::io::Result<Self> {
-        unimplemented!()
-    }
-}
-
-impl anchor_lang::Space for DummyNodeIdentity {
-    const INIT_SPACE: usize = 0;
-}
-
 struct DummyDataProvider;
 impl TokenizedDataProvider for DummyDataProvider {
     async fn get_samples(&mut self, _data_ids: BatchId) -> anyhow::Result<Vec<TokenizedData>> {
@@ -133,11 +108,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = logging().init()?;
 
     let clients: Vec<_> = (0..4).map(DummyNodeIdentity).collect();
-    let backend = DummyBackend(clients.clone());
+    let backend = DummyBackend;
 
     tokio::spawn(async move {
         let local_data_provider = DummyDataProvider;
-        let mut server = DataProviderTcpServer::<_, DummyNodeIdentity, _, _>::start(
+        let mut server = DataProviderTcpServer::<DummyNodeIdentity, _, _>::start(
             local_data_provider,
             backend,
             5740,

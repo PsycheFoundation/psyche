@@ -1,7 +1,4 @@
-use anchor_lang::{AnchorDeserialize, AnchorSerialize};
-use bytemuck::Zeroable;
 use psyche_coordinator::{Coordinator, HealthChecks, model};
-use psyche_core::NodeIdentity;
 use psyche_network::{
     AuthenticatableIdentity, EndpointId, FromSignedBytesError, PublicKey, SecretKey, SignedMessage,
 };
@@ -14,18 +11,18 @@ use ts_rs::TS;
 pub enum ClientToServerMessage {
     Join { run_id: String },
     Witness(Box<OpportunisticData>),
-    HealthCheck(HealthChecks<ClientId>),
+    HealthCheck(HealthChecks),
     Checkpoint(model::Checkpoint),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerToClientMessage {
-    Coordinator(Box<Coordinator<ClientId>>),
+    Coordinator(Box<Coordinator>),
 }
 
 #[derive(Serialize, Deserialize, Clone, Hash, PartialEq, Eq, Debug, Copy, TS)]
 #[ts(type = "string")]
-pub struct ClientId(EndpointId);
+pub struct ClientId(pub(crate) EndpointId);
 
 impl Default for ClientId {
     fn default() -> Self {
@@ -37,18 +34,6 @@ impl Display for ClientId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}", self.0.fmt_short()))?;
         Ok(())
-    }
-}
-
-impl NodeIdentity for ClientId {
-    fn get_p2p_public_key(&self) -> &[u8; 32] {
-        self.0.as_bytes()
-    }
-}
-
-unsafe impl Zeroable for ClientId {
-    fn zeroed() -> Self {
-        unsafe { core::mem::zeroed() }
     }
 }
 
@@ -101,18 +86,9 @@ impl AsRef<[u8]> for ClientId {
     }
 }
 
-impl AnchorSerialize for ClientId {
-    fn serialize<W: std::io::Write>(&self, _: &mut W) -> std::io::Result<()> {
-        unimplemented!()
+impl From<ClientId> for psyche_core::NodeIdentity {
+    fn from(id: ClientId) -> Self {
+        let key = *id.0.as_bytes();
+        psyche_core::NodeIdentity::from_single_key(key)
     }
-}
-
-impl AnchorDeserialize for ClientId {
-    fn deserialize_reader<R: std::io::Read>(_: &mut R) -> std::io::Result<Self> {
-        unimplemented!()
-    }
-}
-
-impl anchor_lang::Space for ClientId {
-    const INIT_SPACE: usize = 0;
 }

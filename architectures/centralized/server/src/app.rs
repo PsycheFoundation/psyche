@@ -7,7 +7,7 @@ use psyche_coordinator::{
     SOLANA_MAX_NUM_CLIENTS, TickResult,
 };
 
-use psyche_core::{FixedVec, Shuffle, SizedIterator, TokenSize};
+use psyche_core::{FixedVec, NodeIdentity, Shuffle, SizedIterator, TokenSize};
 use psyche_data_provider::{
     DataProviderTcpServer, DataServerTui, LocalDataProvider, download_model_from_gcs_async,
     download_model_repo_async,
@@ -47,7 +47,7 @@ type TabsData = <Tabs as CustomWidget>::Data;
 
 struct Backend {
     net_server: TcpServer<ClientId, ClientToServerMessage, ServerToClientMessage>,
-    pending_clients: HashSet<ClientId>,
+    pending_clients: HashSet<NodeIdentity>,
 }
 
 impl Backend {
@@ -57,19 +57,19 @@ impl Backend {
 }
 
 struct ChannelCoordinatorBackend {
-    rx: Receiver<Coordinator<ClientId>>,
+    rx: Receiver<Coordinator>,
 }
 
 impl ChannelCoordinatorBackend {
-    fn new() -> (Sender<Coordinator<ClientId>>, Self) {
+    fn new() -> (Sender<Coordinator>, Self) {
         let (tx, rx) = channel(10);
         (tx, Self { rx })
     }
 }
 
 #[async_trait]
-impl psyche_watcher::Backend<ClientId> for ChannelCoordinatorBackend {
-    async fn wait_for_new_state(&mut self) -> Result<Coordinator<ClientId>> {
+impl psyche_watcher::Backend for ChannelCoordinatorBackend {
+    async fn wait_for_new_state(&mut self) -> Result<Coordinator> {
         Ok(self.rx.recv().await.expect("channel closed? :("))
     }
 
@@ -77,7 +77,7 @@ impl psyche_watcher::Backend<ClientId> for ChannelCoordinatorBackend {
         bail!("Server does not send witnesses");
     }
 
-    async fn send_health_check(&mut self, _health_checks: HealthChecks<ClientId>) -> Result<()> {
+    async fn send_health_check(&mut self, _health_checks: HealthChecks) -> Result<()> {
         bail!("Server does not send health checks");
     }
 
@@ -86,17 +86,16 @@ impl psyche_watcher::Backend<ClientId> for ChannelCoordinatorBackend {
     }
 }
 
-type DataServer =
-    DataProviderTcpServer<ClientId, ClientId, LocalDataProvider, ChannelCoordinatorBackend>;
+type DataServer = DataProviderTcpServer<ClientId, LocalDataProvider, ChannelCoordinatorBackend>;
 
 pub struct App {
     cancel: CancellationToken,
     tx_tui_state: Option<Sender<TabsData>>,
     tick_interval: Interval,
     update_tui_interval: Interval,
-    coordinator: Coordinator<ClientId>,
+    coordinator: Coordinator,
     backend: Backend,
-    training_data_server: Option<(Sender<Coordinator<ClientId>>, DataServer)>,
+    training_data_server: Option<(Sender<Coordinator>, DataServer)>,
     save_state_dir: Option<PathBuf>,
     original_warmup_time: u64,
     withdraw_on_disconnect: bool,
@@ -109,11 +108,11 @@ pub struct App {
 /// to facilitate testing and debugging.
 #[allow(dead_code)]
 impl App {
-    pub fn get_clients(&self) -> FixedVec<Client<ClientId>, SOLANA_MAX_NUM_CLIENTS> {
+    pub fn get_clients(&self) -> FixedVec<Client, SOLANA_MAX_NUM_CLIENTS> {
         self.coordinator.epoch_state.clients
     }
 
-    pub fn get_pending_clients(&self) -> HashSet<ClientId> {
+    pub fn get_pending_clients(&self) -> HashSet<NodeIdentity> {
         self.backend.pending_clients.clone()
     }
 
@@ -143,7 +142,7 @@ impl App {
         self.backend.port()
     }
 
-    pub fn get_coordinator(&self) -> Coordinator<ClientId> {
+    pub fn get_coordinator(&self) -> Coordinator {
         self.coordinator
     }
 }
@@ -160,7 +159,7 @@ impl App {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         tui: bool,
-        mut coordinator: Coordinator<ClientId>,
+        mut coordinator: Coordinator,
         data_server_config: Option<DataServerInfo>,
         coordinator_server_port: Option<u16>,
         save_state_dir: Option<PathBuf>,
@@ -356,7 +355,8 @@ impl App {
     }
 
     fn on_disconnect(&mut self, from: ClientId) -> Result<()> {
-        self.backend.pending_clients.remove(&from);
+        let from_identity: NodeIdentity = from.into();
+        self.backend.pending_clients.remove(&from_identity);
 
         if self.withdraw_on_disconnect {
             let position = self
@@ -364,7 +364,7 @@ impl App {
                 .epoch_state
                 .clients
                 .iter()
-                .position(|x| x.id == from);
+                .position(|x| x.id == from_identity);
 
             if let Some(index) = position {
                 match self.coordinator.withdraw(index as u64) {
@@ -378,13 +378,14 @@ impl App {
     }
 
     async fn on_client_message(&mut self, from: ClientId, event: ClientToServerMessage) {
+        let from_identity: NodeIdentity = from.into();
         let broadcast = match event {
             ClientToServerMessage::Join { run_id } => {
                 // TODO: check whitelist
                 let coord_run_id = String::from(&self.coordinator.run_id);
                 if coord_run_id == run_id {
                     info!("added pending client {from}");
-                    self.backend.pending_clients.insert(from);
+                    self.backend.pending_clients.insert(from.into());
                 } else {
                     info!("{from:?} tried to join unknown run {run_id}");
                 }
@@ -395,9 +396,9 @@ impl App {
                 if let Err(error) = match *witness {
                     OpportunisticData::WitnessStep(witness, _witness_metadata) => self
                         .coordinator
-                        .witness(&from, witness, Self::get_timestamp()),
+                        .witness(&from_identity, witness, Self::get_timestamp()),
                     OpportunisticData::WarmupStep(witness) => self.coordinator.warmup_witness(
-                        &from,
+                        &from_identity,
                         witness,
                         Self::get_timestamp(),
                         rand::rng().next_u64(),
@@ -408,7 +409,7 @@ impl App {
                 self.coordinator.run_state != state_before
             }
             ClientToServerMessage::HealthCheck(health_checks) => {
-                match self.coordinator.health_check(&from, health_checks) {
+                match self.coordinator.health_check(&from_identity, health_checks) {
                     Ok(dropped) => {
                         info!("Dropped {} clients from health check", dropped);
                         dropped > 0
@@ -426,11 +427,12 @@ impl App {
                     .epoch_state
                     .clients
                     .iter()
-                    .position(|x| x.id == from);
+                    .position(|x| x.id == from_identity);
                 match position {
                     Some(index) => {
                         if let Err(error) =
-                            self.coordinator.checkpoint(&from, index as u64, checkpoint)
+                            self.coordinator
+                                .checkpoint(&from_identity, index as u64, checkpoint)
                         {
                             warn!("Error when processing checkpoint: {error}");
                         }
@@ -515,13 +517,13 @@ impl App {
         }
     }
 
-    fn reset_ephemeral(coordinator: &mut Coordinator<ClientId>) {
+    fn reset_ephemeral(coordinator: &mut Coordinator) {
         coordinator.run_state = RunState::WaitingForMembers;
         for elem in coordinator.epoch_state.clients.iter_mut() {
-            *elem = Client::<ClientId>::default();
+            *elem = Client::default();
         }
         for elem in coordinator.epoch_state.exited_clients.iter_mut() {
-            *elem = Client::<ClientId>::default();
+            *elem = Client::default();
         }
     }
 

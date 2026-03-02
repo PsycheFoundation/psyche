@@ -8,11 +8,11 @@ use psyche_network::{AuthenticatableIdentity, FromSignedBytesError, SecretKey, S
 use std::sync::Arc;
 
 #[derive(Clone, Debug, Copy)]
-pub struct NetworkIdentity(psyche_solana_coordinator::ClientId);
+pub struct NetworkIdentity(pub NodeIdentity);
 
 impl AsRef<[u8]> for NetworkIdentity {
     fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
+        &self.0.signer
     }
 }
 
@@ -56,12 +56,9 @@ impl AuthenticatableIdentity for NetworkIdentity {
                 decoded_challenge,
             ));
         }
-        let mut owner: [u8; 32] = [0; 32];
-        owner.copy_from_slice(pubkey);
-        Ok(Self(psyche_solana_coordinator::ClientId {
-            signer: owner.into(),
-            p2p_identity: *p2p_identity.as_bytes(),
-        }))
+        let mut signer: [u8; 32] = [0; 32];
+        signer.copy_from_slice(pubkey);
+        Ok(Self(NodeIdentity::new(signer, *p2p_identity.as_bytes())))
     }
 
     fn to_signed_challenge_bytes(
@@ -69,31 +66,31 @@ impl AuthenticatableIdentity for NetworkIdentity {
         private_key: &Self::PrivateKey,
         challenge: [u8; 32],
     ) -> Vec<u8> {
-        assert_eq!(private_key.0.pubkey(), self.0.signer);
+        assert_eq!(private_key.0.pubkey().to_bytes(), self.0.signer);
         assert_eq!(private_key.1.public().as_bytes(), &self.0.p2p_identity);
         let challenge = private_key.0.sign_message(&challenge);
         SignedMessage::<Vec<u8>>::sign_and_encode(
             &private_key.1,
-            &[challenge.as_ref(), &self.0.signer.to_bytes()].concat(),
+            &[challenge.as_ref(), &self.0.signer].concat(),
         )
         .expect("alloc error")
         .to_vec()
     }
 
     fn get_p2p_public_key(&self) -> &[u8; 32] {
-        self.0.get_p2p_public_key()
+        &self.0.p2p_identity
     }
 
     fn raw_p2p_sign(&self, private_key: &Self::PrivateKey, bytes: &[u8]) -> [u8; 64] {
-        assert_eq!(private_key.0.pubkey(), self.0.signer);
+        assert_eq!(private_key.0.pubkey().to_bytes(), self.0.signer);
         assert_eq!(private_key.1.public().as_bytes(), &self.0.p2p_identity);
         let signature = private_key.1.sign(bytes);
         signature.to_bytes()
     }
 }
 
-impl From<psyche_solana_coordinator::ClientId> for NetworkIdentity {
-    fn from(value: psyche_solana_coordinator::ClientId) -> Self {
+impl From<NodeIdentity> for NetworkIdentity {
+    fn from(value: NodeIdentity) -> Self {
         Self(value)
     }
 }
@@ -116,12 +113,9 @@ mod tests {
         let secret_key = SecretKey::generate(&mut rand::rng());
         let private_key = (keypair.clone(), secret_key.clone());
 
-        let client_id = psyche_solana_coordinator::ClientId {
-            signer: keypair.pubkey(),
-            p2p_identity: *secret_key.public().as_bytes(),
-        };
+        let id = NodeIdentity::new(keypair.pubkey().to_bytes(), *secret_key.public().as_bytes());
 
-        let network_identity = NetworkIdentity(client_id);
+        let network_identity = NetworkIdentity(id);
 
         let challenge = generate_random_challenge();
 
@@ -144,12 +138,9 @@ mod tests {
         let secret_key = SecretKey::generate(&mut rand::rng());
         let private_key = (keypair.clone(), secret_key.clone());
 
-        let client_id = psyche_solana_coordinator::ClientId {
-            signer: keypair.pubkey(),
-            p2p_identity: *secret_key.public().as_bytes(),
-        };
+        let id = NodeIdentity::new(keypair.pubkey().to_bytes(), *secret_key.public().as_bytes());
 
-        let network_identity = NetworkIdentity(client_id);
+        let network_identity = NetworkIdentity(id);
         let challenge1 = generate_random_challenge();
         let challenge2 = generate_random_challenge();
 
@@ -168,14 +159,11 @@ mod tests {
     fn test_network_identity_display() {
         let keypair = Arc::new(Keypair::new());
         let secret_key = SecretKey::generate(&mut rand::rng());
-        let client_id = psyche_solana_coordinator::ClientId {
-            signer: keypair.pubkey(),
-            p2p_identity: *secret_key.public().as_bytes(),
-        };
-        let network_identity = NetworkIdentity(client_id);
+        let id = NodeIdentity::new(keypair.pubkey().to_bytes(), *secret_key.public().as_bytes());
+        let network_identity = NetworkIdentity(id);
 
         let display_string = format!("{network_identity}");
-        assert_eq!(display_string, format!("{client_id}"));
+        assert_eq!(display_string, format!("{id}"));
     }
 
     #[test]
@@ -185,17 +173,14 @@ mod tests {
 
         let keypair = Arc::new(Keypair::new());
         let secret_key = SecretKey::generate(&mut rand::rng());
-        let client_id = psyche_solana_coordinator::ClientId {
-            signer: keypair.pubkey(),
-            p2p_identity: *secret_key.public().as_bytes(),
-        };
-        let network_identity = NetworkIdentity(client_id);
+        let id = NodeIdentity::new(keypair.pubkey().to_bytes(), *secret_key.public().as_bytes());
+        let network_identity = NetworkIdentity(id);
 
         let mut hasher1 = DefaultHasher::new();
         let mut hasher2 = DefaultHasher::new();
 
         network_identity.hash(&mut hasher1);
-        client_id.hash(&mut hasher2);
+        id.hash(&mut hasher2);
 
         assert_eq!(hasher1.finish(), hasher2.finish());
     }

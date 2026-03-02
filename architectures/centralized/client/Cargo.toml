@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 psyche-centralized-shared = { path = "../shared" }
+psyche-core.workspace = true
 psyche-client.workspace = true
 psyche-coordinator.workspace = true
 psyche-eval.workspace = true

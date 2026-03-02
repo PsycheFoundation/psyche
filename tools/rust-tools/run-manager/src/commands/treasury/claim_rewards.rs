@@ -105,7 +105,7 @@ impl Command for CommandTreasurerClaimRewards {
             .get_coordinator_account(&treasurer_run_state.coordinator_account)
             .await?;
         for client in coordinator_account_state.state.clients_state.clients {
-            if user == client.id.signer {
+            if user.to_bytes() == client.id.signer {
                 client_earned_points = client.earned;
                 break;
             }

@@ -7,7 +7,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use ts_rs::TS;
 
-use crate::ClientId;
+use psyche_core::NodeIdentity;
+
 use crate::SOLANA_MAX_NUM_PENDING_CLIENTS;
 use crate::client::Client;
 use crate::program_error::ProgramError;
@@ -53,7 +54,7 @@ unsafe impl Pod for ClientsState {}
 impl ClientsState {
     pub fn get_active_clients_ids(
         &self,
-    ) -> SizedIterator<impl Iterator<Item = &ClientId>> {
+    ) -> SizedIterator<impl Iterator<Item = NodeIdentity> + '_> {
         let mut size = 0;
         for x in self.clients.iter() {
             if x.active == self.next_active {
@@ -62,16 +63,20 @@ impl ClientsState {
         }
         let iter = self.clients.iter().filter_map(move |x| {
             match x.active == self.next_active {
-                true => Some(&x.id),
+                true => Some(x.id),
                 false => None,
             }
         });
         SizedIterator::new(iter, size)
     }
 
-    pub fn find_signer(&self, signer: &Pubkey) -> Result<&ClientId> {
-        match self.clients.iter().find(|x| x.id.signer == *signer) {
-            Some(client) => Ok(&client.id),
+    pub fn find_signer(&self, signer: &Pubkey) -> Result<NodeIdentity> {
+        match self
+            .clients
+            .iter()
+            .find(|x| x.id.signer == signer.to_bytes())
+        {
+            Some(client) => Ok(client.id),
             None => err!(ProgramError::SignerNotAClient),
         }
     }

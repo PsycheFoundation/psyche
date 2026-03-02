@@ -1,4 +1,3 @@
-use psyche_core::NodeIdentity;
 use psyche_network::AuthenticatableIdentity;
 use psyche_tui::ratatui::{
     buffer::Buffer,
@@ -85,14 +84,13 @@ pub struct DataServerTuiState {
     pub given_samples: usize,
 }
 
-impl<T, A, D, W> From<&DataProviderTcpServer<T, A, D, W>> for DataServerTuiState
+impl<A, D, W> From<&DataProviderTcpServer<A, D, W>> for DataServerTuiState
 where
-    T: NodeIdentity,
     A: AuthenticatableIdentity,
     D: TokenizedDataProvider + LengthKnownDataProvider,
-    W: Backend<T>,
+    W: Backend,
 {
-    fn from(v: &DataProviderTcpServer<T, A, D, W>) -> Self {
+    fn from(v: &DataProviderTcpServer<A, D, W>) -> Self {
         Self {
             height: v
                 .state

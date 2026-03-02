@@ -38,9 +38,9 @@ use super::{
 };
 use iroh_blobs::api::Tag;
 
-pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
+pub struct RunInitConfig<A: AuthenticatableIdentity> {
     // identity for connecting to the data server
-    pub identity: T,
+    pub identity: NodeIdentity,
     pub network_identity: A,
     pub private_key: A::PrivateKey,
 
@@ -150,10 +150,10 @@ struct RawLoadedModel {
 type OneshotModelParameterSender = oneshot::Sender<HashMap<String, Tensor>>;
 type OneShotModelConfigSender = oneshot::Sender<(String, Tokenizer, Vec<String>)>;
 
-pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
-    pub init_config: RunInitConfig<T, A>,
+pub struct RunInitConfigAndIO<A: AuthenticatableIdentity> {
+    pub init_config: RunInitConfig<A>,
 
-    pub tx_health_check: UnboundedSender<HealthChecks<T>>,
+    pub tx_health_check: UnboundedSender<HealthChecks>,
     pub tx_witness: UnboundedSender<OpportunisticData>,
     pub tx_checkpoint: UnboundedSender<model::Checkpoint>,
     pub tx_model: UnboundedSender<HashMap<String, Tensor>>,
@@ -167,12 +167,9 @@ pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub metrics: Arc<ClientMetrics>,
 }
 
-impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T, A> {
+impl<A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<A> {
     /// Call this on first warmup - when we need to enter the run, we have to load the model, connect to the data server, etc
-    pub async fn init_run(
-        self,
-        state: Coordinator<T>,
-    ) -> Result<StepStateMachine<T, A>, InitRunError> {
+    pub async fn init_run(self, state: Coordinator) -> Result<StepStateMachine<A>, InitRunError> {
         let Self {
             init_config,
             tx_witness,
@@ -721,8 +718,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
         // TODO add data fetching for verifying, too..
         let data_provider = data.map_err(InitRunError::DataProviderConnect)?;
-        let data_fetcher =
-            DataFetcher::<T, A>::new(data_provider, init_config.data_parallelism * 2);
+        let data_fetcher = DataFetcher::<A>::new(data_provider, init_config.data_parallelism * 2);
 
         let trainers: Vec<Trainer> = match models {
             RawLoadedModelType::ParallelNativeModels(models) => {

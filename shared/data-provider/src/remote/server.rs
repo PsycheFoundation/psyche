@@ -1,7 +1,7 @@
 use anyhow::Result;
 use bytemuck::Zeroable;
 use psyche_coordinator::Coordinator;
-use psyche_core::{BatchId, NodeIdentity};
+use psyche_core::BatchId;
 use psyche_network::{AuthenticatableIdentity, ClientNotification, TcpServer};
 use psyche_watcher::Backend;
 use std::collections::{HashMap, HashSet};
@@ -14,28 +14,26 @@ use crate::{
 
 use super::shared::{ClientToServerMessage, RejectionReason, ServerToClientMessage};
 
-pub struct DataProviderTcpServer<T, A, D, W>
+pub struct DataProviderTcpServer<A, D, W>
 where
-    T: NodeIdentity,
     A: AuthenticatableIdentity,
     D: TokenizedDataProvider + LengthKnownDataProvider,
-    W: Backend<T>,
+    W: Backend,
 {
     tcp_server: TcpServer<A, ClientToServerMessage, ServerToClientMessage>,
     pub(crate) local_data_provider: D,
     backend: W,
-    pub(crate) state: Coordinator<T>,
+    pub(crate) state: Coordinator,
     // pub(crate) selected_data: IntervalTree<u64, T>,
     pub(crate) in_round: HashSet<[u8; 32]>,
     pub(crate) provided_sequences: HashMap<A, usize>,
 }
 
-impl<T, A, D, W> DataProviderTcpServer<T, A, D, W>
+impl<A, D, W> DataProviderTcpServer<A, D, W>
 where
-    T: NodeIdentity + 'static,
     A: AuthenticatableIdentity + 'static,
     D: TokenizedDataProvider + LengthKnownDataProvider + 'static,
-    W: Backend<T> + 'static,
+    W: Backend + 'static,
 {
     pub async fn start(local_data_provider: D, backend: W, port: u16) -> Result<Self> {
         let tcp_server = TcpServer::<A, ClientToServerMessage, ServerToClientMessage>::start(
@@ -146,14 +144,14 @@ where
         Ok(data)
     }
 
-    fn handle_new_state(&mut self, state: Coordinator<T>) {
+    fn handle_new_state(&mut self, state: Coordinator) {
         self.state = state;
         self.in_round = self
             .state
             .epoch_state
             .clients
             .iter()
-            .map(|x| *x.id.get_p2p_public_key())
+            .map(|x| x.id.p2p_identity)
             .collect();
     }
 }

@@ -8,11 +8,9 @@ use psyche_client::{
     Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
 };
 use psyche_coordinator::{Coordinator, HealthChecks, model};
+use psyche_core::NodeIdentity;
 use psyche_metrics::ClientMetrics;
-use psyche_network::{
-    AuthenticatableIdentity, EndpointId, NetworkTUIState, NetworkTui, SecretKey, TcpClient,
-    allowlist,
-};
+use psyche_network::{EndpointId, NetworkTUIState, NetworkTui, SecretKey, TcpClient, allowlist};
 use psyche_tui::logging::LoggerWidget;
 use psyche_tui::{CustomWidget, TabbedWidget};
 use psyche_watcher::{Backend as WatcherBackend, CoordinatorTui, OpportunisticData};
@@ -30,19 +28,19 @@ pub type TabsData = <Tabs as CustomWidget>::Data;
 
 pub enum ToSend {
     Witness(Box<OpportunisticData>),
-    HealthCheck(HealthChecks<ClientId>),
+    HealthCheck(HealthChecks),
     Checkpoint(model::Checkpoint),
 }
 
 struct Backend {
     allowlist: allowlist::AllowDynamic,
-    rx: mpsc::UnboundedReceiver<Coordinator<ClientId>>,
+    rx: mpsc::UnboundedReceiver<Coordinator>,
     tx: mpsc::UnboundedSender<ToSend>,
 }
 
 #[async_trait::async_trait]
-impl WatcherBackend<ClientId> for Backend {
-    async fn wait_for_new_state(&mut self) -> Result<Coordinator<ClientId>> {
+impl WatcherBackend for Backend {
+    async fn wait_for_new_state(&mut self) -> Result<Coordinator> {
         let new_state = self
             .rx
             .recv()
@@ -53,7 +51,7 @@ impl WatcherBackend<ClientId> for Backend {
                 .epoch_state
                 .clients
                 .iter()
-                .map(|c| EndpointId::from_bytes(c.id.get_p2p_public_key()).unwrap()),
+                .map(|c| EndpointId::from_bytes(&c.id.p2p_identity).unwrap()),
         );
         Ok(new_state)
     }
@@ -64,7 +62,7 @@ impl WatcherBackend<ClientId> for Backend {
             .send(ToSend::Witness(Box::new(opportunistic_data)))?)
     }
 
-    async fn send_health_check(&mut self, health_checks: HealthChecks<ClientId>) -> Result<()> {
+    async fn send_health_check(&mut self, health_checks: HealthChecks) -> Result<()> {
         self.tx.send(ToSend::HealthCheck(health_checks))?;
         Ok(())
     }
@@ -80,7 +78,7 @@ pub struct App {
     cancel: CancellationToken,
     update_tui_interval: Interval,
     tx_tui_state: Option<Sender<TabsData>>,
-    coordinator_state: Coordinator<ClientId>,
+    coordinator_state: Coordinator,
     server_conn: TcpClient<ClientId, ClientToServerMessage, ServerToClientMessage>,
 
     metrics: Arc<ClientMetrics>,
@@ -91,12 +89,7 @@ pub async fn build_app(
     server_addr: String,
     tx_tui_state: Option<Sender<TabsData>>,
     p: TrainArgs,
-) -> Result<(
-    App,
-    allowlist::AllowDynamic,
-    NC,
-    RunInitConfig<ClientId, ClientId>,
-)> {
+) -> Result<(App, allowlist::AllowDynamic, NC, RunInitConfig<ClientId>)> {
     let metrics = Arc::new(ClientMetrics::new(
         p.metrics_local_port,
         Some(Duration::from_secs(30)),
@@ -135,7 +128,7 @@ pub async fn build_app(
     )
     .await?;
 
-    let state_options: RunInitConfig<ClientId, ClientId> = RunInitConfig {
+    let state_options: RunInitConfig<ClientId> = RunInitConfig {
         data_parallelism: p.data_parallelism,
         tensor_parallelism: p.tensor_parallelism,
         micro_batch_size: p.micro_batch_size,
@@ -147,7 +140,7 @@ pub async fn build_app(
         hub_read_token,
         hub_max_concurrent_downloads: p.hub_max_concurrent_downloads,
         wandb_info,
-        identity: identity_secret_key.public().into(),
+        identity: NodeIdentity::from_single_key(*identity_secret_key.public().as_bytes()),
         network_identity: identity_secret_key.public().into(),
         private_key: identity_secret_key,
         optim_stats_every_n_steps: p.optim_stats_steps,
@@ -174,7 +167,7 @@ impl App {
         &mut self,
         allowlist: allowlist::AllowDynamic,
         p2p: NC,
-        state_options: RunInitConfig<ClientId, ClientId>,
+        state_options: RunInitConfig<ClientId>,
     ) -> Result<()> {
         // sanity checks
         if let Some(checkpoint_config) = &state_options.checkpoint_config {
@@ -264,7 +257,7 @@ impl App {
     async fn on_server_message(
         &mut self,
         message: ServerToClientMessage,
-        tx: &mpsc::UnboundedSender<Coordinator<ClientId>>,
+        tx: &mpsc::UnboundedSender<Coordinator>,
     ) {
         match message {
             ServerToClientMessage::Coordinator(state) => {

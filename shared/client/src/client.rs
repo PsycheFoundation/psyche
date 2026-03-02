@@ -6,7 +6,7 @@ use crate::{
 use anyhow::anyhow;
 use anyhow::{Error, Result, bail};
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
-use psyche_core::{IntegrationTestLogMarker, NodeIdentity};
+use psyche_core::IntegrationTestLogMarker;
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
     AuthenticatableIdentity, DownloadComplete, DownloadSchedulerHandle, DownloadType, EndpointId,
@@ -36,12 +36,12 @@ use tracing::{debug, error, info, trace, trace_span, warn};
 
 pub type TUIStates = (ClientTUIState, NetworkTUIState);
 
-pub struct Client<T: NodeIdentity, A: AuthenticatableIdentity, B: Backend<T> + 'static> {
+pub struct Client<A: AuthenticatableIdentity, B: Backend + 'static> {
     rx_tui: watch::Receiver<TUIStates>,
     req_tui_state: Arc<Notify>,
     cancel: CancellationToken,
     join: JoinHandle<Result<()>>,
-    _t: PhantomData<(T, A, B)>,
+    _t: PhantomData<(A, B)>,
 }
 
 const REBROADCAST_SHAREABLE: Duration = Duration::from_secs(10);
@@ -50,15 +50,13 @@ const OPPROTUNISTIC_WITNESS_INTERVAL: Duration = Duration::from_millis(500);
 const CHECK_CONNECTION_INTERVAL: Duration = Duration::from_secs(10);
 const MAX_ERRORS_PER_PEER: u8 = 5;
 
-impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'static>
-    Client<T, A, B>
-{
+impl<A: AuthenticatableIdentity + 'static, B: Backend + 'static> Client<A, B> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         backend: B,
         allowlist: allowlist::AllowDynamic,
         mut p2p: NC,
-        init_config: RunInitConfig<T, A>,
+        init_config: RunInitConfig<A>,
         metrics: Arc<ClientMetrics>,
     ) -> Self {
         let cancel = CancellationToken::new();
@@ -104,7 +102,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let mut current_downloaded_parameters = 0_u64;
                 let mut total_parameters = None;
 
-                let mut run = RunManager::<T, A>::new(RunInitConfigAndIO {
+                let mut run = RunManager::<A>::new(RunInitConfigAndIO {
                     init_config,
                     metrics: metrics.clone(),
                     tx_witness,
@@ -704,8 +702,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
     }
 }
 
-fn ensure_gossip_connected<T: NodeIdentity>(
-    run_state: &Coordinator<T>,
+fn ensure_gossip_connected(
+    run_state: &Coordinator,
     p2p: &mut NC,
     last_connection_attempt: &mut SystemTime,
 ) {
@@ -770,7 +768,7 @@ fn ensure_gossip_connected<T: NodeIdentity>(
     }
 }
 
-fn participating_endpoint_ids<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<EndpointId> {
+fn participating_endpoint_ids(state: &Coordinator) -> Vec<EndpointId> {
     state
         .epoch_state
         .clients
@@ -779,7 +777,7 @@ fn participating_endpoint_ids<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<En
         .collect()
 }
 
-fn all_endpoint_ids_shuffled<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<EndpointId> {
+fn all_endpoint_ids_shuffled(state: &Coordinator) -> Vec<EndpointId> {
     let mut addrs = participating_endpoint_ids(state);
     addrs.shuffle(&mut rand::rng());
     addrs
