@@ -220,9 +220,9 @@ impl ConfigBuilder {
         self.set_value("model.LLM.checkpoint.Hub.repo_id", self.model.clone());
 
         #[cfg(feature = "python")]
-        self.set_value("config.epoch_time", 200);
+        self.set_value("config.epoch_time", 350);
         #[cfg(feature = "python")]
-        self.set_value("config.warmup_time", 150);
+        self.set_value("config.warmup_time", 300);
         #[cfg(feature = "python")]
         self.set_value("config.max_round_train_time", 30);
 
