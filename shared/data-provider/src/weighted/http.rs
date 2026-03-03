@@ -34,7 +34,7 @@ impl WeightedDataProvider<HttpDataProvider> {
         {
             let file_urls = FileURLs::from_location(&location).await?;
             let provider =
-                HttpDataProvider::new(file_urls, token_size_in_bytes, max_seq_len, shuffle)?;
+                HttpDataProvider::new(file_urls, token_size_in_bytes, max_seq_len, shuffle);
             http_providers.push(provider)
         }
         let providers: Providers<HttpDataProvider> = match weights {
