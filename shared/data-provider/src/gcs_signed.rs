@@ -78,14 +78,21 @@ pub async fn upload_to_gcs_signed(
             )));
         }
 
+        let generation = response
+            .headers()
+            .get("x-goog-generation")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<i64>().ok())
+            .unwrap_or(0);
+
         info!(
             file = file_name,
-            size, "Successfully uploaded file via signed URL"
+            size, generation, "Successfully uploaded file via signed URL"
         );
 
         manifest.files.push(ManifestFileEntry {
             filename: file_name.to_string(),
-            generation: 0,
+            generation,
             size_bytes: size,
         });
     }

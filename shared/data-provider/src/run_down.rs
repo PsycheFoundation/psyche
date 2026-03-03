@@ -3,7 +3,11 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
 
-const RUN_DOWN_BASE_URL: &str = "https://run-down.nousresearch.com/v1";
+const DEFAULT_RUN_DOWN_BASE_URL: &str = "https://run-down.nousresearch.com/v1";
+
+fn base_url() -> String {
+    std::env::var("RUN_DOWN_URL").unwrap_or_else(|_| DEFAULT_RUN_DOWN_BASE_URL.to_string())
+}
 
 /// Client for the Nous run-down service that provides signed URLs for GCS checkpoint
 /// upload/download. Uses a generic signing function to decouple from specific wallet
@@ -59,7 +63,7 @@ impl RunDownClient {
         let nonce = Self::nonce();
         let signature = self.generate_signature(expires_in_seconds, nonce);
 
-        let url = format!("{}/upload/{}", RUN_DOWN_BASE_URL, self.run_id);
+        let url = format!("{}/upload/{}", base_url(), self.run_id);
         let body = serde_json::json!({
             "filename": filename,
             "expiresInSeconds": expires_in_seconds,
@@ -98,7 +102,7 @@ impl RunDownClient {
         let nonce = Self::nonce();
         let signature = self.generate_signature(expires_in_seconds, nonce);
 
-        let url = format!("{}/download/{}", RUN_DOWN_BASE_URL, self.run_id);
+        let url = format!("{}/download/{}", base_url(), self.run_id);
         let body = serde_json::json!({
             "expiresInSeconds": expires_in_seconds,
             "nonce": nonce.to_string(),
