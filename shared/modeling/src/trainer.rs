@@ -1022,12 +1022,17 @@ impl LocalTrainer {
                     };
                     // with Python FSDP we need to do a full forward/backward correctly before we can do inference
                     can_do_inference.store(true, Ordering::Relaxed);
+                    let extracted_loss = match &loss {
+                        Some(loss) => {
+                            let l = loss.f_double_value(&[]).unwrap() as f32;
+                            tracing::warn!("PATCHED_BINARY: extracted loss = {l}");
+                            l
+                        }
+                        None => 0.,
+                    };
                     if submission
                         .send(ParallelResult::Train {
-                            loss: match loss {
-                                Some(loss) => loss.f_double_value(&[]).unwrap() as f32,
-                                None => 0.,
-                            },
+                            loss: extracted_loss,
                             distro_results,
                             cancelled,
                             nonce,
