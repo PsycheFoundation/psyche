@@ -292,7 +292,7 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguag
 
         let total_norm: f64 = (sharded_norm_sq + replicated_norm_sq)
             .sqrt()
-            .try_into()
+            .f_double_value(&[])
             .unwrap();
 
         if total_norm > max_norm {

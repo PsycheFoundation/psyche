@@ -241,7 +241,7 @@ impl PythonDistributedTrainer {
             .to_device(self.device);
         let _ = self.comm.all_reduce(&loss, ReduceType::Sum);
 
-        let mut loss: f32 = loss.try_into().unwrap();
+        let mut loss: f32 = loss.f_double_value(&[]).unwrap() as f32;
         loss /= self.comm.size() as f32; // average from all reduced sums of loss above
         loss *= padded_bs as f32 / original_batch_size as f32; // undilute for padding
 

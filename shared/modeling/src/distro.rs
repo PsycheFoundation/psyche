@@ -521,7 +521,7 @@ impl Distro {
                     variable
                         .grad()
                         .norm_scalaropt_dtype(1, Kind::Float)
-                        .try_into()
+                        .f_double_value(&[])
                         .unwrap(),
                 ),
                 _ => None,
@@ -589,8 +589,7 @@ impl Distro {
                 true => Some(
                     full_delta
                         .norm_scalaropt_dtype(1, Kind::Float)
-                        .try_into()
-                        .unwrap(),
+                        .double_value(&[]),
                 ),
                 false => None,
             };
@@ -702,7 +701,7 @@ unsafe impl Send for Distro {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Variable, set_torch_rng_seed};
+    use crate::{set_torch_rng_seed, Variable};
     use itertools::iproduct;
 
     impl Variable for Tensor {

@@ -1,7 +1,7 @@
 use crate::{
-    AllReduce, CausalLM, Communicator, CommunicatorId, CudaSynchronize, Distro, DistroResult,
-    EosToks, Fp32GradientAccumulator, Optimizer, ReduceType, StableVariableIterator,
-    unsharded_cpu_variables,
+    unsharded_cpu_variables, AllReduce, CausalLM, Communicator, CommunicatorId, CudaSynchronize,
+    Distro, DistroResult, EosToks, Fp32GradientAccumulator, Optimizer, ReduceType,
+    StableVariableIterator,
 };
 use anyhow::{Error, Result};
 use psyche_core::{Barrier, BatchId, LearningRateSchedule, OptimizerDefinition};
@@ -9,8 +9,8 @@ use std::{
     collections::HashMap,
     ops::ControlFlow,
     sync::{
-        Arc,
         atomic::{AtomicBool, Ordering},
+        Arc,
     },
     time::Instant,
 };
@@ -149,7 +149,9 @@ impl Batch {
                     let padding_needed = world_size - remainder;
                     trace!(
                         "Batch size {} not divisible by world_size {}. Adding {} padding samples",
-                        current_batch_size, world_size, padding_needed
+                        current_batch_size,
+                        world_size,
+                        padding_needed
                     );
 
                     // Get sequence length from the first sample
@@ -185,7 +187,9 @@ impl Batch {
                     let padding_needed = world_size - remainder;
                     trace!(
                         "Batch size {} not divisible by world_size {}. Adding {} padding samples",
-                        current_batch_size, world_size, padding_needed
+                        current_batch_size,
+                        world_size,
+                        padding_needed
                     );
 
                     if current_batch_size == 0 {
@@ -1021,7 +1025,7 @@ impl LocalTrainer {
                     if submission
                         .send(ParallelResult::Train {
                             loss: match loss {
-                                Some(loss) => loss.double_value(&[]) as f32,
+                                Some(loss) => loss.f_double_value(&[]).unwrap() as f32,
                                 None => 0.,
                             },
                             distro_results,
