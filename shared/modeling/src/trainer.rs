@@ -1021,7 +1021,7 @@ impl LocalTrainer {
                     if submission
                         .send(ParallelResult::Train {
                             loss: match loss {
-                                Some(loss) => loss.try_into().unwrap_or(0.),
+                                Some(loss) => loss.double_value(&[]) as f32,
                                 None => 0.,
                             },
                             distro_results,
