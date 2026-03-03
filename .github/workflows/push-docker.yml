@@ -7,6 +7,7 @@ on:
 jobs:
   push-docker-image:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
