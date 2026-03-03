@@ -18,7 +18,7 @@ if [ "${PYTHON_ENABLED}" = "true" ]; then
         --run-id "${RUN_ID}" \
         --data-parallelism 2 \
         --sidecar-port "${SIDECAR_PORT}" \
-        --iroh-relay "n0" \
+        --iroh-relay "psyche" \
         --logs "json"
 else
     echo "Starting client without Python features"
