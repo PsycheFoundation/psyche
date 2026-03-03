@@ -355,9 +355,11 @@ impl Model {
                 let bad_checkpoint = match llm.checkpoint {
                     Checkpoint::Dummy(_hub_repo) => false,
                     Checkpoint::Ephemeral => true,
-                    Checkpoint::P2P(_) | Checkpoint::P2PGcs(_) => true, // P2P is internal state, not configurable
+                    Checkpoint::P2P(hub_repo) => hub_repo.repo_id.is_empty(),
                     Checkpoint::Hub(hub_repo) => hub_repo.repo_id.is_empty(),
-                    Checkpoint::Gcs(gcs_repo) => gcs_repo.bucket.is_empty(),
+                    Checkpoint::Gcs(gcs_repo) | Checkpoint::P2PGcs(gcs_repo) => {
+                        gcs_repo.bucket.is_empty()
+                    }
                 };
 
                 if bad_checkpoint {
