@@ -195,6 +195,9 @@ impl InferenceProtocol {
         send.write_all(&len.to_be_bytes()).await?;
         send.write_all(&response_bytes).await?;
 
+        // Small delay to ensure the final message is flushed before finishing
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
         // Finish our send stream to signal we're done sending
         send.finish()?;
 
