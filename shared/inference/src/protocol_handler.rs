@@ -131,10 +131,13 @@ impl InferenceProtocol {
         // Keep the inference node alive for the duration of the request
         let inference_node = Arc::clone(&self.inference_node);
 
+        // Extract request_id before moving request into closure
+        let request_id = request.request_id.clone();
+
+        info!("Processing streaming inference request: {}", request_id);
+
         // Create a channel to send chunks from the callback to the async stream writer
         let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::unbounded_channel::<StreamChunk>();
-
-        let request_id = request.request_id.clone();
 
         // Spawn a blocking task to run the inference (Python GIL blocking)
         let handle = tokio::task::spawn_blocking(move || {
@@ -151,11 +154,6 @@ impl InferenceProtocol {
                 None => Err(anyhow::anyhow!("Inference node not initialized")),
             }
         });
-
-        info!(
-            "Processing streaming inference request: {}",
-            request.request_id
-        );
 
         // Stream chunks as they arrive
         while let Some(chunk) = chunk_rx.recv().await {
