@@ -201,8 +201,10 @@ where
             let mut success = false;
 
             // Iterate over the generator
-            for item in generator.iter()? {
-                let chunk_dict = item?.downcast::<PyDict>()?;
+            let iterator = generator.try_iter()?;
+            for item in iterator {
+                let item_bound = item?;
+                let chunk_dict = item_bound.downcast::<PyDict>()?;
                 let chunk_map = py_dict_to_hashmap(chunk_dict)?;
 
                 let status = get_optional_string(&chunk_map, "status", py).unwrap_or_default();
