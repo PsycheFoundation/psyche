@@ -250,6 +250,7 @@ def run_inference_streaming(
                             "request_id": request_id,
                             "text": delta_text,
                             "finish_reason": output.finish_reason,
+                            "generated_text": current_text,
                             "full_text": formatted_prompt + current_text,
                         }
                     else:
