@@ -2,9 +2,10 @@ mod app;
 mod dashboard;
 
 use anyhow::{Context, Result};
-use app::{App, DataServerInfo};
+use app::App;
 use clap::{ArgAction, Parser};
 use psyche_coordinator::Coordinator;
+use psyche_data_provider::DataServerConfig;
 use psyche_tui::{
     LogOutput, ServiceInfo,
     logging::{MetricsDestination, OpenTelemetry, RemoteLogsDestination, TraceDestination},
@@ -111,7 +112,7 @@ struct RunArgs {
 fn load_config_state(
     state_path: PathBuf,
     data_config_path: Option<PathBuf>,
-) -> Result<(Coordinator, Option<DataServerInfo>)> {
+) -> Result<(Coordinator, Option<DataServerConfig>)> {
     let coordinator: Coordinator = toml::from_str(std::str::from_utf8(
         &std::fs::read(&state_path).with_context(|| {
             format!("failed to read coordinator state toml file {state_path:?}")
@@ -120,7 +121,7 @@ fn load_config_state(
 
     let data_server_config = match data_config_path {
         Some(config_path) => {
-            let mut data_config: DataServerInfo = toml::from_str(std::str::from_utf8(
+            let mut data_config: DataServerConfig = toml::from_str(std::str::from_utf8(
                 &std::fs::read(&config_path).with_context(|| {
                     format!("failed to read data server config toml file {config_path:?}")
                 })?,
