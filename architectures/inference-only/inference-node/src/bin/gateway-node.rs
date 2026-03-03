@@ -838,7 +838,13 @@ async fn send_inference_request(
                         }
                         InferenceMessage::Response(response) => {
                             info!("Received final streaming response");
-                            let _ = response_tx.send(ResponseMessage::Final(response)).await;
+
+                            if let Err(e) = response_tx.send(ResponseMessage::Final(response)).await
+                            {
+                                error!("Failed to send final response to SSE stream: {}", e);
+                            } else {
+                                info!("Successfully sent final response to SSE stream");
+                            }
 
                             // Send ack back to inference node so it knows we received everything
                             info!("Sending ack to inference node");
