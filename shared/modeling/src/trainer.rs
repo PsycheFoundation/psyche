@@ -901,6 +901,7 @@ impl LocalTrainer {
 
                     let mut loss = None;
                     let mut cancelled = false;
+                    tracing::warn!("CHECKPOINT A: starting micro-batches");
                     for (index, (input_ids, labels, position_ids, sequence_lengths)) in
                         micro_batches.into_iter().enumerate()
                     {
@@ -949,6 +950,7 @@ impl LocalTrainer {
                         grad_accum.apply_accumulation();
                     }
 
+                    tracing::warn!("CHECKPOINT B: micro-batches done, starting DP reduce");
                     // reduce grads across DP ranks
                     if let Some((dp_comm, dp_barrier)) = &data_parallel {
                         dp_barrier.wait().unwrap(); // cannot cancel dp
@@ -973,6 +975,7 @@ impl LocalTrainer {
                         dp_barrier.wait().unwrap(); // cannot cancel dp
                     }
 
+                    tracing::warn!("CHECKPOINT C: DP reduce done, starting DisTrO generate");
                     let distro_results = match cancelled {
                         false => match &mut optimizer {
                             Optimizer::Torch {
@@ -1020,6 +1023,7 @@ impl LocalTrainer {
                         },
                         true => None,
                     };
+                    tracing::warn!("CHECKPOINT D: DisTrO generate done");
                     // with Python FSDP we need to do a full forward/backward correctly before we can do inference
                     can_do_inference.store(true, Ordering::Relaxed);
                     let extracted_loss = match &loss {
@@ -1042,6 +1046,7 @@ impl LocalTrainer {
                         return;
                     }
 
+                    tracing::warn!("CHECKPOINT F: Train result sent");
                     nonce += 1;
 
                     // for (_, result) in rollback.iter() {
@@ -1059,6 +1064,7 @@ impl LocalTrainer {
                     step,
                     warmup_lr_between,
                 }) => {
+                    tracing::warn!("CHECKPOINT G: Optimize assignment received");
                     let lr = Trainer::get_lr(&lr_scheduler, step, warmup_lr_between);
                     if optimize_step(
                         &mut model,
