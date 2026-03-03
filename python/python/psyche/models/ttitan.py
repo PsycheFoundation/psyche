@@ -429,7 +429,13 @@ class TorchtitanAuto(CausalLM):
                         position_ids = position_ids.narrow(0, start_row, shard_size)
         try:
             with self.amp, torch.cuda.device(input_ids.device.index):
-                pred = self.model(
+                # During eval we bypass torch.compile as a speed optimization (we know we're in eval because labels=None)
+                # There's no need to precompile kernels for different sequence lengths since every input has a different one
+                # _orig_mod stores the original model so calling it directly bypasses the compilation stage.
+                model = self.model
+                if labels is None and hasattr(self.model, "_orig_mod"):
+                    model = self.model._orig_mod
+                pred = model(
                     tokens=input_ids.contiguous(),
                     position_ids=(
                         position_ids.contiguous() if position_ids is not None else None

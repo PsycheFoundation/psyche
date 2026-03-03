@@ -232,7 +232,7 @@ impl ModelTaskRunner {
 
     pub fn start(&self, trainers: Vec<Trainer>) -> RunningEvals {
         let cancel = CancellationToken::new();
-        trace!("Starting evals!");
+        info!("Starting evals!");
 
         RunningEvals {
             cancel: cancel.clone(),
