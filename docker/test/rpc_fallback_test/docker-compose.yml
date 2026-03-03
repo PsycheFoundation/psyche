@@ -1,7 +1,7 @@
 services:
   psyche-test-client:
     env_file:
-      - '../../config/client/.env.test'
+      - '../../config/client/.env.rpc-fallback-test'
 
   nginx:
     image: nginx:latest
@@ -9,7 +9,7 @@ services:
     ports:
       - '8901:8901'
     volumes:
-      - ./subscriptions_test/nginx_p8901.conf:/etc/nginx/nginx.conf:ro
+      - ./rpc_fallback_test/nginx_rpc_p8901.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - psyche-solana-test-validator
     networks:
@@ -21,7 +21,7 @@ services:
     ports:
       - '8902:8902'
     volumes:
-      - ./subscriptions_test/nginx_p8902.conf:/etc/nginx/nginx.conf:ro
+      - ./rpc_fallback_test/nginx_rpc_p8902.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - psyche-solana-test-validator
     networks:

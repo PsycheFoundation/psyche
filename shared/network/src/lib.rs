@@ -1,7 +1,7 @@
 use allowlist::Allowlist;
 use anyhow::{Context, Result, anyhow};
 use bytes::Bytes;
-use download_manager::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
+use download::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
 use iroh::{EndpointAddr, RelayConfig};
 use iroh::{endpoint::QuicTransportConfig, protocol::Router};
@@ -23,7 +23,7 @@ pub use p2p_model_sharing::{
     PeerManagerHandle,
 };
 use psyche_metrics::{ClientMetrics, PeerConnection};
-use router::{SupportedProtocols, spawn_router_with_allowlist};
+use router::{SupportedProtocols, spawn_router};
 use state::State;
 use std::str::FromStr;
 use std::{
@@ -56,7 +56,7 @@ pub use iroh_blobs::{BlobFormat, Hash, ticket::BlobTicket};
 pub mod allowlist;
 mod authenticable_identity;
 mod connection_monitor;
-mod download_manager;
+mod download;
 mod latency_sorted;
 mod local_discovery;
 mod p2p_model_sharing;
@@ -76,9 +76,9 @@ mod test;
 
 pub use authenticable_identity::{AuthenticatableIdentity, FromSignedBytesError, raw_p2p_verify};
 pub use connection_monitor::{ConnectionData, ConnectionMonitor};
-pub use download_manager::{
-    DownloadComplete, DownloadFailed, DownloadRetryInfo, DownloadType, MAX_DOWNLOAD_RETRIES,
-    RetriedDownloadsHandle, TransmittableDownload,
+pub use download::{
+    DownloadComplete, DownloadFailed, DownloadSchedulerHandle, DownloadType, ReadyRetry,
+    RetryConfig, RetryQueueResult, TransmittableDownload,
 };
 pub use iroh::protocol::ProtocolHandler;
 pub use iroh::{Endpoint, EndpointId, PublicKey, SecretKey};
@@ -98,6 +98,7 @@ pub use tui::{NetworkTUIState, NetworkTui};
 use url::Url;
 pub use util::fmt_bytes;
 
+use crate::allowlist::AllowlistHook;
 use crate::p2p_model_sharing::ModelSharing;
 
 const USE_RELAY_HOSTNAME: &str = "use1-1.relay.nousresearch.psyche.iroh.link";
@@ -335,6 +336,8 @@ where
 
         let connection_monitor = ConnectionMonitor::default();
 
+        let allowlist_hook = AllowlistHook::new(allowlist.clone());
+
         let endpoint = {
             let transport_config = QuicTransportConfig::builder()
                 .max_idle_timeout(Some(Duration::from_secs(10).try_into()?))
@@ -355,6 +358,7 @@ where
                 .transport_config(transport_config)
                 .bind_addr(SocketAddrV4::new(ipv4, port.unwrap_or(0)))?
                 .clear_address_lookup()
+                .hooks(allowlist_hook.clone())
                 .hooks(connection_monitor.clone());
 
             let endpoint = match discovery_mode {
@@ -462,8 +466,7 @@ where
 
         trace!("creating router...");
         let blobs_protocol = BlobsProtocol::new(&store.clone(), None);
-        let router = spawn_router_with_allowlist(
-            allowlist.clone(),
+        let router = spawn_router(
             endpoint.clone(),
             SupportedProtocols::new(gossip.clone(), blobs_protocol, model_parameter_sharing),
             additional_protocol,
@@ -690,21 +693,14 @@ where
 
         // add all tracked connections
         for conn_data in self.connection_monitor.get_all_connections() {
-            let bandwidth = self
-                .state
-                .bandwidth_tracker
-                .get_bandwidth_by_node(&conn_data.endpoint_id)
-                .unwrap_or_default();
-
             let latency = conn_data
                 .latency()
                 .map(|d| d.as_secs_f64())
                 .unwrap_or(f64::MAX);
-
             infos.push(P2PEndpointInfo {
                 id: conn_data.endpoint_id,
                 selected_path: conn_data.selected_path,
-                bandwidth,
+                bandwidth: conn_data.bandwidth,
                 latency,
             });
         }
@@ -755,9 +751,14 @@ where
         &mut self,
         update: DownloadUpdate,
     ) -> Option<NetworkEvent<BroadcastMessage, Download>> {
+        let peer_id = update.blob_ticket.addr().id;
         self.state
             .bandwidth_tracker
-            .add_event(update.blob_ticket.addr().id, update.downloaded_size_delta);
+            .add_event(peer_id, update.downloaded_size_delta);
+
+        let peer_bw = self.state.bandwidth_tracker.get_peer_bandwidth(&peer_id);
+        self.connection_monitor
+            .update_peer_bandwidth(&peer_id, peer_bw);
 
         let hash = update.blob_ticket.hash();
 
@@ -788,6 +789,10 @@ where
         }
         None
     }
+    pub fn connection_monitor(&self) -> ConnectionMonitor {
+        self.connection_monitor.clone()
+    }
+
     pub fn router(&self) -> Arc<Router> {
         self.router.clone()
     }
@@ -943,10 +948,9 @@ fn hash_bytes(bytes: &Bytes) -> u64 {
 pub async fn blob_ticket_param_request_task(
     model_request_type: ModelRequestType,
     router: Arc<Router>,
-    model_blob_tickets: Arc<std::sync::Mutex<Vec<(BlobTicket, ModelRequestType)>>>,
     peer_manager: Arc<PeerManagerHandle>,
     cancellation_token: CancellationToken,
-) {
+) -> Result<(BlobTicket, ModelRequestType)> {
     let max_attempts = 500u16;
     let mut attempts = 0u16;
 
@@ -968,13 +972,8 @@ pub async fn blob_ticket_param_request_task(
 
         match result {
             Ok(Ok(blob_ticket)) => {
-                model_blob_tickets
-                    .lock()
-                    .unwrap()
-                    .push((blob_ticket, model_request_type));
-
                 peer_manager.report_success(peer_id);
-                return;
+                return Ok((blob_ticket, model_request_type));
             }
             Ok(Err(e)) | Err(e) => {
                 // Failed - report error and potentially try next peer
@@ -991,4 +990,7 @@ pub async fn blob_ticket_param_request_task(
 
     error!("No peers available to give us a model parameter after {max_attempts} attempts");
     cancellation_token.cancel();
+    Err(anyhow!(
+        "Failed to get model parameter blob ticket after {max_attempts} attempts"
+    ))
 }

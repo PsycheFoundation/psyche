@@ -21,7 +21,7 @@ use psyche_network::{DiscoveryMode, NetworkTUIState, NetworkTui, SecretKey, allo
 use psyche_tui::{CustomWidget, TabbedWidget, logging::LoggerWidget};
 use psyche_watcher::CoordinatorTui;
 use rand::{Rng, RngCore, SeedableRng};
-use rand_chacha::ChaCha8Rng;
+use rand_chacha::ChaCha20Rng;
 use std::time::Duration;
 use std::{
     sync::Arc,
@@ -82,7 +82,9 @@ pub async fn build_app(
         read_identity_secret_key(p.identity_secret_key_path.as_ref())?
             // Iroh key should be deterministically derived from Solana key
             .unwrap_or_else(|| {
-                let mut rng = ChaCha8Rng::from_seed(sha256(wallet_keypair.secret().as_bytes()));
+                let seed_preimage =
+                    [p.run_id.as_bytes(), wallet_keypair.secret().as_bytes()].concat();
+                let mut rng = ChaCha20Rng::from_seed(sha256(&seed_preimage));
                 SecretKey::generate(&mut rng)
             });
     let identity = psyche_solana_coordinator::ClientId::new(

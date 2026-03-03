@@ -31,6 +31,7 @@ bytemuck.workspace = true
 toml.workspace = true
 clap-markdown.workspace = true
 psyche-python-extension-impl = { workspace = true, optional = true }
+tikv-jemallocator.workspace = true
 
 [features]
 python = ["psyche-python-extension-impl"]
