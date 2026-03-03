@@ -101,7 +101,7 @@ async fn main() -> Result<()> {
                 token_size,
                 cli.sequence_length,
                 Shuffle::DontShuffle,
-            )?)
+            ))
         }
         Commands::Urls { urls } => {
             if urls.is_empty() {
@@ -113,7 +113,7 @@ async fn main() -> Result<()> {
                 token_size,
                 cli.sequence_length,
                 Shuffle::DontShuffle,
-            )?)
+            ))
         }
         Commands::Gcp {
             bucket_name,
@@ -125,7 +125,7 @@ async fn main() -> Result<()> {
                 token_size,
                 cli.sequence_length,
                 Shuffle::DontShuffle,
-            )?)
+            ))
         }
         Commands::WeightedConfig { config } => {
             let weighted_provider =
