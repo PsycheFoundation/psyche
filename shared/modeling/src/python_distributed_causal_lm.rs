@@ -366,8 +366,6 @@ impl PythonDistributedCausalLM {
 
         // Spawn a watcher thread per sidecar that blocks on child.wait().
         // If a sidecar exits unexpectedly (not during clean shutdown), abort to avoid NCCL hangs.
-        // This is race-free: shutdown() sets shutting_down BEFORE sending the exit command,
-        // so by the time a sidecar exits cleanly the flag is guaranteed to be set.
         for (i, mut child) in children.into_iter().enumerate() {
             let shutting_down = shutting_down.clone();
             std::thread::spawn(move || {
