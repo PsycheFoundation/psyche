@@ -57,7 +57,7 @@ impl InferenceProtocol {
 
                 if request.stream {
                     // Streaming mode: send chunks as they arrive
-                    self.handle_streaming_request(request, send).await?;
+                    self.handle_streaming_request(request, send, recv).await?;
                 } else {
                     // Non-streaming mode: send single response
                     let response = self.process_request(request).await?;
@@ -125,6 +125,7 @@ impl InferenceProtocol {
         &self,
         request: InferenceRequest,
         mut send: iroh::endpoint::SendStream,
+        mut recv: iroh::endpoint::RecvStream,
     ) -> Result<()> {
         use crate::vllm::StreamChunk;
 
@@ -187,12 +188,28 @@ impl InferenceProtocol {
             postcard::to_allocvec(&response_msg).context("Failed to serialize response")?;
 
         send.write_all(&response_bytes).await?;
+
+        // Finish our send stream to signal we're done sending
         send.finish()?;
 
-        // Adaptive delay
-        let size_mb = response_bytes.len() as f64 / (1024.0 * 1024.0);
-        let delay_ms = 50 + (size_mb * 10.0) as u64;
-        tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+        info!("Sent final response, waiting for client acknowledgment...");
+
+        // Wait for the client to send back an ack (they'll finish their send stream)
+        // This ensures they've read all our data before we close the connection
+        let timeout_result =
+            tokio::time::timeout(tokio::time::Duration::from_secs(5), recv.read_to_end(1024)).await;
+
+        match timeout_result {
+            Ok(Ok(_)) => {
+                info!("Received client ack for streaming request {}", request_id);
+            }
+            Ok(Err(e)) => {
+                debug!("Client stream ended (expected): {:#}", e);
+            }
+            Err(_) => {
+                error!("Timeout waiting for client ack for request {}", request_id);
+            }
+        }
 
         info!("Successfully completed streaming request {}", request_id);
         Ok(())
