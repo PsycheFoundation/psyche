@@ -1,7 +1,7 @@
 use crate::{WandBInfo, fetch_data::DataFetcher};
 use psyche_coordinator::{
     Coordinator, HealthChecks,
-    model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
+    model::{self, HttpLLMTrainingDataLocation, LLMArchitecture, LLMTrainingDataLocation},
 };
 use psyche_core::{
     Barrier, CancellableBarrier, IntegrationTestLogMarker, NodeIdentity, Shuffle, TokenSize,
@@ -119,7 +119,7 @@ pub enum InitRunError {
     P2PModelLoad,
 
     #[error("Unsupported architecture: {0}")]
-    UnsupportedArchitecture(String),
+    UnsupportedArchitecture(LLMArchitecture),
 
     #[cfg(feature = "python")]
     #[error("Python distributed error: {0}")]
@@ -408,7 +408,7 @@ impl RunInitConfigAndIO {
                                         #[cfg(not(feature = "python"))]
                                         {
                                             return Err(InitRunError::UnsupportedArchitecture(
-                                                llm.architecture.to_string(),
+                                                llm.architecture,
                                             ));
                                         }
                                     }
@@ -518,7 +518,7 @@ impl RunInitConfigAndIO {
                                     tokio::task::spawn_blocking(move || {
                                         if tp != 1 || dp != 1 {
                                             psyche_modeling::PythonDistributedCausalLM::new(
-                                                llm.architecture.to_string(),
+                                                llm.architecture.to_python_model_string(),
                                                 source.try_into()?,
                                                 tch::Device::cuda_if_available(),
                                                 attn_implementation.unwrap_or_default(),
@@ -540,7 +540,7 @@ impl RunInitConfigAndIO {
                                                     )
                                                 })?;
                                             psyche_modeling::PythonCausalLM::new(
-                                                &llm.architecture.to_string(),
+                                                &llm.architecture.to_python_model_string(),
                                                 &source.try_into()?,
                                                 device,
                                                 attn_implementation.unwrap_or_default(),
@@ -558,7 +558,7 @@ impl RunInitConfigAndIO {
                                 #[cfg(not(feature = "python"))]
                                 {
                                     return Err(InitRunError::UnsupportedArchitecture(
-                                        llm.architecture.to_string(),
+                                        llm.architecture,
                                     ));
                                 }
                             }
