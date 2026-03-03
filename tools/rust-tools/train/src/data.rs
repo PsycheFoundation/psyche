@@ -27,7 +27,7 @@ pub async fn data_provider_from_location(
                 .await
                 .context("Failed to gather list of file URLs")?;
             let provider =
-                HttpDataProvider::new(file_urls, *token_size_in_bytes, max_seq_len, *data_shuffle)?;
+                HttpDataProvider::new(file_urls, *token_size_in_bytes, max_seq_len, *data_shuffle);
             info!(
                 "Loaded HTTP dataset with {} samples",
                 provider.num_sequences()

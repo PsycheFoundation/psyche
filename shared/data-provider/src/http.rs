@@ -173,7 +173,7 @@ impl HttpDataProvider {
         token_size_in_bytes: TokenSize,
         num_tokens_per_sequence: u32,
         shuffle: Shuffle,
-    ) -> Result<Self> {
+    ) -> Self {
         let file_urls = file_urls.0;
         let num_files = file_urls.len();
 
@@ -208,13 +208,13 @@ impl HttpDataProvider {
             sequences.len()
         );
 
-        Ok(Self {
+        Self {
             client,
             file_urls: file_urls.into_iter().map(|f| f.0).collect(),
             sequences,
             seq_len: num_tokens_per_sequence,
             token_size_in_bytes,
-        })
+        }
     }
 
     async fn fetch_data_range(

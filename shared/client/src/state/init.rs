@@ -222,7 +222,7 @@ impl RunInitConfigAndIO {
                         token_size_in_bytes,
                         llm.max_seq_len,
                         shuffle,
-                    )?)
+                    ))
                 }
                 LLMTrainingDataLocation::WeightedHttp(config_url) => DataProvider::WeightedHttp(
                     WeightedDataProvider::<HttpDataProvider>::from_config_url(
