@@ -812,20 +812,24 @@ async fn send_inference_request(
     send.finish()?;
 
     if request.stream {
-        // Streaming mode: read multiple messages
+        // Streaming mode: read multiple length-prefixed messages
         info!("Reading streaming response...");
         loop {
-            // Read message length-prefix or use read_to_end with smaller buffer per message
-            // For simplicity, we'll use a read loop with chunks
-            let mut buf = vec![0u8; 1024 * 1024]; // 1MB buffer per read
-            match recv.read(&mut buf).await {
-                Ok(Some(n)) => {
-                    if n == 0 {
-                        break; // Stream ended
-                    }
+            // Read 4-byte length prefix
+            let mut len_buf = [0u8; 4];
+            match recv.read_exact(&mut len_buf).await {
+                Ok(()) => {
+                    let msg_len = u32::from_be_bytes(len_buf) as usize;
+                    debug!("Reading message of {} bytes", msg_len);
 
-                    // Try to deserialize the message
-                    let response_message: InferenceMessage = postcard::from_bytes(&buf[..n])
+                    // Read the message body
+                    let mut msg_buf = vec![0u8; msg_len];
+                    recv.read_exact(&mut msg_buf)
+                        .await
+                        .context("Failed to read message body")?;
+
+                    // Deserialize the message
+                    let response_message: InferenceMessage = postcard::from_bytes(&msg_buf)
                         .context("Failed to deserialize streaming message")?;
 
                     match response_message {
@@ -857,13 +861,9 @@ async fn send_inference_request(
                         }
                     }
                 }
-                Ok(None) => {
-                    info!("Stream ended");
-                    break;
-                }
                 Err(e) => {
-                    // Connection closed after final response is expected
-                    debug!("Stream read ended: {:#}", e);
+                    // Stream ended - this is expected after final response
+                    debug!("Stream ended: {:#}", e);
                     break;
                 }
             }
