@@ -128,87 +128,76 @@ impl InferenceProtocol {
     ) -> Result<()> {
         use crate::vllm::StreamChunk;
 
-        let node = self.inference_node.read().await;
+        // Keep the inference node alive for the duration of the request
+        let inference_node = Arc::clone(&self.inference_node);
 
-        match node.as_ref() {
-            Some(node) => {
-                info!(
-                    "Processing streaming inference request: {}",
-                    request.request_id
-                );
+        // Create a channel to send chunks from the callback to the async stream writer
+        let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::unbounded_channel::<StreamChunk>();
 
-                // Create a channel to send chunks from the callback to the async stream writer
-                let (chunk_tx, mut chunk_rx) =
-                    tokio::sync::mpsc::unbounded_channel::<StreamChunk>();
+        let request_id = request.request_id.clone();
 
-                let request_id = request.request_id.clone();
+        // Spawn a blocking task to run the inference (Python GIL blocking)
+        let handle = tokio::task::spawn_blocking(move || {
+            // Access the node inside the blocking task
+            let node_guard = tokio::runtime::Handle::current().block_on(inference_node.read());
 
-                // Spawn a blocking task to run the inference (Python GIL blocking)
-                let node_clone = node.clone();
-                let handle = tokio::task::spawn_blocking(move || {
-                    node_clone.inference_streaming(&request, |chunk: StreamChunk| {
+            match node_guard.as_ref() {
+                Some(node) => {
+                    node.inference_streaming(&request, |chunk: StreamChunk| {
                         // Send chunk through channel
                         let _ = chunk_tx.send(chunk);
                     })
-                });
-
-                // Stream chunks as they arrive
-                while let Some(chunk) = chunk_rx.recv().await {
-                    let chunk_msg = InferenceMessage::StreamChunk {
-                        request_id: request_id.clone(),
-                        text: chunk.text,
-                    };
-
-                    let chunk_bytes = postcard::to_allocvec(&chunk_msg)
-                        .context("Failed to serialize stream chunk")?;
-
-                    debug!(
-                        "Sending chunk ({} bytes) for request {}",
-                        chunk_bytes.len(),
-                        request_id
-                    );
-
-                    send.write_all(&chunk_bytes).await?;
                 }
-
-                // Wait for inference to complete
-                let response = handle.await.context("Inference task panicked")??;
-
-                // Send final response
-                info!(
-                    "Sending final response for streaming request {}",
-                    request_id
-                );
-                let response_msg = InferenceMessage::Response(response);
-                let response_bytes =
-                    postcard::to_allocvec(&response_msg).context("Failed to serialize response")?;
-
-                send.write_all(&response_bytes).await?;
-                send.finish()?;
-
-                // Adaptive delay
-                let size_mb = response_bytes.len() as f64 / (1024.0 * 1024.0);
-                let delay_ms = 50 + (size_mb * 10.0) as u64;
-                tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
-
-                info!("Successfully completed streaming request {}", request_id);
-                Ok(())
+                None => Err(anyhow::anyhow!("Inference node not initialized")),
             }
-            None => {
-                error!("Inference node not initialized");
-                let error_response =
-                    Self::create_error_response(request.request_id, "node not initialized");
+        });
 
-                let response_msg = InferenceMessage::Response(error_response);
-                let response_bytes =
-                    postcard::to_allocvec(&response_msg).context("Failed to serialize response")?;
+        info!(
+            "Processing streaming inference request: {}",
+            request.request_id
+        );
 
-                send.write_all(&response_bytes).await?;
-                send.finish()?;
+        // Stream chunks as they arrive
+        while let Some(chunk) = chunk_rx.recv().await {
+            let chunk_msg = InferenceMessage::StreamChunk {
+                request_id: request_id.clone(),
+                text: chunk.text,
+            };
 
-                Ok(())
-            }
+            let chunk_bytes =
+                postcard::to_allocvec(&chunk_msg).context("Failed to serialize stream chunk")?;
+
+            debug!(
+                "Sending chunk ({} bytes) for request {}",
+                chunk_bytes.len(),
+                request_id
+            );
+
+            send.write_all(&chunk_bytes).await?;
         }
+
+        // Wait for inference to complete
+        let response = handle.await.context("Inference task panicked")??;
+
+        // Send final response
+        info!(
+            "Sending final response for streaming request {}",
+            request_id
+        );
+        let response_msg = InferenceMessage::Response(response);
+        let response_bytes =
+            postcard::to_allocvec(&response_msg).context("Failed to serialize response")?;
+
+        send.write_all(&response_bytes).await?;
+        send.finish()?;
+
+        // Adaptive delay
+        let size_mb = response_bytes.len() as f64 / (1024.0 * 1024.0);
+        let delay_ms = 50 + (size_mb * 10.0) as u64;
+        tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+
+        info!("Successfully completed streaming request {}", request_id);
+        Ok(())
     }
 }
 

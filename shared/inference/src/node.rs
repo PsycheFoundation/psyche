@@ -6,7 +6,7 @@ use anyhow::{Context, Result, anyhow};
 use pyo3::prelude::*;
 use tracing::{debug, info, warn};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct InferenceNode {
     engine_id: String,
     model_name: String,
