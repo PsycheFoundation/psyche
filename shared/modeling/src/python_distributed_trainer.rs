@@ -235,17 +235,21 @@ impl PythonDistributedTrainer {
             cancel_training,
         )?;
 
+        tracing::warn!("CHECKPOINT H: local.train() returned, loss = {}", ret.loss);
+
         // reduce the loss across all shards
         let loss = Tensor::from_slice(&[ret.loss])
             .to_kind(Kind::Float)
             .to_device(self.device);
+        tracing::warn!("CHECKPOINT I: loss tensor created on device, starting all_reduce");
         let _ = self.comm.all_reduce(&loss, ReduceType::Sum);
+        tracing::warn!("CHECKPOINT J: all_reduce done");
 
         let mut loss: f32 = loss.f_double_value(&[]).unwrap() as f32;
         loss /= self.comm.size() as f32; // average from all reduced sums of loss above
         loss *= padded_bs as f32 / original_batch_size as f32; // undilute for padding
 
-        trace!("Train operation complete on all Python clients");
+        tracing::warn!("CHECKPOINT K: train complete, final loss = {loss}");
 
         Ok(TrainOutput {
             trainer: Self {
