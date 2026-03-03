@@ -55,7 +55,7 @@ struct Args {
 #[derive(Clone, Debug)]
 struct InferenceNodeInfo {
     peer_id: EndpointId,
-    model_name: String,
+    model_name: Option<String>,
     #[allow(dead_code)]
     checkpoint_id: Option<String>,
     #[allow(dead_code)]
@@ -66,6 +66,7 @@ struct GatewayState {
     available_nodes: RwLock<HashMap<EndpointId, InferenceNodeInfo>>,
     pending_requests: RwLock<HashMap<String, mpsc::Sender<InferenceResponse>>>,
     network_tx: mpsc::Sender<(EndpointId, InferenceMessage)>,
+    gossip_tx: mpsc::Sender<InferenceGossipMessage>,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
@@ -98,6 +99,25 @@ fn default_top_p() -> Option<f64> {
     Some(1.0)
 }
 
+#[derive(serde::Deserialize, Debug, Clone)]
+#[serde(tag = "source_type", rename_all = "lowercase")]
+enum LoadModelSource {
+    #[serde(rename = "huggingface")]
+    HuggingFace {
+        source_path: Option<String>,
+    },
+    Local {
+        source_path: String,
+    },
+}
+
+#[derive(serde::Deserialize)]
+struct LoadModelRequest {
+    model_name: String,
+    #[serde(flatten)]
+    source: LoadModelSource,
+}
+
 #[derive(serde::Serialize)]
 struct ChatCompletionChoice {
     index: usize,
@@ -121,14 +141,28 @@ async fn handle_inference(
     Json(req): Json<ChatCompletionRequest>,
 ) -> Result<Json<ChatCompletionResponse>, AppError> {
     let nodes = state.available_nodes.read().await;
-    let node = nodes.values().next().ok_or(AppError::NoNodesAvailable)?;
 
-    let target_peer_id = node.peer_id;
-    let model_name = req.model.clone().unwrap_or_else(|| node.model_name.clone());
+    let nodes_with_model: Vec<(EndpointId, String)> = nodes
+        .values()
+        .filter_map(|n| Some((n.peer_id, n.model_name.clone()?)))
+        .collect();
+
+    if nodes_with_model.is_empty() {
+        // No nodes have models loaded yet
+        return Err(AppError::NoNodesAvailable);
+    }
+
+    // Select first available node with a model
+    // TODO: Add load balancing and model-specific routing in the future
+    let (target_peer_id, node_model_name) = &nodes_with_model[0];
+    let target_peer_id = *target_peer_id;
+
+    let model_name = req.model.clone().unwrap_or_else(|| node_model_name.clone());
+
     info!(
         "Routing request to node: {} (model: {})",
-        node.peer_id.fmt_short(),
-        node.model_name
+        target_peer_id.fmt_short(),
+        node_model_name
     );
     drop(nodes);
 
@@ -196,6 +230,46 @@ async fn handle_inference(
     }))
 }
 
+#[axum::debug_handler]
+async fn handle_load_model(
+    State(state): State<Arc<GatewayState>>,
+    Json(req): Json<LoadModelRequest>,
+) -> Result<String, AppError> {
+    use psyche_inference::ModelSource;
+
+    info!(
+        "Admin API: Received LoadModel request for model: {} (source: {:?})",
+        req.model_name, req.source
+    );
+
+    let model_source = match req.source {
+        LoadModelSource::HuggingFace { source_path } => {
+            let path = source_path.unwrap_or_else(|| req.model_name.clone());
+            ModelSource::HuggingFace(path)
+        }
+        LoadModelSource::Local { source_path } => ModelSource::Local(source_path),
+    };
+
+    let load_msg = InferenceGossipMessage::LoadModel {
+        model_name: req.model_name.clone(),
+        model_source,
+    };
+
+    state.gossip_tx.send(load_msg).await.map_err(|e| {
+        error!("Failed to broadcast LoadModel message: {:#}", e);
+        AppError::InternalError
+    })?;
+
+    info!(
+        "Successfully broadcasted LoadModel message for: {}",
+        req.model_name
+    );
+    Ok(format!(
+        "LoadModel broadcast sent for model: {}",
+        req.model_name
+    ))
+}
+
 #[derive(Debug)]
 enum AppError {
     NoNodesAvailable,
@@ -208,10 +282,16 @@ impl IntoResponse for AppError {
         let (status, message) = match self {
             AppError::NoNodesAvailable => (
                 StatusCode::SERVICE_UNAVAILABLE,
-                "No inference nodes available",
+                "No inference nodes available".to_string(),
             ),
-            AppError::Timeout => (StatusCode::GATEWAY_TIMEOUT, "Inference request timed out"),
-            AppError::InternalError => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
+            AppError::Timeout => (
+                StatusCode::GATEWAY_TIMEOUT,
+                "Inference request timed out".to_string(),
+            ),
+            AppError::InternalError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal server error".to_string(),
+            ),
         };
         (status, message).into_response()
     }
@@ -353,10 +433,12 @@ async fn run_gateway() -> Result<()> {
     info!("Gossip mesh should be ready");
 
     let (network_tx, mut network_rx) = mpsc::channel::<(EndpointId, InferenceMessage)>(100);
+    let (gossip_tx, mut gossip_rx) = mpsc::channel::<InferenceGossipMessage>(100);
     let state = Arc::new(GatewayState {
         available_nodes: RwLock::new(HashMap::new()),
         pending_requests: RwLock::new(HashMap::new()),
         network_tx,
+        gossip_tx,
     });
 
     info!("Gateway ready! Listening on http://{}", args.listen_addr);
@@ -418,6 +500,15 @@ async fn run_gateway() -> Result<()> {
                     Some(_) = task_set.join_next(), if !task_set.is_empty() => {
                     }
 
+                    Some(gossip_msg) = gossip_rx.recv() => {
+                        info!("Broadcasting gossip message: {:?}", gossip_msg);
+                        if let Err(e) = network.broadcast(&gossip_msg) {
+                            error!("Failed to broadcast gossip message: {:#}", e);
+                        } else {
+                            info!("Successfully broadcasted gossip message");
+                        }
+                    }
+
                     event = network.poll_next() => {
                         match event {
                             Ok(Some(NetworkEvent::MessageReceived((peer_id, msg)))) => {
@@ -426,7 +517,7 @@ async fn run_gateway() -> Result<()> {
                                     InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities } => {
                                         info!("Discovered inference node!");
                                         info!("  Peer ID: {}", peer_id.fmt_short());
-                                        info!("  Model: {}", model_name);
+                                        info!("  Model: {}", model_name.as_deref().unwrap_or("<idle>"));
                                         info!("  Checkpoint: {:?}", checkpoint_id);
                                         info!("  Capabilities: {:?}", capabilities);
 
@@ -441,6 +532,9 @@ async fn run_gateway() -> Result<()> {
                                     InferenceGossipMessage::NodeUnavailable => {
                                         info!("Inference node {} went offline", peer_id.fmt_short());
                                         state.available_nodes.write().await.remove(&peer_id);
+                                    }
+                                    InferenceGossipMessage::LoadModel { .. } => {
+                                        debug!("Ignoring LoadModel message (gateways don't load models)");
                                     }
                                     InferenceGossipMessage::ReloadCheckpoint { checkpoint_id, checkpoint_source } => {
                                         debug!("Checkpoint reload notification: {} from {}", checkpoint_id, checkpoint_source);
@@ -463,6 +557,7 @@ async fn run_gateway() -> Result<()> {
 
     let app = Router::new()
         .route("/v1/chat/completions", post(handle_inference))
+        .route("/admin/load-model", post(handle_load_model))
         .with_state(state.clone());
 
     let listener = tokio::net::TcpListener::bind(&args.listen_addr)

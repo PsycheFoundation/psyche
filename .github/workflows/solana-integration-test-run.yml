@@ -26,10 +26,10 @@ jobs:
           - disconnect_client
           - drop_a_client_waitingformembers_then_reconnect
           - test_when_all_clients_disconnect_checkpoint_is_hub
-          - test_solana_subscriptions
           - test_everybody_leaves_in_warmup
           - test_lost_only_peer_go_back_to_hub_checkpoint
           - test_pause_and_resume_run
+          - test_solana_rpc_fallback
     permissions:
       contents: read
       packages: write

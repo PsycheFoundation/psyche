@@ -503,11 +503,16 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                 .witnesses
                 .len() as u16,
         );
-        let cold_start_warmup_steps = match &state.model {
-            model::Model::LLM(llm) => llm.cold_start_warmup_steps,
+        let (cold_start_warmup_steps, checkpoint_is_p2p) = match &state.model {
+            model::Model::LLM(llm) => (
+                llm.cold_start_warmup_steps,
+                matches!(
+                    llm.checkpoint,
+                    model::Checkpoint::P2P(_) | model::Checkpoint::P2PGcs(_)
+                ),
+            ),
         };
         let warmup_lr_between = state.get_cold_start_warmup_bounds();
-        let epoch = state.progress.epoch;
 
         // coordinator has already advanced to the next round (unless we're in cooldown) but we haven't started ours yet.
         // so our current_round corresponds to the coordinator's previous_round
@@ -603,11 +608,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
 
                     match maybe_results {
                         Ok((results, trainer_nonce)) => {
-                            if trainer_nonce < cold_start_warmup_steps && epoch != 0 && warmup_lr_between.is_none()  {
-                                // results are not actually applied for the first cold_start_warmup_steps of a trainer's lifetime
+                            if trainer_nonce < cold_start_warmup_steps && checkpoint_is_p2p {
+                                // Only filter results from trainers that are still warming up their optimizer,
+                                // and only when the checkpoint is P2P (meaning other clients exist from a previous epoch).
+                                // When checkpoint is Hub (first epoch or mass restart), all trainers are equally new so no filtering is needed.
                                 // note, we are relying on honest communication of this value here -- will need to harden with verification.
-                                // the only exception is for the first steps of the first epoch
-                                // or when doing a cold start (warmup_lr_between.is_some())
                                 info!("Skipping apply of batch {batch_id}, trainer warming up ({trainer_nonce}/{cold_start_warmup_steps})");
                             } else {
                                 distro_results.push(results);

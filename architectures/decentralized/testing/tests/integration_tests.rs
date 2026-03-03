@@ -12,7 +12,7 @@ use bollard::container::StartContainerOptions;
 use bollard::{Docker, container::KillContainerOptions};
 use psyche_coordinator::{RunState, model::Checkpoint};
 use psyche_core::IntegrationTestLogMarker;
-use psyche_decentralized_testing::docker_setup::e2e_testing_setup_subscription;
+use psyche_decentralized_testing::docker_setup::e2e_testing_setup_rpc_fallback;
 use psyche_decentralized_testing::{
     CLIENT_CONTAINER_PREFIX, NGINX_PROXY_PREFIX,
     chaos::{ChaosAction, ChaosScheduler},
@@ -679,149 +679,6 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
 
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 #[serial]
-async fn test_solana_subscriptions() {
-    // epochs the test will run
-    let num_of_epochs_to_run = 3;
-
-    // Initialize DockerWatcher
-    let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
-    let mut watcher = DockerWatcher::new(docker.clone());
-
-    // Initialize a Solana run with 2 client
-    let _cleanup = e2e_testing_setup_subscription(docker.clone(), 2).await;
-
-    // Monitor the client containers
-    let _monitor_client_1 = watcher
-        .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
-            vec![IntegrationTestLogMarker::StateChange],
-        )
-        .unwrap();
-
-    let _monitor_client_2 = watcher
-        .monitor_container(
-            &format!("{CLIENT_CONTAINER_PREFIX}-2"),
-            vec![IntegrationTestLogMarker::SolanaSubscription],
-        )
-        .unwrap();
-
-    let mut live_interval = time::interval(Duration::from_secs(10));
-    let mut subscription_events: Vec<(String, String)> = Vec::new();
-
-    loop {
-        tokio::select! {
-            _ = live_interval.tick() => {
-                if let Err(e) = watcher.monitor_clients_health(2).await {
-                    panic!("{}", e);
-                }
-            }
-            response = watcher.log_rx.recv() => {
-                match response {
-                    Some(Response::StateChange(_timestamp, _client_1, old_state, new_state, epoch , step)) => {
-                        if old_state == RunState::WaitingForMembers.to_string() {
-                            println!(
-                                "Starting epoch: {epoch}",
-                            );
-                        }
-
-                        // shutdown subscription 1
-                        if step == 2 && new_state == RunState::RoundWitness.to_string(){
-                            println!("stop container {NGINX_PROXY_PREFIX}-1");
-
-                            docker
-                                .stop_container(&format!("{NGINX_PROXY_PREFIX}-1"), None)
-                                .await
-                                .unwrap()
-
-                        }
-                        // resume subscription 1
-                        if step == 5 && new_state == RunState::RoundWitness.to_string(){
-                            println!("resume container {NGINX_PROXY_PREFIX}-1");
-                            docker
-                                .start_container(&format!("{NGINX_PROXY_PREFIX}-1"), None::<StartContainerOptions<String>>)
-                                .await
-                                .unwrap();
-
-                        }
-
-                        // shutdown subscription 2
-                        if step == 8 && new_state == RunState::RoundWitness.to_string(){
-                            println!("stop container {NGINX_PROXY_PREFIX}-2");
-                            docker
-                                .stop_container(&format!("{NGINX_PROXY_PREFIX}-2"), None)
-                                .await
-                                .unwrap()
-
-                        }
-                        // resume subscription 2
-                        if step == 10 && new_state == RunState::RoundWitness.to_string(){
-                            println!("resume container {NGINX_PROXY_PREFIX}-2");
-
-                            docker
-                                .start_container(&format!("{NGINX_PROXY_PREFIX}-2"), None::<StartContainerOptions<String>>)
-                                .await
-                                .unwrap();
-                        }
-
-                        // finish test
-                        if epoch == num_of_epochs_to_run {
-                            break
-                        }
-
-                    },
-                    Some(Response::SolanaSubscription(url, status)) => {
-                        println!("Solana subscriptions {url} status: {status}");
-                        subscription_events.push((url , status))
-                    }
-                    _ => unreachable!(),
-                }
-            }
-
-        }
-    }
-    // skip the first 3 events since init subscriptions can vary the order
-    subscription_events = subscription_events[3..].into();
-    subscription_events.dedup();
-    let expected_subscription_events = [
-        // init subscriptions
-        (
-            format!(r#""ws://{NGINX_PROXY_PREFIX}-2:8902/ws/""#),
-            "Subscription Up".into(),
-        ),
-        (
-            format!(r#""ws://{NGINX_PROXY_PREFIX}-1:8901/ws/""#),
-            "Subscription Up".into(),
-        ),
-        (
-            format!(r#""ws://{NGINX_PROXY_PREFIX}-1:8901/ws/""#),
-            "Subscription Up".into(),
-        ),
-        // proxy 1 shutdown and reconnection
-        (
-            format!(r#""ws://{NGINX_PROXY_PREFIX}-1:8901/ws/""#),
-            "Subscription Down".into(),
-        ),
-        (
-            format!(r#""ws://{NGINX_PROXY_PREFIX}-1:8901/ws/""#),
-            "Subscription Up".into(),
-        ),
-        // proxy 2 shutdown and reconnection
-        (
-            format!(r#""ws://{NGINX_PROXY_PREFIX}-2:8902/ws/""#),
-            "Subscription Down".into(),
-        ),
-        (
-            format!(r#""ws://{NGINX_PROXY_PREFIX}-2:8902/ws/""#),
-            "Subscription Up".into(),
-        ),
-    ];
-
-    assert_eq!(subscription_events, expected_subscription_events[3..]);
-    println!("subscription_events: {subscription_events:?}");
-}
-
-#[test_log::test(tokio::test(flavor = "multi_thread"))]
-#[serial]
 async fn test_everybody_leaves_in_warmup() {
     // set test variables
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
@@ -1126,4 +983,142 @@ async fn test_pause_and_resume_run() {
             _ => {}
         }
     }
+}
+
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+#[serial]
+async fn test_solana_rpc_fallback() {
+    // epochs the test will run
+    let num_of_epochs_to_run = 3;
+
+    // Initialize DockerWatcher
+    let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
+    let mut watcher = DockerWatcher::new(docker.clone());
+
+    // Initialize a Solana run with 2 clients using RPC fallback proxies
+    let _cleanup = e2e_testing_setup_rpc_fallback(docker.clone(), 2).await;
+
+    // Monitor client 1 for state changes (to track training progress and trigger proxy stops)
+    let _monitor_client_1 = watcher
+        .monitor_container(
+            &format!("{CLIENT_CONTAINER_PREFIX}-1"),
+            vec![IntegrationTestLogMarker::StateChange],
+        )
+        .unwrap();
+
+    // Monitor client 2 for RPC fallback and subscription events
+    let _monitor_client_2 = watcher
+        .monitor_container(
+            &format!("{CLIENT_CONTAINER_PREFIX}-2"),
+            vec![
+                IntegrationTestLogMarker::RpcFallback,
+                IntegrationTestLogMarker::SolanaSubscription,
+            ],
+        )
+        .unwrap();
+
+    let mut live_interval = time::interval(Duration::from_secs(10));
+    let mut rpc_fallback_count: u32 = 0;
+    let mut seen_fallback_from_primary = false;
+    let mut seen_subscription_down = false;
+    let mut seen_subscription_up_after_down = false;
+
+    loop {
+        tokio::select! {
+            _ = live_interval.tick() => {
+                if let Err(e) = watcher.monitor_clients_health(2).await {
+                    panic!("{}", e);
+                }
+            }
+            response = watcher.log_rx.recv() => {
+                match response {
+                    Some(Response::StateChange(_timestamp, _client_id, old_state, new_state, epoch, step)) => {
+                        if old_state == RunState::WaitingForMembers.to_string() {
+                            println!("Starting epoch: {epoch}");
+                        }
+
+                        // Stop primary RPC proxy at step 5
+                        if step == 5 && new_state == RunState::RoundWitness.to_string() {
+                            println!("stop container {NGINX_PROXY_PREFIX}-1 (primary RPC)");
+                            docker
+                                .stop_container(&format!("{NGINX_PROXY_PREFIX}-1"), None)
+                                .await
+                                .unwrap();
+                        }
+
+                        // Resume primary RPC proxy at step 8
+                        if step == 8 && new_state == RunState::RoundWitness.to_string() {
+                            println!("resume container {NGINX_PROXY_PREFIX}-1");
+                            docker
+                                .start_container(&format!("{NGINX_PROXY_PREFIX}-1"), None::<StartContainerOptions<String>>)
+                                .await
+                                .unwrap();
+                        }
+
+                        // Stop backup RPC proxy at step 15
+                        if step == 15 && new_state == RunState::RoundWitness.to_string() {
+                            println!("stop container {NGINX_PROXY_PREFIX}-2 (backup RPC)");
+                            docker
+                                .stop_container(&format!("{NGINX_PROXY_PREFIX}-2"), None)
+                                .await
+                                .unwrap();
+                        }
+
+                        // Resume backup RPC proxy at step 18
+                        if step == 18 && new_state == RunState::RoundWitness.to_string() {
+                            println!("resume container {NGINX_PROXY_PREFIX}-2");
+                            docker
+                                .start_container(&format!("{NGINX_PROXY_PREFIX}-2"), None::<StartContainerOptions<String>>)
+                                .await
+                                .unwrap();
+                        }
+
+                        // Finish test after target epochs
+                        if epoch == num_of_epochs_to_run {
+                            break;
+                        }
+                    },
+                    Some(Response::RpcFallback(failed_rpc_index, _error)) => {
+                        rpc_fallback_count += 1;
+                        if failed_rpc_index == "0" {
+                            if !seen_fallback_from_primary {
+                                println!("RPC fallback from primary (index 0) detected");
+                                seen_fallback_from_primary = true;
+                            }
+                        } else {
+                            println!("RPC fallback: failed_rpc_index={failed_rpc_index}");
+                        }
+                    }
+                    Some(Response::SolanaSubscription(url, status)) => {
+                        println!("Solana subscription {url} status: {status}");
+                        if status == "Subscription Down" {
+                            seen_subscription_down = true;
+                        }
+                        if status == "Subscription Up" && seen_subscription_down {
+                            seen_subscription_up_after_down = true;
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
+
+    println!("Total RPC fallback events: {rpc_fallback_count}");
+    assert!(
+        rpc_fallback_count > 0,
+        "Expected at least one RPC fallback event, but none were received"
+    );
+    assert!(
+        seen_fallback_from_primary,
+        "Expected a fallback from primary RPC (index 0)"
+    );
+    assert!(
+        seen_subscription_down,
+        "Expected at least one subscription down event when proxy was stopped"
+    );
+    assert!(
+        seen_subscription_up_after_down,
+        "Expected subscription to recover after proxy was resumed"
+    );
 }

@@ -8,5 +8,6 @@ pub mod vllm;
 pub use node::InferenceNode;
 pub use protocol::{
     ChatMessage, InferenceGossipMessage, InferenceMessage, InferenceRequest, InferenceResponse,
+    ModelSource,
 };
 pub use protocol_handler::{INFERENCE_ALPN, InferenceProtocol};
