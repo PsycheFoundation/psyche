@@ -172,6 +172,9 @@ impl InferenceProtocol {
                 request_id
             );
 
+            // Write length prefix (4 bytes, big-endian) followed by message
+            let len = chunk_bytes.len() as u32;
+            send.write_all(&len.to_be_bytes()).await?;
             send.write_all(&chunk_bytes).await?;
         }
 
@@ -187,6 +190,9 @@ impl InferenceProtocol {
         let response_bytes =
             postcard::to_allocvec(&response_msg).context("Failed to serialize response")?;
 
+        // Write length prefix for final response too
+        let len = response_bytes.len() as u32;
+        send.write_all(&len.to_be_bytes()).await?;
         send.write_all(&response_bytes).await?;
 
         // Finish our send stream to signal we're done sending
