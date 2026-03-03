@@ -285,11 +285,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1763142518,
-        "narHash": "sha256-cDoLk4LY2J7IQjmIkTPMvHwDcnACOHxO5ZE07QcHw18=",
+        "lastModified": 1772647271,
+        "narHash": "sha256-Un+81FUDHYw1T46GzRq9p2uxulqGWo5tBs/kXzKtB+0=",
         "owner": "arilotter",
         "repo": "nix-gl-host-rs",
-        "rev": "41bde4e019c315ce7f620b8f82bc23dfff4518c6",
+        "rev": "13fcc2a402c5cfacbd6178369848264adf8f0ffa",
         "type": "github"
       },
       "original": {
