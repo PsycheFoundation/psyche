@@ -222,9 +222,9 @@ impl ConfigBuilder {
         #[cfg(feature = "python")]
         self.set_value("config.epoch_time", 200);
         #[cfg(feature = "python")]
-        self.set_value("config.warmup_time", 90);
+        self.set_value("config.warmup_time", 150);
         #[cfg(feature = "python")]
-        self.set_value("config.max_round_train_time", 60);
+        self.set_value("config.max_round_train_time", 30);
 
         let config_content = toml::to_string(&self.base_config).unwrap();
         let config_file_path = PathBuf::from("../../../config/solana-test/test-config.toml");
