@@ -482,9 +482,7 @@ async fn handle_streaming_inference(
     // Create SSE stream
     let stream = create_sse_stream(rx, request_id.clone(), model_name, state.clone());
 
-    Ok(Sse::new(stream)
-        .keep_alive(KeepAlive::default())
-        .into_response())
+    Ok(Sse::new(stream).into_response())
 }
 
 fn create_sse_stream(
