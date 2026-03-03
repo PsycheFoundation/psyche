@@ -853,10 +853,8 @@ async fn send_inference_request(
                     break;
                 }
                 Err(e) => {
-                    error!("Error reading stream: {:#}", e);
-                    let _ = response_tx
-                        .send(ResponseMessage::Error(e.to_string()))
-                        .await;
+                    // Connection closed after final response is expected
+                    debug!("Stream read ended: {:#}", e);
                     break;
                 }
             }
