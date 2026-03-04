@@ -35,6 +35,7 @@ rand.workspace = true
 rand_chacha.workspace = true
 time.workspace = true
 solana-client = "=2.1.4"
+solana-account-decoder-client-types = "=2.1.4"
 reqwest = { version = "0.12", features = ["json", "stream"] }
 bs58 = "0.5"
 tokio-util.workspace = true
