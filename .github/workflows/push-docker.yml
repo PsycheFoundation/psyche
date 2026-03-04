@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+      - rm/sft
 
 jobs:
   push-docker-image:
