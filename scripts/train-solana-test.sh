@@ -22,7 +22,7 @@ fi
 
 RPC=${RPC:-"https://api.devnet.solana.com"}
 WS_RPC=${WS_RPC:-"wss://api.devnet.solana.com"}
-RUN_ID=${RUN_ID:-"my-run"}
+RUN_ID="my-run"
 AUTHORIZER=${AUTHORIZER:-"11111111111111111111111111111111"}
 
 # presets for a DGX or an HGX
