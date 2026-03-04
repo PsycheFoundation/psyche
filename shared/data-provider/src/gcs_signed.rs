@@ -8,7 +8,7 @@ use chrono::Utc;
 use futures::TryStreamExt;
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
-use tracing::info;
+use tracing::{info, warn};
 
 pub async fn upload_to_gcs_signed(
     run_down: &RunDownClient,
@@ -81,12 +81,21 @@ pub async fn upload_to_gcs_signed(
             )));
         }
 
-        let generation = response
+        let generation = match response
             .headers()
             .get("x-goog-generation")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.parse::<i64>().ok())
-            .unwrap_or(0);
+        {
+            Some(g) => g,
+            None => {
+                warn!(
+                    file = file_name,
+                    "x-goog-generation header missing or invalid in upload response, using 0"
+                );
+                0
+            }
+        };
 
         info!(
             file = file_name,
