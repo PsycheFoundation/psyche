@@ -435,9 +435,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 )
                             }
                             model::Checkpoint::Gcs(_) => {
-                                let run_down = run_down_client
-                                    .as_ref()
-                                    .expect("RunDownClient required for GCS checkpoints");
+                                let run_down = run_down_client.as_ref().ok_or_else(|| {
+                                    DownloadError::RunDown("RunDownClient not configured".into())
+                                })?;
                                 info!(
                                     "Downloading model via run-down signed URLs for run {}",
                                     run_down.run_id()
