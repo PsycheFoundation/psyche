@@ -20,13 +20,14 @@ elif [[ -z "${WALLET_FILE:-}" ]]; then
     trap "echo 'Cleaning up ephemeral wallet file...'; rm -f '${WALLET_FILE}'" EXIT
 fi
 
-RPC=${RPC:-"http://127.0.0.1:8899"}
-WS_RPC=${WS_RPC:-"ws://127.0.0.1:8900"}
-RUN_ID=${RUN_ID:-"test"}
+RPC=${RPC:-"https://api.devnet.solana.com"}
+WS_RPC=${WS_RPC:-"wss://api.devnet.solana.com"}
+RUN_ID=${RUN_ID:-"my-run"}
 AUTHORIZER=${AUTHORIZER:-"11111111111111111111111111111111"}
 
 # presets for a DGX or an HGX
-DP=${DP:-"8"}
+# DP=${DP:-"8"}
+DP=8
 TP=${TP:-"1"}
 BATCH_SIZE=${BATCH_SIZE:-"1"}
 
@@ -36,7 +37,7 @@ solana airdrop 10 "$(solana-keygen pubkey ${WALLET_FILE})" --url "${RPC}" || tru
 export RUST_LOG="info,psyche=debug"
 
 if [[ "$OTLP_METRICS_URL" == "" ]]; then
-    cargo run --release --bin psyche-solana-client -- \
+    GOOGLE_APPLICATION_CREDENTIALS=~/.config/gcloud/application_default_credentials.json cargo run --release --features python --bin psyche-solana-client -- \
         train \
         --wallet-private-key-path ${WALLET_FILE} \
         --rpc ${RPC} \
@@ -45,6 +46,8 @@ if [[ "$OTLP_METRICS_URL" == "" ]]; then
         --data-parallelism ${DP} \
         --tensor-parallelism ${TP} \
         --micro-batch-size ${BATCH_SIZE} \
+        --gcs-bucket "my-run" \
+        --checkpoint-dir "/tmp/checkpoint-test" \
         --authorizer ${AUTHORIZER} \
         --logs "console" \
         "$@"
