@@ -851,9 +851,7 @@ async fn send_inference_request(
                                 info!("Successfully sent final response to SSE stream");
                             }
 
-                            // Send ack back to inference node so it knows we received everything
-                            info!("Sending ack to inference node");
-                            send.finish().context("Failed to finish send stream")?;
+                            let _ = send.finish();
 
                             break;
                         }
