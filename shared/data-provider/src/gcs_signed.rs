@@ -155,7 +155,7 @@ pub async fn download_model_from_gcs_signed_async(
         .iter()
         .find(|e| e.path.ends_with("manifest.json"));
 
-    let cache_key = run_id;
+    let cache_key = &format!("signed-urls/{}", run_id);
 
     match manifest_entry {
         Some(manifest_entry) => {
