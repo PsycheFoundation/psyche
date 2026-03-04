@@ -370,7 +370,6 @@ impl PythonDistributedCausalLM {
             let shutting_down = shutting_down.clone();
             std::thread::spawn(move || {
                 let status = child.wait();
-                std::thread::sleep(Duration::from_millis(200));
                 if !shutting_down.load(Ordering::Acquire) {
                     error!(
                         "Sidecar (rank {}) exited unexpectedly with status: {:?}. Aborting",
@@ -545,12 +544,6 @@ impl CausalLM for PythonDistributedCausalLM {
 
     fn convert(&self, state_dict: Option<HashMap<String, Tensor>>) -> HashMap<String, Tensor> {
         self.local.convert(state_dict)
-    }
-}
-
-impl Drop for PythonDistributedCausalLM {
-    fn drop(&mut self) {
-        self.shutting_down.store(true, Ordering::Release);
     }
 }
 
