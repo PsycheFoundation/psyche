@@ -143,28 +143,30 @@ impl PeerManagerActor {
             }
             PeerCommand::GetPeer { reply } => {
                 // Sort available peers by bandwidth (highest first), falling back to latency
-                let mut peers_with_priority: Vec<(EndpointId, f64, Duration)> = self
-                    .available_peers
-                    .drain(..)
-                    .map(|peer| {
-                        let bandwidth = self.connection_monitor.get_bandwidth(&peer).unwrap_or(0.0);
-                        let latency = self
-                            .connection_monitor
-                            .get_latency(&peer)
-                            .unwrap_or(Duration::MAX);
-                        (peer, bandwidth, latency)
-                    })
-                    .collect();
-                // Sort: highest bandwidth first; for peers with equal bandwidth, use lowest latency
-                peers_with_priority.sort_by(|a, b| {
-                    b.1.partial_cmp(&a.1)
+                self.available_peers.make_contiguous().sort_by(|a, b| {
+                    let bw_a = self.connection_monitor.get_bandwidth(a).unwrap_or(0.0);
+                    let bw_b = self.connection_monitor.get_bandwidth(b).unwrap_or(0.0);
+                    let lat_a = self
+                        .connection_monitor
+                        .get_latency(a)
+                        .unwrap_or(Duration::MAX);
+                    let lat_b = self
+                        .connection_monitor
+                        .get_latency(b)
+                        .unwrap_or(Duration::MAX);
+                    bw_b.partial_cmp(&bw_a)
                         .unwrap_or(std::cmp::Ordering::Equal)
-                        .then_with(|| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
+                        .then_with(|| {
+                            lat_a
+                                .partial_cmp(&lat_b)
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                        })
                 });
 
-                self.available_peers = peers_with_priority.into_iter().map(|(p, _, _)| p).collect();
-
-                let peer = if let Some(peer) = self.available_peers.pop_front() {
+                // Return the best peer without removing it — the download scheduler
+                // controls concurrency globally, so a single peer can serve multiple
+                // concurrent downloads.
+                let peer = if let Some(&peer) = self.available_peers.front() {
                     let bandwidth = self.connection_monitor.get_bandwidth(&peer).unwrap_or(0.0);
                     info!(
                         "Selected peer {} (bandwidth: {:.1} KB/s) for model parameters",
@@ -179,10 +181,10 @@ impl PeerManagerActor {
                 let _ = reply.send(peer);
             }
             PeerCommand::ReportSuccess { peer_id } => {
+                // Peer stays in available_peers across requests, so just log success.
+                // Only re-add if it was removed due to errors being below threshold.
                 if !self.available_peers.contains(&peer_id) {
                     self.available_peers.push_back(peer_id);
-                } else {
-                    warn!("Peer was already available but we tried to add it again");
                 }
                 info!("Peer {peer_id} correctly provided the blob ticket");
             }

@@ -193,6 +193,7 @@ run_test_infra_with_rpc_fallback_proxies num_clients="1":
 
 stop_test_infra:
     cd docker/test && docker compose -f docker-compose.yml -f rpc_fallback_test/docker-compose.yml down
+    docker ps --filter name=test-psyche-test-client -q | xargs -r docker stop
 
 # Run inference node with a local model (requires Python venv with vLLM)
 inference-node model="gpt2":
