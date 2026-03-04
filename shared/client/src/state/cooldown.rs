@@ -237,6 +237,9 @@ impl CooldownStepMetadata {
                             }
                         }
                         model::Checkpoint::Gcs(_) | model::Checkpoint::P2PGcs(_) => {
+                            if run_down_client.is_none() {
+                                warn!("RunDownClient not configured, skipping GCS checkpoint upload");
+                            }
                             run_down_client.map(UploadInfo::Gcs)
                         }
                         _ => None,
