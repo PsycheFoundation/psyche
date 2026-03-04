@@ -156,11 +156,20 @@ pub async fn download_model_from_gcs_signed_async(
 
     match manifest_entry {
         Some(manifest_entry) => {
-            let manifest_data = http
+            let response = http
                 .get(&manifest_entry.url)
                 .send()
                 .await
-                .map_err(|e| DownloadError::RunDown(e.to_string()))?
+                .map_err(|e| DownloadError::RunDown(e.to_string()))?;
+
+            if !response.status().is_success() {
+                return Err(DownloadError::RunDown(format!(
+                    "Failed to download manifest.json: {}",
+                    response.status()
+                )));
+            }
+
+            let manifest_data = response
                 .bytes()
                 .await
                 .map_err(|e| DownloadError::RunDown(e.to_string()))?;
@@ -247,11 +256,21 @@ async fn download_files_from_signed_urls(
 
         info!("Downloading via signed URL: {}", file_entry.filename);
 
-        let data = http
+        let response = http
             .get(&url_entry.url)
             .send()
             .await
-            .map_err(|e| DownloadError::RunDown(e.to_string()))?
+            .map_err(|e| DownloadError::RunDown(e.to_string()))?;
+
+        if !response.status().is_success() {
+            return Err(DownloadError::RunDown(format!(
+                "Failed to download {}: {}",
+                file_entry.filename,
+                response.status()
+            )));
+        }
+
+        let data = response
             .bytes()
             .await
             .map_err(|e| DownloadError::RunDown(e.to_string()))?;
@@ -296,11 +315,21 @@ async fn download_non_manifest_files_from_signed_urls(
 
         info!("Downloading config via signed URL: {}", filename);
 
-        let data = http
+        let response = http
             .get(&url_entry.url)
             .send()
             .await
-            .map_err(|e| DownloadError::RunDown(e.to_string()))?
+            .map_err(|e| DownloadError::RunDown(e.to_string()))?;
+
+        if !response.status().is_success() {
+            return Err(DownloadError::RunDown(format!(
+                "Failed to download {}: {}",
+                filename,
+                response.status()
+            )));
+        }
+
+        let data = response
             .bytes()
             .await
             .map_err(|e| DownloadError::RunDown(e.to_string()))?;
@@ -337,11 +366,21 @@ async fn download_all_model_files_from_signed_urls(
 
         info!("Downloading via signed URL: {}", filename);
 
-        let data = http
+        let response = http
             .get(&url_entry.url)
             .send()
             .await
-            .map_err(|e| DownloadError::RunDown(e.to_string()))?
+            .map_err(|e| DownloadError::RunDown(e.to_string()))?;
+
+        if !response.status().is_success() {
+            return Err(DownloadError::RunDown(format!(
+                "Failed to download {}: {}",
+                filename,
+                response.status()
+            )));
+        }
+
+        let data = response
             .bytes()
             .await
             .map_err(|e| DownloadError::RunDown(e.to_string()))?;
