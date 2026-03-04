@@ -317,12 +317,8 @@ impl TrainArgs {
         let result: Result<Vec<psyche_eval::Task>> = eval_tasks
             .split(",")
             .map(|eval_task| {
-                let fewshot = match eval_task {
-                    "mmlu_pro" => 5,
-                    _ => 0,
-                };
                 tasktype_from_name(eval_task)
-                    .map(|task_type| psyche_eval::Task::new(task_type, fewshot, eval_seed))
+                    .map(|task_type| psyche_eval::Task::new(task_type, 5, eval_seed))
             })
             .collect();
         result

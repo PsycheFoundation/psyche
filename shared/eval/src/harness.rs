@@ -35,12 +35,7 @@ const TASKS_WITH_ACC_NORM: [&str; 6] = [
     PIQA::name(),
 ];
 
-const TASKS_WITH_ACC_UNCOND: [&str; 4] = [
-    ArcChallenge::name(),
-    ArcEasy::name(),
-    MMLUCF::name(),
-    PIQA::name(),
-];
+const TASKS_WITH_ACC_UNCOND: [&str; 3] = [ArcChallenge::name(), ArcEasy::name(), MMLUCF::name()];
 
 pub enum TaskType {
     LogLikelihood(Box<dyn LogLikelihoodTask>),
@@ -822,7 +817,14 @@ impl PreparedTask {
     }
 
     pub fn main_metric_name(&self) -> &str {
-        if TASKS_WITH_ACC_NORM.contains(&self.name()) {
+        let name = self.name();
+        if name == ArcChallenge::name() || name == MMLUCF::name() {
+            "acc_uncond"
+        } else if name == MMLUPro::name()
+            || name == Hellaswag::name()
+            || name == OpenbookQA::name()
+            || name == PIQA::name()
+        {
             "acc_norm"
         } else {
             "acc"
