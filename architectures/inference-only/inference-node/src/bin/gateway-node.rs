@@ -30,7 +30,7 @@ use tokio::{
     time::sleep,
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -60,6 +60,7 @@ struct InferenceNodeInfo {
     checkpoint_id: Option<String>,
     #[allow(dead_code)]
     capabilities: Vec<String>,
+    last_seen: std::time::Instant,
 }
 
 struct GatewayState {
@@ -450,6 +451,9 @@ async fn run_gateway() -> Result<()> {
         tokio::spawn(async move {
             let mut task_set = tokio::task::JoinSet::new();
 
+            let mut cleanup_interval = tokio::time::interval(Duration::from_secs(15));
+            cleanup_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
             loop {
                 tokio::select! {
                     _ = cancel.cancelled() => {
@@ -457,6 +461,29 @@ async fn run_gateway() -> Result<()> {
                         info!("Aborting {} active P2P request tasks", task_set.len());
                         task_set.shutdown().await;
                         break;
+                    }
+
+                    _ = cleanup_interval.tick() => {
+                        let stale_threshold = Duration::from_secs(90);
+                        let mut nodes = state.available_nodes.write().await;
+                        let now = std::time::Instant::now();
+
+                        let stale_nodes: Vec<(EndpointId, Duration)> = nodes
+                            .iter()
+                            .filter_map(|(id, info)| {
+                                let age = now.duration_since(info.last_seen);
+                                if age > stale_threshold {
+                                    Some((*id, age))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+
+                        for (node_id, age) in stale_nodes {
+                            warn!("Removing stale node {} (no heartbeat for {:?})", node_id.fmt_short(), age);
+                            nodes.remove(&node_id);
+                        }
                     }
 
                     Some((target_peer_id, msg)) = network_rx.recv() => {
@@ -514,18 +541,27 @@ async fn run_gateway() -> Result<()> {
                             Ok(Some(NetworkEvent::MessageReceived((peer_id, msg)))) => {
                                 info!("Received gossip message from {}", peer_id.fmt_short());
                                 match msg {
-                                    InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities } => {
-                                        info!("Discovered inference node!");
-                                        info!("  Peer ID: {}", peer_id.fmt_short());
-                                        info!("  Model: {}", model_name.as_deref().unwrap_or("<idle>"));
-                                        info!("  Checkpoint: {:?}", checkpoint_id);
-                                        info!("  Capabilities: {:?}", capabilities);
+                                    InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities, timestamp_ms: _ } => {
+                                        let is_new = !state.available_nodes.read().await.contains_key(&peer_id);
+
+                                        if is_new {
+                                            info!("Discovered NEW inference node!");
+                                            info!("  Peer ID: {}", peer_id.fmt_short());
+                                            info!("  Model: {}", model_name.as_deref().unwrap_or("<idle>"));
+                                            info!("  Checkpoint: {:?}", checkpoint_id);
+                                            info!("  Capabilities: {:?}", capabilities);
+                                        } else {
+                                            info!("Heartbeat from {} (model: {})",
+                                                peer_id.fmt_short(),
+                                                model_name.as_deref().unwrap_or("<idle>"));
+                                        }
 
                                         let node_info = InferenceNodeInfo {
                                             peer_id,
                                             model_name,
                                             checkpoint_id,
                                             capabilities,
+                                            last_seen: std::time::Instant::now(),
                                         };
                                         state.available_nodes.write().await.insert(peer_id, node_info);
                                     }

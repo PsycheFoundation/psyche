@@ -106,6 +106,10 @@ async fn main() -> Result<()> {
         model_name: Some(format!("test-model-{}", args.node_id)),
         checkpoint_id: None,
         capabilities: vec!["test".to_string()],
+        timestamp_ms: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64,
     };
 
     network
@@ -143,7 +147,7 @@ async fn main() -> Result<()> {
                 match event {
                     Ok(Some(NetworkEvent::MessageReceived((peer_id, msg)))) => {
                         match msg {
-                            InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities } => {
+                            InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities, timestamp_ms: _ } => {
                                 peer_count += 1;
                                 info!("PEER DISCOVERED!");
                                 info!("  Peer ID: {}", peer_id.fmt_short());
