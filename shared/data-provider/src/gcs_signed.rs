@@ -5,7 +5,9 @@ use crate::gcs::{
 };
 use crate::run_down::{DownloadUrlEntry, RunDownClient};
 use chrono::Utc;
+use futures::TryStreamExt;
 use std::path::{Path, PathBuf};
+use tokio::io::AsyncWriteExt;
 use tracing::info;
 
 pub async fn upload_to_gcs_signed(
@@ -41,8 +43,8 @@ pub async fn upload_to_gcs_signed(
             .and_then(|n| n.to_str())
             .ok_or_else(|| UploadError::InvalidFilename(path.clone()))?;
 
-        let data = tokio::fs::read(&path).await?;
-        let size = data.len() as u64;
+        let file = tokio::fs::File::open(&path).await?;
+        let size = file.metadata().await?.len();
 
         let upload_url = run_down
             .get_upload_url(file_name)
@@ -54,7 +56,8 @@ pub async fn upload_to_gcs_signed(
         let upload_future = http
             .put(&upload_url.url)
             .header("Content-Type", "application/octet-stream")
-            .body(data)
+            .header("Content-Length", size)
+            .body(reqwest::Body::from(file))
             .send();
 
         let response = tokio::select! {
@@ -270,13 +273,20 @@ async fn download_files_from_signed_urls(
             )));
         }
 
-        let data = response
-            .bytes()
+        let mut stream = response.bytes_stream();
+        let mut file = tokio::fs::File::create(&local_path)
             .await
-            .map_err(|e| DownloadError::RunDown(e.to_string()))?;
-
-        std::fs::write(&local_path, &data)?;
-        info!("Downloaded: {} ({} bytes)", file_entry.filename, data.len());
+            .map_err(|e| DownloadError::Io(e))?;
+        while let Some(chunk) = stream
+            .try_next()
+            .await
+            .map_err(|e| DownloadError::RunDown(e.to_string()))?
+        {
+            file.write_all(&chunk)
+                .await
+                .map_err(|e| DownloadError::Io(e))?;
+        }
+        info!("Downloaded: {}", file_entry.filename);
         downloaded_files.push(local_path);
     }
 
@@ -329,13 +339,20 @@ async fn download_non_manifest_files_from_signed_urls(
             )));
         }
 
-        let data = response
-            .bytes()
+        let mut stream = response.bytes_stream();
+        let mut file = tokio::fs::File::create(&local_path)
             .await
-            .map_err(|e| DownloadError::RunDown(e.to_string()))?;
-
-        std::fs::write(&local_path, &data)?;
-        info!("Downloaded: {} ({} bytes)", filename, data.len());
+            .map_err(|e| DownloadError::Io(e))?;
+        while let Some(chunk) = stream
+            .try_next()
+            .await
+            .map_err(|e| DownloadError::RunDown(e.to_string()))?
+        {
+            file.write_all(&chunk)
+                .await
+                .map_err(|e| DownloadError::Io(e))?;
+        }
+        info!("Downloaded: {}", filename);
         downloaded_files.push(local_path);
     }
 
@@ -380,13 +397,20 @@ async fn download_all_model_files_from_signed_urls(
             )));
         }
 
-        let data = response
-            .bytes()
+        let mut stream = response.bytes_stream();
+        let mut file = tokio::fs::File::create(&local_path)
             .await
-            .map_err(|e| DownloadError::RunDown(e.to_string()))?;
-
-        std::fs::write(&local_path, &data)?;
-        info!("Downloaded: {} ({} bytes)", filename, data.len());
+            .map_err(|e| DownloadError::Io(e))?;
+        while let Some(chunk) = stream
+            .try_next()
+            .await
+            .map_err(|e| DownloadError::RunDown(e.to_string()))?
+        {
+            file.write_all(&chunk)
+                .await
+                .map_err(|e| DownloadError::Io(e))?;
+        }
+        info!("Downloaded: {}", filename);
         downloaded_files.push(local_path);
     }
 
