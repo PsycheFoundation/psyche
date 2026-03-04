@@ -464,7 +464,7 @@ async fn run_gateway() -> Result<()> {
                     }
 
                     _ = cleanup_interval.tick() => {
-                        let stale_threshold = Duration::from_secs(60);
+                        let stale_threshold = Duration::from_secs(90);
                         let mut nodes = state.available_nodes.write().await;
                         let now = std::time::Instant::now();
 
