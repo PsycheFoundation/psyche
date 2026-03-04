@@ -7,6 +7,7 @@ import pyarrow as pa
 import pyarrow.dataset as pa_ds
 import random
 import json
+import tempfile
 
 from typing import List, Optional, Tuple
 from torch.nn import functional as F
@@ -113,13 +114,13 @@ def process_packing_shard(
         pa_ds.write_dataset(
             pa_table,
             os.path.join(args.save_to_disk, str(rank)),
-            format="arrow",
+            format="parquet",
         )
 
-        filename = f"data-{rank:05d}-of-{world_size:05d}.arrow"
+        filename = f"data-{rank:05d}-of-{world_size:05d}.parquet"
 
         shutil.move(
-            os.path.join(args.save_to_disk, str(rank), "part-0.arrow"),
+            os.path.join(args.save_to_disk, str(rank), "part-0.parquet"),
             os.path.join(args.save_to_disk, filename),
         )
 
@@ -657,7 +658,7 @@ def main(args):
                     raise RuntimeError(f"Unknown chat format, keys are {keys}")
 
             tokens = tokenizer.apply_chat_template(
-                conversation, tokenize=True, add_generation_prompt=False
+                conversation, tokenize=True, add_generation_prompt=False, return_dict=False
             )
             label = []
 
@@ -665,7 +666,7 @@ def main(args):
             for i in range(len(conversation)):
                 if i + 1 == len(conversation):
                     next_tokens = tokenizer.apply_chat_template(
-                        conversation, tokenize=True, add_generation_prompt=False
+                        conversation, tokenize=True, add_generation_prompt=False, return_dict=False
                     )[current_len:]
                 else:
                     if "assistant" == conversation[i + 1]["role"]:
@@ -673,12 +674,14 @@ def main(args):
                             conversation[: i + 1],
                             add_generation_prompt=True,
                             tokenize=True,
+                            return_dict=False,
                         )[current_len:]
                     else:
                         next_tokens = tokenizer.apply_chat_template(
                             conversation[: i + 1],
                             tokenize=True,
                             add_generation_prompt=False,
+                            return_dict=False,
                         )[current_len:]
 
                 if conversation[i]["role"] == "assistant":
@@ -723,6 +726,11 @@ def main(args):
     efficiency = 1.0
     dropped = 0
     if args.pack_to_sequence_length:
+        _temp_dir = None
+        if args.push_to_hub and not args.save_to_disk:
+            _temp_dir = tempfile.mkdtemp()
+            args.save_to_disk = _temp_dir
+
         num_shards = 64  # args.num_proc
         num_epochs = args.epochs
 
@@ -791,7 +799,7 @@ def main(args):
                 # Rename files to global sequential order
                 for old_filename in epoch_filenames:
                     old_path = os.path.join(args.save_to_disk, old_filename)
-                    new_filename = f"data-{file_counter:05d}-of-TOTAL.arrow"
+                    new_filename = f"data-{file_counter:05d}-of-TOTAL.parquet"
                     new_path = os.path.join(args.save_to_disk, new_filename)
                     os.rename(old_path, new_path)
                     file_counter += 1
@@ -800,9 +808,9 @@ def main(args):
         if args.save_to_disk:
             for i in range(file_counter):
                 old_path = os.path.join(
-                    args.save_to_disk, f"data-{i:05d}-of-TOTAL.arrow"
+                    args.save_to_disk, f"data-{i:05d}-of-TOTAL.parquet"
                 )
-                new_filename = f"data-{i:05d}-of-{file_counter:05d}.arrow"
+                new_filename = f"data-{i:05d}-of-{file_counter:05d}.parquet"
                 new_path = os.path.join(args.save_to_disk, new_filename)
                 os.rename(old_path, new_path)
 
@@ -825,6 +833,14 @@ def main(args):
                     f"!!! Warning: FFD packing sorts by length, which may introduce bias. "
                     f"Consider using --packing-mode=random_fit or shuffle before using."
                 )
+
+            if args.push_to_hub:
+                print(f"Pushing to Hugging Face repo {args.push_to_hub}")
+                final_dataset.push_to_hub(args.push_to_hub, private=True)
+
+        if _temp_dir:
+            shutil.rmtree(_temp_dir)
+            args.save_to_disk = None
 
     else:
         # No packing - just shuffle and save tokenized samples
@@ -914,7 +930,7 @@ def main(args):
             dataset.save_to_disk(args.save_to_disk)
         if args.push_to_hub:
             print(f"Pushing to Hugging Face repo {args.push_to_hub}")
-            dataset.push_to_hub(args.save_to_disk, private=True)
+            dataset.push_to_hub(args.push_to_hub, private=True)
 
         example = dataset[0]
 
