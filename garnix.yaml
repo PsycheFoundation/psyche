@@ -31,6 +31,7 @@ builds:
       - 'packages.x86_64-linux.docker-psyche-solana-client'
       - 'packages.x86_64-linux.docker-psyche-solana-test-client-no-python'
       - 'packages.x86_64-linux.docker-psyche-solana-test-client'
+      - 'packages.x86_64-linux.docker-psyche-gateway-node'
       - 'packages.x86_64-linux.psyche-centralized-local-testnet'
       - 'packages.x86_64-linux.expand-distro'
       - 'devShells.x86_64-linux.*'
