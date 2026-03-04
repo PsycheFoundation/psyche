@@ -4,6 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
 
 const DEFAULT_RUN_DOWN_BASE_URL: &str = "https://run-down.nousresearch.com/v1";
+const SIGNED_URL_EXPIRY_SECONDS: u64 = 3600;
 
 fn base_url() -> String {
     std::env::var("RUN_DOWN_URL").unwrap_or_else(|_| DEFAULT_RUN_DOWN_BASE_URL.to_string())
@@ -59,7 +60,7 @@ impl RunDownClient {
 
     /// Get a signed upload URL for a single file.
     pub async fn get_upload_url(&self, filename: &str) -> Result<UploadUrlResponse, RunDownError> {
-        let expires_in_seconds = 3600;
+        let expires_in_seconds = SIGNED_URL_EXPIRY_SECONDS;
         let nonce = Self::nonce();
         let signature = self.generate_signature(expires_in_seconds, nonce);
 
@@ -98,7 +99,7 @@ impl RunDownClient {
 
     /// Get signed download URLs for all files in the run.
     pub async fn get_download_urls(&self) -> Result<DownloadUrlsResponse, RunDownError> {
-        let expires_in_seconds = 3600;
+        let expires_in_seconds = SIGNED_URL_EXPIRY_SECONDS;
         let nonce = Self::nonce();
         let signature = self.generate_signature(expires_in_seconds, nonce);
 
