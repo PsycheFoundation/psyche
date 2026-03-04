@@ -86,17 +86,33 @@ pub struct TrainArgs {
 
     /// An auth header string for an opentelemetry endpoint. Used for both logging and metrics.
     #[clap(long, env)]
+    pub otlp_auth_header: Option<String>,
+    // Legacy version
+    // TODO: Remove once the env vars are all migrated
+    #[clap(long, env)]
     pub oltp_auth_header: Option<String>,
 
     /// A URL for sending opentelemetry metrics. probably ends in /v1/metrics
+    #[clap(long, env)]
+    pub otlp_metrics_url: Option<String>,
+    // Legacy version
+    // TODO: Remove once the env vars are all migrated
     #[clap(long, env)]
     pub oltp_metrics_url: Option<String>,
 
     /// A URL for sending opentelemetry traces. probably ends in /v1/traces
     #[clap(long, env)]
+    pub otlp_tracing_url: Option<String>,
+    // Legacy version
+    // TODO: Remove once the env vars are all migrated
+    #[clap(long, env)]
     pub oltp_tracing_url: Option<String>,
 
     /// A URL for sending opentelemetry logs. probably ends in /v1/logs
+    #[clap(long, env)]
+    pub otlp_logs_url: Option<String>,
+    // Legacy version
+    // TODO: Remove once the env vars are all migrated
     #[clap(long, env)]
     pub oltp_logs_url: Option<String>,
 
@@ -104,7 +120,7 @@ pub struct TrainArgs {
     #[clap(long, env,
     default_value = "60.0",
     value_parser = parse_duration_from_seconds)]
-    pub oltp_report_interval: Duration,
+    pub otlp_report_interval: Duration,
 
     /// If present, output some metrics & stats via this TCP port in JSON format. Useful for debugging or local integration.
     #[clap(long, env)]

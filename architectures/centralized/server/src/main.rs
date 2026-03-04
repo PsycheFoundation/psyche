@@ -39,7 +39,7 @@ enum Commands {
     /// Starts the server and launches the coordinator with the declared configuration.
     Run {
         #[command(flatten)]
-        run_args: RunArgs,
+        run_args: Box<RunArgs>,
     },
     // Prints the help, optionally as markdown. Used for docs generation.
     #[clap(hide = true)]
@@ -94,17 +94,33 @@ struct RunArgs {
 
     /// An auth header string for an opentelemetry endpoint. Used for both logging and metrics.
     #[clap(long, env)]
+    pub otlp_auth_header: Option<String>,
+    // Legacy version
+    // TODO: Remove once the env vars are all migrated
+    #[clap(long, env)]
     pub oltp_auth_header: Option<String>,
 
     /// A URL for sending opentelemetry metrics. probably ends in /v1/metrics
+    #[clap(long, env)]
+    pub otlp_metrics_url: Option<String>,
+    // Legacy version
+    // TODO: Remove once the env vars are all migrated
     #[clap(long, env)]
     pub oltp_metrics_url: Option<String>,
 
     /// A URL for sending opentelemetry traces. probably ends in /v1/traces
     #[clap(long, env)]
+    pub otlp_tracing_url: Option<String>,
+    // Legacy version
+    // TODO: Remove once the env vars are all migrated
+    #[clap(long, env)]
     pub oltp_tracing_url: Option<String>,
 
     /// A URL for sending opentelemetry logs. probably ends in /v1/logs
+    #[clap(long, env)]
+    pub otlp_logs_url: Option<String>,
+    // Legacy version
+    // TODO: Remove once the env vars are all migrated
     #[clap(long, env)]
     pub oltp_logs_url: Option<String>,
 }
@@ -174,27 +190,54 @@ async fn main() -> Result<()> {
                 } else {
                     LogOutput::Console
                 })
-                .with_metrics_destination(run_args.oltp_metrics_url.clone().map(|endpoint| {
-                    MetricsDestination::OpenTelemetry(OpenTelemetry {
-                        endpoint,
-                        authorization_header: run_args.oltp_auth_header.clone(),
-                        report_interval: Duration::from_secs(60),
-                    })
-                }))
-                .with_trace_destination(run_args.oltp_tracing_url.clone().map(|endpoint| {
-                    TraceDestination::OpenTelemetry(OpenTelemetry {
-                        endpoint,
-                        authorization_header: run_args.oltp_auth_header.clone(),
-                        report_interval: Duration::from_secs(10),
-                    })
-                }))
-                .with_remote_logs(run_args.oltp_logs_url.clone().map(|endpoint| {
-                    RemoteLogsDestination::OpenTelemetry(OpenTelemetry {
-                        endpoint,
-                        authorization_header: run_args.oltp_auth_header.clone(),
-                        report_interval: Duration::from_secs(4),
-                    })
-                }))
+                .with_metrics_destination(
+                    run_args
+                        .otlp_metrics_url
+                        .clone()
+                        .map_or_else(|| run_args.oltp_metrics_url.clone(), Some)
+                        .map(|endpoint| {
+                            MetricsDestination::OpenTelemetry(OpenTelemetry {
+                                endpoint,
+                                authorization_header: run_args
+                                    .otlp_auth_header
+                                    .clone()
+                                    .map_or_else(|| run_args.oltp_auth_header.clone(), Some),
+                                report_interval: Duration::from_secs(60),
+                            })
+                        }),
+                )
+                .with_trace_destination(
+                    run_args
+                        .otlp_tracing_url
+                        .clone()
+                        .map_or_else(|| run_args.oltp_tracing_url.clone(), Some)
+                        .map(|endpoint| {
+                            TraceDestination::OpenTelemetry(OpenTelemetry {
+                                endpoint,
+                                authorization_header: run_args
+                                    .otlp_auth_header
+                                    .clone()
+                                    .map_or_else(|| run_args.oltp_auth_header.clone(), Some),
+                                report_interval: Duration::from_secs(10),
+                            })
+                        }),
+                )
+                .with_remote_logs(
+                    run_args
+                        .otlp_logs_url
+                        .clone()
+                        .map_or_else(|| run_args.oltp_logs_url.clone(), Some)
+                        .map(|endpoint| {
+                            RemoteLogsDestination::OpenTelemetry(OpenTelemetry {
+                                endpoint,
+                                authorization_header: run_args
+                                    .otlp_auth_header
+                                    .clone()
+                                    .map_or_else(|| run_args.oltp_auth_header.clone(), Some),
+                                report_interval: Duration::from_secs(4),
+                            })
+                        }),
+                )
                 .with_service_info(ServiceInfo {
                     name: "psyche-centralized-server".to_string(),
                     instance_id: "server".to_string(),
