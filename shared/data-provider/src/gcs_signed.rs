@@ -181,13 +181,20 @@ pub async fn download_model_from_gcs_signed_async(
                 )));
             }
 
+            // Get GCS generation number from manifest response
+            let manifest_generation = response
+                .headers()
+                .get("x-goog-generation")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(0);
+
             let manifest_data = response
                 .bytes()
                 .await
                 .map_err(|e| DownloadError::RunDown(e.to_string()))?;
 
             let manifest: GcsCheckpointManifest = serde_json::from_slice(&manifest_data)?;
-            let manifest_generation = manifest.metadata.step as i64;
 
             info!(
                 "Found manifest: step {}, epoch {}, generation {}",
