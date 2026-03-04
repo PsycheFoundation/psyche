@@ -7283,7 +7283,6 @@ dependencies = [
  "bytes",
  "clap",
  "clap-markdown",
- "google-cloud-storage",
  "hex",
  "hf-hub",
  "psyche-centralized-shared",
