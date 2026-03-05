@@ -680,7 +680,7 @@ async fn run_gateway() -> Result<()> {
         let cancel = cancel.clone();
         tokio::spawn(async move {
             let mut task_set = tokio::task::JoinSet::new();
-            
+
             let mut cleanup_interval = tokio::time::interval(Duration::from_secs(15));
             cleanup_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
