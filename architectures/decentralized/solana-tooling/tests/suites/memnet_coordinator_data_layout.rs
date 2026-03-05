@@ -37,7 +37,7 @@ use solana_sdk::pubkey::Pubkey;
 
 #[tokio::test]
 pub async fn run() {
-    let coordinator_account_filled = CoordinatorAccount {
+    let coordinator_account_struct = CoordinatorAccount {
         version: CoordinatorAccount::VERSION,
         state: CoordinatorInstanceState {
             metadata: RunMetadata {
@@ -148,7 +148,7 @@ pub async fn run() {
                     id: NodeIdentity::from_single_key([33; 32]),
                     active: 63473857845,
                     earned: 424242,
-                    slashed: 4242,
+                    slashed: 7878,
                     claimer: Pubkey::from([88; 32]),
                 }),
                 next_active: 63473857845,
@@ -167,17 +167,20 @@ pub async fn run() {
         },
         nonce: 78787878,
     };
+    let coordinator_account_bytes_from_struct =
+        bytemuck::bytes_of(&coordinator_account_struct);
+    let coordinator_account_bytes_from_snapshot =
+        include_bytes!("../fixtures/coordinator-account.so");
+    /*
     std::fs::write(
         "./tests/fixtures/coordinator-account.so",
-        bytemuck::bytes_of(&coordinator_account_filled),
+        coordinator_account_bytes_from_struct,
     )
     .unwrap();
-    assert!(
-        &coordinator_account_filled
-            == coordinator_account_from_bytes(include_bytes!(
-                "../fixtures/coordinator-account.so"
-            ))
-            .unwrap()
+    */
+    assert_eq!(
+        coordinator_account_bytes_from_struct,
+        coordinator_account_bytes_from_snapshot
     );
 }
 
