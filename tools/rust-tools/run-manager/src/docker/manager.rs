@@ -26,7 +26,6 @@ pub struct RunManager {
     local_docker: bool,
     coordinator_client: CoordinatorClient,
     scratch_dir: Option<String>,
-    gcs_credentials_path: Option<PathBuf>,
     client_authorizer: Pubkey,
 }
 
@@ -64,23 +63,6 @@ impl RunManager {
         let rpc = get_env_var("RPC")?;
         let scratch_dir = get_env_var("SCRATCH_DIR").ok();
 
-        // Check for GCS credentials file path - will be mounted into container
-        let gcs_credentials_path = get_env_var("GOOGLE_CREDENTIALS_FILE_PATH")
-            .ok()
-            .map(PathBuf::from)
-            .and_then(|path| {
-                if path.exists() {
-                    info!("Found GCS credentials file at: {}", path.display());
-                    Some(path)
-                } else {
-                    warn!(
-                        "GOOGLE_CREDENTIALS_FILE_PATH set to {} but file does not exist",
-                        path.display()
-                    );
-                    None
-                }
-            });
-
         let coordinator_client = CoordinatorClient::new(rpc, coordinator_program_id);
 
         // Read delegate key from AUTHORIZER env var (separate from --authorizer flag)
@@ -103,7 +85,6 @@ impl RunManager {
                     env_file,
                     local_docker,
                     scratch_dir,
-                    gcs_credentials_path,
                     client_authorizer,
                 });
             }
@@ -130,7 +111,6 @@ impl RunManager {
             env_file,
             local_docker,
             scratch_dir,
-            gcs_credentials_path,
             client_authorizer,
         })
     }
@@ -224,27 +204,6 @@ impl RunManager {
         if let Some(dir) = &self.scratch_dir {
             cmd.arg("--mount")
                 .arg(format!("type=bind,src={dir},dst=/scratch"));
-        }
-
-        // Mount GCS credentials file if provided and set the env var inside container
-        if let Some(creds_path) = &self.gcs_credentials_path {
-            let container_creds_path = "/scratch/application_default_credentials.json";
-            cmd.arg("--mount")
-                .arg(format!(
-                    "type=bind,src={},dst={},readonly",
-                    creds_path.display(),
-                    container_creds_path
-                ))
-                .arg("--env")
-                .arg(format!(
-                    "GOOGLE_APPLICATION_CREDENTIALS={}",
-                    container_creds_path
-                ));
-            info!(
-                "Mounting GCS credentials from {} to {}",
-                creds_path.display(),
-                container_creds_path
-            );
         }
 
         if let Some(Entrypoint { entrypoint, .. }) = entrypoint {
@@ -362,13 +321,7 @@ impl RunManager {
 
         match checkpoint {
             Checkpoint::Gcs(_) | Checkpoint::P2PGcs(_) => {
-                if self.gcs_credentials_path.is_none() {
-                    bail!(
-                        "This run uses GCS checkpointing but no GCS credentials found. \
-                        Set GOOGLE_CREDENTIALS_FILE_PATH in your env file."
-                    );
-                }
-                info!("GCS credentials validated for checkpoint upload");
+                info!("GCS checkpointing uses run-down signed URLs");
             }
             Checkpoint::Hub(_) | Checkpoint::P2P(_) => {
                 // HF_TOKEN should be in the env file

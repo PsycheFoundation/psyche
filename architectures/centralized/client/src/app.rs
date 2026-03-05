@@ -1,6 +1,5 @@
 use anyhow::{Error, Result};
 use bytemuck::Zeroable;
-use google_cloud_storage::client::Storage;
 use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
 use psyche_client::{
     Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, UploadCredentials,
@@ -184,11 +183,8 @@ impl App {
                 // Use HF_TOKEN from checkpoint_config for Hub uploads
                 Some(UploadCredentials::HubToken(hub_token.clone()))
             } else {
-                // Check if GCS credentials are available by attempting to create a client
-                match Storage::builder().build().await {
-                    Ok(_) => Some(UploadCredentials::Gcs),
-                    Err(_) => None,
-                }
+                // GCS uploads now go through run-down signed URLs; auth validated at request time
+                Some(UploadCredentials::Skip)
             };
 
             match credentials {
