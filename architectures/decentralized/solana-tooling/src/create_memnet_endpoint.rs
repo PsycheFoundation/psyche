@@ -25,6 +25,11 @@ pub async fn create_memnet_endpoint() -> ToolboxEndpoint {
                 psyche_solana_mining_pool::ID,
                 psyche_solana_mining_pool::entry
             ),
+            toolbox_endpoint_program_test_builtin_program_anchor!(
+                "psyche_solana_distributor",
+                psyche_solana_distributor::ID,
+                psyche_solana_distributor::entry
+            ),
         ])
         .await;
     endpoint.add_logger(Box::new(ToolboxEndpointLoggerPrinter::default()));

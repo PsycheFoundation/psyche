@@ -33,6 +33,16 @@ layer of Solana dev tools like the Solana CLI to make things a little easier in 
 The `client_test_entrypoint.sh` script runs as the default entrypoint, which basically generates a Solana key pair,
 deposits some funds in it and then starts training. This is done only for convenience in testing scenarios.
 
+## Psyche Gateway Node
+
+The `docker-psyche-gateway-node` package builds the image for the gateway node that handles network
+coordination between inference nodes and clients. It contains only the `gateway-node` binary and the
+CA certificate bundle — no Python or GPU dependencies are required.
+
+The binary (`bin-psyche-inference-node-gateway-node`) is set as the direct entrypoint; no wrapper
+shell script is used since the container does not include a shell. The gateway listens on port 8000
+by default and requires no arguments.
+
 ## Psyche Solana test validator
 
 The `docker-psyche-solana-test-validator` is meant to build a Solana validator image which will be only used for testing
