@@ -129,6 +129,10 @@ async fn async_main() -> Result<()> {
 }
 
 fn main() -> Result<()> {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install default CryptoProvider");
+
     #[cfg(feature = "python")]
     psyche_python_extension_impl::init_embedded_python()?;
 
