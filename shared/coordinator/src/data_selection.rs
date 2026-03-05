@@ -3,11 +3,11 @@ use crate::{Committee, CommitteeSelection, Coordinator, Round};
 use psyche_core::{BatchId, ClosedInterval, NodeIdentity, deterministic_shuffle};
 use std::{collections::BTreeMap, fmt};
 
-/// Assigns data batches to nodes based on committee roles.  
-pub fn assign_data_for_state<T: NodeIdentity>(
-    coordinator: &Coordinator<T>,
+/// Assigns data batches to nodes based on committee roles.
+pub fn assign_data_for_state(
+    coordinator: &Coordinator,
     committee_selection: &CommitteeSelection,
-) -> BTreeMap<BatchId, T> {
+) -> BTreeMap<BatchId, NodeIdentity> {
     let round = coordinator.current_round().unwrap();
 
     let trainer_nodes: Vec<_> = (0..coordinator.epoch_state.clients.len())
@@ -59,9 +59,9 @@ pub fn assign_data_for_state<T: NodeIdentity>(
     assignments
 }
 
-pub fn get_batch_ids_for_round<T: NodeIdentity>(
+pub fn get_batch_ids_for_round(
     round: &Round,
-    coordinator: &Coordinator<T>,
+    coordinator: &Coordinator,
     num_trainer_nodes: u64,
 ) -> Vec<BatchId> {
     let start = round.data_index;
@@ -107,10 +107,7 @@ pub fn get_batch_ids_for_node<V: fmt::Display + Eq + std::hash::Hash>(
         .collect()
 }
 
-pub fn get_data_index_for_step<T: NodeIdentity>(
-    coordinator: &Coordinator<T>,
-    target_step: u32,
-) -> u64 {
+pub fn get_data_index_for_step(coordinator: &Coordinator, target_step: u32) -> u64 {
     if target_step <= 1 || target_step > coordinator.config.total_steps {
         return 0;
     }
@@ -138,69 +135,24 @@ mod tests {
     use bytemuck::Zeroable;
     use psyche_core::{FixedVec, NodeIdentity};
 
-    #[derive(
-        serde::Serialize,
-        serde::Deserialize,
-        Clone,
-        Debug,
-        Hash,
-        PartialEq,
-        Eq,
-        Default,
-        Copy,
-        bytemuck::Zeroable,
-        ts_rs::TS,
-    )]
-    struct TestNode(u64);
-
-    impl NodeIdentity for TestNode {
-        fn get_p2p_public_key(&self) -> &[u8; 32] {
-            todo!()
-        }
-    }
-
-    impl fmt::Display for TestNode {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "Node({})", self.0)
-        }
-    }
-
-    impl anchor_lang::AnchorSerialize for TestNode {
-        fn serialize<W: std::io::Write>(&self, _: &mut W) -> std::io::Result<()> {
-            unimplemented!()
-        }
-    }
-
-    impl anchor_lang::AnchorDeserialize for TestNode {
-        fn deserialize_reader<R: std::io::Read>(_: &mut R) -> std::io::Result<Self> {
-            unimplemented!()
-        }
-    }
-
-    impl anchor_lang::Space for TestNode {
-        const INIT_SPACE: usize = 0;
-    }
-
-    impl AsRef<[u8]> for TestNode {
-        fn as_ref(&self) -> &[u8] {
-            todo!()
-        }
-    }
-
     fn create_test_coordinator(
         num_nodes: usize,
         global_batch_size: u16,
         total_steps: u32,
-    ) -> Coordinator<TestNode> {
+    ) -> Coordinator {
         let clients: Vec<_> = (0..num_nodes)
-            .map(|i| Client {
-                id: TestNode(i as u64),
-                state: ClientState::Healthy,
-                exited_height: 0,
+            .map(|i| {
+                let mut key = [0u8; 32];
+                key[0] = i as u8;
+                Client {
+                    id: NodeIdentity::from_single_key(key),
+                    state: ClientState::Healthy,
+                    exited_height: 0,
+                }
             })
             .collect();
 
-        let mut coordinator = Coordinator::<TestNode>::zeroed();
+        let mut coordinator = Coordinator::zeroed();
         coordinator.config.total_steps = total_steps;
         coordinator.config.global_batch_size_start = global_batch_size;
         coordinator.config.global_batch_size_end = global_batch_size;

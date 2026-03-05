@@ -74,7 +74,7 @@ mod util;
 #[cfg(test)]
 mod test;
 
-pub use authenticable_identity::{AuthenticatableIdentity, FromSignedBytesError, raw_p2p_verify};
+pub use authenticable_identity::raw_p2p_verify;
 pub use connection_monitor::{ConnectionData, ConnectionMonitor};
 pub use download::{
     DownloadComplete, DownloadFailed, DownloadSchedulerHandle, DownloadType, ReadyRetry,

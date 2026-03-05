@@ -12,7 +12,7 @@ use psyche_coordinator::{
     model::{Checkpoint, Model},
 };
 use psyche_core::FixedVec;
-use psyche_solana_coordinator::{ClientId, SOLANA_MAX_NUM_PENDING_CLIENTS};
+use psyche_solana_coordinator::SOLANA_MAX_NUM_PENDING_CLIENTS;
 use std::env;
 use std::path::PathBuf;
 
@@ -96,7 +96,7 @@ impl SolanaTestClient {
 
     pub async fn get_current_epoch_clients(
         &self,
-    ) -> FixedVec<psyche_coordinator::Client<ClientId>, SOLANA_MAX_NUM_PENDING_CLIENTS> {
+    ) -> FixedVec<psyche_coordinator::Client, { psyche_coordinator::SOLANA_MAX_NUM_CLIENTS }> {
         let coordinator = self.get_coordinator_account().await;
         coordinator.state.coordinator.epoch_state.clients
     }

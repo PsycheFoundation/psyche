@@ -7035,6 +7035,7 @@ dependencies = [
  "psyche-centralized-shared",
  "psyche-client",
  "psyche-coordinator",
+ "psyche-core",
  "psyche-eval",
  "psyche-metrics",
  "psyche-modeling",
@@ -7146,7 +7147,6 @@ dependencies = [
  "futures",
  "hex",
  "hf-hub",
- "iroh",
  "iroh-blobs",
  "lazy_static",
  "postcard",
@@ -12755,7 +12755,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 [[package]]
 name = "ts-rs"
 version = "10.1.0"
-source = "git+https://github.com/arilotter/ts-rs.git?rev=92ce1752227fec9bb868ad8f25b26f110a795099#92ce1752227fec9bb868ad8f25b26f110a795099"
+source = "git+https://github.com/arilotter/ts-rs.git?rev=20c5bef07f3aa8ca3aa1b5cdad11ecdd60c64d34#20c5bef07f3aa8ca3aa1b5cdad11ecdd60c64d34"
 dependencies = [
  "anchor-lang",
  "bytemuck",
@@ -12768,7 +12768,7 @@ dependencies = [
 [[package]]
 name = "ts-rs-macros"
 version = "10.1.0"
-source = "git+https://github.com/arilotter/ts-rs.git?rev=92ce1752227fec9bb868ad8f25b26f110a795099#92ce1752227fec9bb868ad8f25b26f110a795099"
+source = "git+https://github.com/arilotter/ts-rs.git?rev=20c5bef07f3aa8ca3aa1b5cdad11ecdd60c64d34#20c5bef07f3aa8ca3aa1b5cdad11ecdd60c64d34"
 dependencies = [
  "proc-macro2",
  "quote",
