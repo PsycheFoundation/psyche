@@ -491,7 +491,8 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // Use extra WFM time so we have a window to kill a client during WaitingForMembers
-    let _cleanup = e2e_testing_setup_with_min(docker.clone(), n_clients, n_clients, None, Some(30)).await;
+    let _cleanup =
+        e2e_testing_setup_with_min(docker.clone(), n_clients, n_clients, None, Some(30)).await;
 
     let solana_client = SolanaTestClient::new(run_id, None).await;
     // Monitor clients
