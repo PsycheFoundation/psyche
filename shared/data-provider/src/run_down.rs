@@ -18,6 +18,7 @@ type SignFn = dyn Fn(&[u8]) -> Vec<u8> + Send + Sync;
 pub struct RunDownClient {
     http: reqwest::Client,
     run_id: String,
+    wallet_address: String,
     sign_fn: Arc<SignFn>,
 }
 
@@ -30,10 +31,15 @@ impl std::fmt::Debug for RunDownClient {
 }
 
 impl RunDownClient {
-    pub fn new(run_id: String, sign_fn: impl Fn(&[u8]) -> Vec<u8> + Send + Sync + 'static) -> Self {
+    pub fn new(
+        run_id: String,
+        wallet_address: String,
+        sign_fn: impl Fn(&[u8]) -> Vec<u8> + Send + Sync + 'static,
+    ) -> Self {
         Self {
             http: reqwest::Client::new(),
             run_id,
+            wallet_address,
             sign_fn: Arc::new(sign_fn),
         }
     }
@@ -66,6 +72,7 @@ impl RunDownClient {
 
         let url = format!("{}/upload/{}", base_url(), self.run_id);
         let body = serde_json::json!({
+            "walletAddress": self.wallet_address,
             "filename": filename,
             "expiresInSeconds": expires_in_seconds,
             "nonce": nonce.to_string(),
@@ -105,6 +112,7 @@ impl RunDownClient {
 
         let url = format!("{}/download/{}", base_url(), self.run_id);
         let body = serde_json::json!({
+            "walletAddress": self.wallet_address,
             "expiresInSeconds": expires_in_seconds,
             "nonce": nonce.to_string(),
         });
