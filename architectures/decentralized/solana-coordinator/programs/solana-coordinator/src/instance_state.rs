@@ -244,7 +244,7 @@ impl CoordinatorInstanceState {
         let id = self.clients_state.find_signer(payer)?;
 
         self.coordinator
-            .cooldown_witness(id, witness)
+            .cooldown_witness(&id, witness)
             .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
 
         self.tick()

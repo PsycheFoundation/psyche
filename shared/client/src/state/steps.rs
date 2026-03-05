@@ -181,7 +181,7 @@ impl StepStateMachine {
             .all(|client| self.current_round.clients_finished.contains_key(&client.id))
     }
 
-    fn get_unfinished_clients(&self) -> Vec<T> {
+    fn get_unfinished_clients(&self) -> Vec<NodeIdentity> {
         self.coordinator_state
             .epoch_state
             .clients
