@@ -29,6 +29,7 @@ bytes.workspace = true
 google-cloud-storage.workspace = true
 psyche-python-extension-impl = { workspace = true, optional = true }
 tikv-jemallocator.workspace = true
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 [features]
 parallelism = ["psyche-client/parallelism"]
