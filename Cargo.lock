@@ -7128,13 +7128,10 @@ dependencies = [
  "anchor-lang",
  "anyhow",
  "bytemuck",
- "psyche-client",
  "psyche-coordinator",
  "psyche-core",
- "psyche-network",
  "psyche-watcher",
  "serde",
- "ts-rs",
 ]
 
 [[package]]
