@@ -51,7 +51,7 @@ impl WatcherBackend for Backend {
                 .epoch_state
                 .clients
                 .iter()
-                .map(|c| EndpointId::from_bytes(&c.id.p2p_identity).unwrap()),
+                .map(|c| EndpointId::from_bytes(c.id.p2p_identity()).unwrap()),
         );
         Ok(new_state)
     }

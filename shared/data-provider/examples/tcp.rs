@@ -2,7 +2,6 @@ use anyhow::{Result, bail};
 use async_trait::async_trait;
 use bytemuck::Zeroable;
 use futures::future::try_join_all;
-use parquet::data_type::AsBytes;
 use psyche_coordinator::{Coordinator, HealthChecks, model};
 use psyche_core::BatchId;
 use psyche_data_provider::{
@@ -79,12 +78,6 @@ impl AuthenticatableIdentity for DummyNodeIdentity {
 
     fn raw_p2p_sign(&self, _private_key: &Self::PrivateKey, _bytes: &[u8]) -> [u8; 64] {
         todo!()
-    }
-}
-
-impl AsRef<[u8]> for DummyNodeIdentity {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_bytes()
     }
 }
 

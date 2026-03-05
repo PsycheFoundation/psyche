@@ -2,12 +2,11 @@ use anchor_lang::prelude::*;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
 use psyche_core::FixedVec;
+use psyche_core::NodeIdentity;
 use psyche_core::SizedIterator;
 use serde::Deserialize;
 use serde::Serialize;
 use ts_rs::TS;
-
-use psyche_core::NodeIdentity;
 
 use crate::SOLANA_MAX_NUM_PENDING_CLIENTS;
 use crate::client::Client;
@@ -74,7 +73,7 @@ impl ClientsState {
         match self
             .clients
             .iter()
-            .find(|x| x.id.signer == signer.to_bytes())
+            .find(|x| *x.id.signer() == signer.to_bytes())
         {
             Some(client) => Ok(client.id),
             None => err!(ProgramError::SignerNotAClient),

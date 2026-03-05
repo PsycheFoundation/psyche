@@ -586,7 +586,7 @@ impl<A: AuthenticatableIdentity + 'static, B: Backend + 'static> Client<A, B> {
                                 return Ok(());
                             };
 
-                            let me = EndpointId::from_bytes(identity.get_p2p_public_key())?;
+                            let me = EndpointId::from_bytes(identity.p2p_identity())?;
                             let peer_ids: Vec<EndpointId> = participating_endpoint_ids(&coordinator_state)
                                 .into_iter()
                                 .filter(|peer_id| peer_id != &me)
@@ -773,7 +773,7 @@ fn participating_endpoint_ids(state: &Coordinator) -> Vec<EndpointId> {
         .epoch_state
         .clients
         .iter()
-        .map(|c| EndpointId::from_bytes(c.id.get_p2p_public_key()).unwrap())
+        .map(|c| EndpointId::from_bytes(c.id.p2p_identity()).unwrap())
         .collect()
 }
 

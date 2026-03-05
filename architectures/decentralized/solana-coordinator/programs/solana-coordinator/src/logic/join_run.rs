@@ -1,11 +1,11 @@
 use anchor_lang::prelude::*;
+use psyche_core::NodeIdentity;
 use psyche_solana_authorizer::state::Authorization;
 
 use crate::CoordinatorAccount;
 use crate::CoordinatorInstance;
 use crate::bytes_from_string;
 use crate::program_error::ProgramError;
-use psyche_core::NodeIdentity;
 
 pub const JOIN_RUN_AUTHORIZATION_SCOPE: &[u8] = b"CoordinatorJoinRun";
 
@@ -50,7 +50,7 @@ pub fn join_run_processor(
     context: Context<JoinRunAccounts>,
     params: JoinRunParams,
 ) -> Result<()> {
-    if params.client_id.signer != context.accounts.user.key.to_bytes() {
+    if *params.client_id.signer() != context.accounts.user.key.to_bytes() {
         return err!(ProgramError::SignerMismatch);
     }
     let mut account = context.accounts.coordinator_account.load_mut()?;

@@ -16,16 +16,25 @@ use ts_rs::TS;
     Serialize,
     Deserialize,
     TS,
-    PartialEq,
     Eq,
-    Hash,
 )]
 #[repr(C)]
 pub struct NodeIdentity {
-    pub signer: [u8; 32],
-    pub p2p_identity: [u8; 32],
+    signer: [u8; 32],
+    p2p_identity: [u8; 32],
 }
 
+impl PartialEq for NodeIdentity {
+    fn eq(&self, other: &Self) -> bool {
+        self.signer == other.signer
+    }
+}
+
+impl std::hash::Hash for NodeIdentity {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.signer.hash(state);
+    }
+}
 impl NodeIdentity {
     pub fn new(signer: [u8; 32], p2p_identity: [u8; 32]) -> Self {
         Self {
@@ -43,7 +52,11 @@ impl NodeIdentity {
         }
     }
 
-    pub fn get_p2p_public_key(&self) -> &[u8; 32] {
+    pub fn signer(&self) -> &[u8; 32] {
+        &self.signer
+    }
+
+    pub fn p2p_identity(&self) -> &[u8; 32] {
         &self.p2p_identity
     }
 }
@@ -69,12 +82,6 @@ impl Debug for NodeIdentity {
             write!(f, "{:02x}", b)?;
         }
         write!(f, ")")
-    }
-}
-
-impl AsRef<[u8]> for NodeIdentity {
-    fn as_ref(&self) -> &[u8] {
-        &self.signer
     }
 }
 

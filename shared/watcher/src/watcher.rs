@@ -37,7 +37,7 @@ where
                     .epoch_state
                     .clients
                     .iter()
-                    .map(|client| (*client.id.get_p2p_public_key(), *client)),
+                    .map(|client| (*client.id.p2p_identity(), *client)),
             );
         }
         let old_state = self.state.replace(new_state);

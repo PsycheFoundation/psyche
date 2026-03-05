@@ -241,7 +241,7 @@ pub async fn run() {
                     .epoch_state
                     .clients
                     .iter()
-                    .position(|c| c.id.signer.eq(&client.pubkey().to_bytes()))
+                    .position(|c| *c.id.signer() == client.pubkey().to_bytes())
                     .unwrap() as u64,
             );
             if witness_proof.position >= SOLANA_MAX_NUM_WITNESSES as u64 {
@@ -306,7 +306,7 @@ pub async fn run() {
             .clients_state
             .clients
             .iter()
-            .find(|c| c.id.signer.eq(&client.pubkey().to_bytes()))
+            .find(|c| *c.id.signer() == client.pubkey().to_bytes())
             .unwrap();
         assert_eq!(
             client_state.earned,

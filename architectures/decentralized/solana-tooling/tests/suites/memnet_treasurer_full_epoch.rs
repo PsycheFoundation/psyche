@@ -360,7 +360,7 @@ pub async fn run() {
                     .epoch_state
                     .clients
                     .iter()
-                    .position(|c| c.id.signer.eq(&client.pubkey().to_bytes()))
+                    .position(|c| c.id.signer() == &client.pubkey().to_bytes())
                     .unwrap() as u64,
             );
             if witness_proof.position >= SOLANA_MAX_NUM_WITNESSES as u64 {

@@ -7,28 +7,21 @@ use psyche_core::NodeIdentity;
 use psyche_network::{AuthenticatableIdentity, FromSignedBytesError, SecretKey, SignedMessage};
 use std::sync::Arc;
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, Eq)]
 pub struct NetworkIdentity(pub NodeIdentity);
-
-impl AsRef<[u8]> for NetworkIdentity {
-    fn as_ref(&self) -> &[u8] {
-        &self.0.signer
-    }
-}
 
 impl std::hash::Hash for NetworkIdentity {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.hash(state);
+        self.0.p2p_identity().hash(state);
     }
 }
 
 impl std::cmp::PartialEq for NetworkIdentity {
     fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
+        self.0 == other.0 && self.0.p2p_identity() == other.0.p2p_identity()
     }
 }
-
-impl std::cmp::Eq for NetworkIdentity {}
 
 impl std::fmt::Display for NetworkIdentity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -66,24 +59,24 @@ impl AuthenticatableIdentity for NetworkIdentity {
         private_key: &Self::PrivateKey,
         challenge: [u8; 32],
     ) -> Vec<u8> {
-        assert_eq!(private_key.0.pubkey().to_bytes(), self.0.signer);
-        assert_eq!(private_key.1.public().as_bytes(), &self.0.p2p_identity);
+        assert_eq!(private_key.0.pubkey().to_bytes(), *self.0.signer());
+        assert_eq!(private_key.1.public().as_bytes(), self.0.p2p_identity());
         let challenge = private_key.0.sign_message(&challenge);
         SignedMessage::<Vec<u8>>::sign_and_encode(
             &private_key.1,
-            &[challenge.as_ref(), &self.0.signer].concat(),
+            &[challenge.as_ref(), self.0.signer()].concat(),
         )
         .expect("alloc error")
         .to_vec()
     }
 
     fn get_p2p_public_key(&self) -> &[u8; 32] {
-        &self.0.p2p_identity
+        self.0.p2p_identity()
     }
 
     fn raw_p2p_sign(&self, private_key: &Self::PrivateKey, bytes: &[u8]) -> [u8; 64] {
-        assert_eq!(private_key.0.pubkey().to_bytes(), self.0.signer);
-        assert_eq!(private_key.1.public().as_bytes(), &self.0.p2p_identity);
+        assert_eq!(private_key.0.pubkey().to_bytes(), *self.0.signer());
+        assert_eq!(private_key.1.public().as_bytes(), self.0.p2p_identity());
         let signature = private_key.1.sign(bytes);
         signature.to_bytes()
     }
@@ -125,10 +118,11 @@ mod tests {
                 .expect("Failed to decode signed bytes");
 
         assert_eq!(network_identity, decoded_identity);
-        assert_eq!(network_identity.0.signer, decoded_identity.0.signer);
+        assert_eq!(network_identity.0, decoded_identity.0);
+        assert_eq!(network_identity.0.signer(), decoded_identity.0.signer());
         assert_eq!(
-            network_identity.0.p2p_identity,
-            decoded_identity.0.p2p_identity
+            network_identity.0.p2p_identity(),
+            decoded_identity.0.p2p_identity()
         );
     }
 

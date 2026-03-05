@@ -354,13 +354,6 @@ impl From<RunState> for usize {
         }
     }
 }
-
-impl AsRef<[u8]> for Client {
-    fn as_ref(&self) -> &[u8] {
-        self.id.as_ref()
-    }
-}
-
 impl PartialEq for Client {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
@@ -741,7 +734,7 @@ impl Coordinator {
     /// Computes the health score of a client based on witness confirmations.
     /// The score increases for each witness whose participant bloom filter contains the client's hashed ID.
     pub fn trainer_healthy_score_by_witnesses(id: &NodeIdentity, witnesses: &[Witness]) -> u16 {
-        let hash = sha256(id.as_ref());
+        let hash = sha256(id.signer());
 
         let mut score = 0u16;
         for witness in witnesses {

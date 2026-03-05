@@ -628,7 +628,7 @@ impl<A: AuthenticatableIdentity + 'static> StepStateMachine<A> {
                 let mut blooms = blooms.lock().unwrap();
                 if let Some(remaining_batch_ids) = &mut *batch_ids_not_yet_trained_on {
                     if let Some((participant_bloom, broadcast_bloom)) = blooms.as_mut() {
-                        participant_bloom.add(&sha256(from.as_ref()));
+                        participant_bloom.add(&sha256(from.signer()));
                         if remaining_batch_ids.contains(&batch_id) {
                             // first received payload for this batch id, vote for it in consensus
                             broadcast_bloom.add(&commitment.data_hash);

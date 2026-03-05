@@ -139,8 +139,8 @@ impl CoordinatorInstanceState {
 
                 for client in self.clients_state.clients.iter_mut() {
                     if finished_client_index < finished_clients.len()
-                        && client.id.signer
-                            == finished_clients[finished_client_index].id.signer
+                        && client.id
+                            == finished_clients[finished_client_index].id
                     {
                         if finished_clients[finished_client_index].state
                             == ClientState::Healthy
@@ -154,8 +154,7 @@ impl CoordinatorInstanceState {
                         finished_client_index += 1;
                     }
                     if exited_client_index < exited_clients.len()
-                        && client.id.signer
-                            == exited_clients[exited_client_index].id.signer
+                        && client.id == exited_clients[exited_client_index].id
                     {
                         if exited_clients[exited_client_index].state
                             == ClientState::Ejected
@@ -334,20 +333,19 @@ impl CoordinatorInstanceState {
     }
 
     pub fn join_run(&mut self, id: NodeIdentity) -> Result<()> {
-        let existing = match self
-            .clients_state
-            .clients
-            .iter_mut()
-            .find(|x| x.id.signer == id.signer)
-        {
-            Some(client) => {
-                client.id = id; // IMPORTANT. Equality is on wallet key but includes ephemeral p2p key.
-                client.active = self.clients_state.next_active;
-                msg!("Existing client {} re-joined", id);
-                true
-            },
-            None => false,
-        };
+        let existing =
+            match self.clients_state.clients.iter_mut().find(|x| x.id == id) {
+                Some(client) => {
+                    // IMPORTANT
+                    // NodeIdentity equality is on wallet key but includes the p2p key, so
+                    // we must re-set this to ensure that the p2p key is up to date.
+                    client.id = id;
+                    client.active = self.clients_state.next_active;
+                    msg!("Existing client {} re-joined", id);
+                    true
+                },
+                None => false,
+            };
 
         if !existing {
             let total_num_clients = self.clients_state.clients.len() as u16;

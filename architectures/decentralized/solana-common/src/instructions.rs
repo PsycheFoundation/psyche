@@ -106,7 +106,7 @@ pub fn coordinator_join_run(
     anchor_instruction(
         psyche_solana_coordinator::ID,
         psyche_solana_coordinator::accounts::JoinRunAccounts {
-            user: anchor_client::solana_sdk::pubkey::Pubkey::new_from_array(client_id.signer),
+            user: anchor_client::solana_sdk::pubkey::Pubkey::new_from_array(*client_id.signer()),
             authorization: *authorization,
             coordinator_instance: *coordinator_instance,
             coordinator_account: *coordinator_account,

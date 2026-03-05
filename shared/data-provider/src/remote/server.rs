@@ -151,7 +151,7 @@ where
             .epoch_state
             .clients
             .iter()
-            .map(|x| x.id.p2p_identity)
+            .map(|x| *x.id.p2p_identity())
             .collect();
     }
 }

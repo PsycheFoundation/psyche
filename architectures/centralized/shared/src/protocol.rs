@@ -80,12 +80,6 @@ impl From<PublicKey> for ClientId {
     }
 }
 
-impl AsRef<[u8]> for ClientId {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_bytes()
-    }
-}
-
 impl From<ClientId> for psyche_core::NodeIdentity {
     fn from(id: ClientId) -> Self {
         let key = *id.0.as_bytes();
