@@ -64,6 +64,14 @@ export async function fetchCheckpointStatus(
 	return psycheJsonFetch(`check-checkpoint?${queryParams}`)
 }
 
+export async function fetchGcsCheckpointStatus(
+	bucket: string,
+	prefix?: string
+): Promise<ApiGetCheckpointStatus> {
+	const queryParams = `bucket=${bucket}${prefix ? `&prefix=${prefix}` : ''}`
+	return psycheJsonFetch(`check-gcs-bucket?${queryParams}`)
+}
+
 interface DecodeState {
 	buffer: string
 	decoder: TextDecoder

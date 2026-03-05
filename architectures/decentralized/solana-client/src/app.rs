@@ -1,4 +1,3 @@
-use crate::network_identity::NetworkIdentity;
 use psyche_solana_rpc::SolanaBackend;
 
 use anchor_client::{
@@ -21,7 +20,7 @@ use psyche_network::{DiscoveryMode, NetworkTUIState, NetworkTui, SecretKey, allo
 use psyche_tui::{CustomWidget, TabbedWidget, logging::LoggerWidget};
 use psyche_watcher::CoordinatorTui;
 use rand::{Rng, RngCore, SeedableRng};
-use rand_chacha::ChaCha8Rng;
+use rand_chacha::ChaCha20Rng;
 use std::time::Duration;
 use std::{
     sync::Arc,
@@ -52,7 +51,8 @@ pub struct App {
     metrics: Arc<ClientMetrics>,
     allowlist: allowlist::AllowDynamic,
     p2p: NC,
-    state_options: RunInitConfig<psyche_solana_coordinator::ClientId, NetworkIdentity>,
+    state_options: RunInitConfig,
+    wallet_keypair: Arc<Keypair>,
 }
 
 pub struct AppParams {
@@ -82,11 +82,13 @@ pub async fn build_app(
         read_identity_secret_key(p.identity_secret_key_path.as_ref())?
             // Iroh key should be deterministically derived from Solana key
             .unwrap_or_else(|| {
-                let mut rng = ChaCha8Rng::from_seed(sha256(wallet_keypair.secret().as_bytes()));
+                let seed_preimage =
+                    [p.run_id.as_bytes(), wallet_keypair.secret().as_bytes()].concat();
+                let mut rng = ChaCha20Rng::from_seed(sha256(&seed_preimage));
                 SecretKey::generate(&mut rng)
             });
-    let identity = psyche_solana_coordinator::ClientId::new(
-        wallet_keypair.pubkey(),
+    let identity = psyche_core::NodeIdentity::new(
+        wallet_keypair.pubkey().to_bytes(),
         *identity_secret_key.public().as_bytes(),
     );
 
@@ -118,29 +120,27 @@ pub async fn build_app(
     )
     .await?;
 
-    let state_options: RunInitConfig<psyche_solana_coordinator::ClientId, NetworkIdentity> =
-        RunInitConfig {
-            data_parallelism: p.data_parallelism,
-            tensor_parallelism: p.tensor_parallelism,
-            micro_batch_size: p.micro_batch_size,
-            write_gradients_dir: p.write_gradients_dir,
-            eval_tasks,
-            eval_task_max_docs: p.eval_task_max_docs,
-            prompt_task: p.prompt_task,
-            checkpoint_config,
-            hub_read_token,
-            hub_max_concurrent_downloads: p.hub_max_concurrent_downloads,
-            wandb_info,
-            identity,
-            network_identity: identity.into(),
-            private_key: (wallet_keypair.clone(), identity_secret_key),
-            optim_stats_every_n_steps: p.optim_stats_steps,
-            grad_accum_in_fp32: p.grad_accum_in_fp32,
-            dummy_training_delay_secs: p.dummy_training_delay_secs,
-            max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
-            device: p.device,
-            sidecar_port: p.sidecar_port,
-        };
+    let state_options = RunInitConfig {
+        data_parallelism: p.data_parallelism,
+        tensor_parallelism: p.tensor_parallelism,
+        micro_batch_size: p.micro_batch_size,
+        write_gradients_dir: p.write_gradients_dir,
+        eval_tasks,
+        eval_task_max_docs: p.eval_task_max_docs,
+        prompt_task: p.prompt_task,
+        checkpoint_config,
+        hub_read_token,
+        hub_max_concurrent_downloads: p.hub_max_concurrent_downloads,
+        wandb_info,
+        identity,
+        p2p_secret_key: identity_secret_key,
+        optim_stats_every_n_steps: p.optim_stats_steps,
+        grad_accum_in_fp32: p.grad_accum_in_fp32,
+        dummy_training_delay_secs: p.dummy_training_delay_secs,
+        max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
+        device: p.device,
+        sidecar_port: p.sidecar_port,
+    };
     let app = App {
         run_id: p.run_id.clone(),
         cluster,
@@ -159,6 +159,7 @@ pub async fn build_app(
         metrics,
         p2p,
         state_options,
+        wallet_keypair,
     };
     Ok(app)
 }
@@ -168,7 +169,7 @@ impl App {
         let backend = SolanaBackend::new(
             self.cluster.clone(),
             self.backup_clusters.clone(),
-            self.state_options.private_key.0.clone(),
+            self.wallet_keypair.clone(),
             CommitmentConfig::confirmed(),
         )?;
         let coordinator_instance_pubkey =
@@ -218,11 +219,11 @@ impl App {
         let backend = Arc::new(SolanaBackend::new(
             self.cluster.clone(),
             self.backup_clusters.clone(),
-            self.state_options.private_key.0.clone(),
+            self.wallet_keypair.clone(),
             CommitmentConfig::confirmed(),
         )?);
-        let signer = self.state_options.private_key.0.pubkey();
-        let p2p_identity = self.state_options.private_key.1.public();
+        let signer = self.wallet_keypair.pubkey();
+        let p2p_identity = self.state_options.p2p_secret_key.public();
 
         let start_coordinator_state = backend
             .get_coordinator_account(&coordinator_account)
@@ -242,10 +243,7 @@ impl App {
                     coordinator_instance_pubkey,
                     coordinator_account,
                     self.authorizer,
-                    psyche_solana_coordinator::ClientId {
-                        signer,
-                        p2p_identity: *p2p_identity.as_bytes(),
-                    },
+                    psyche_core::NodeIdentity::new(signer.to_bytes(), *p2p_identity.as_bytes()),
                     self.claimer,
                 )
                 .await?;
@@ -277,10 +275,7 @@ impl App {
             self.metrics,
         );
 
-        let id = psyche_solana_coordinator::ClientId {
-            signer,
-            p2p_identity: *p2p_identity.as_bytes(),
-        };
+        let id = psyche_core::NodeIdentity::new(signer.to_bytes(), *p2p_identity.as_bytes());
 
         loop {
             select! {
@@ -307,11 +302,11 @@ impl App {
                         None
                     };
 
-                    let pending_clients_ids = coordinator_state_in_waiting_for_members
+                    let pending_clients_ids: Option<Vec<psyche_core::NodeIdentity>> = coordinator_state_in_waiting_for_members
                         .as_ref()
-                        .map(|state| state.clients_state.get_active_clients_ids());
+                        .map(|state| state.clients_state.get_active_clients_ids().collect());
 
-                    match ticked.tick(pending_clients_ids, timestamp, rand::rng().next_u64()) {
+                    match ticked.tick(pending_clients_ids.as_ref().map(|v| v.iter()), timestamp, rand::rng().next_u64()) {
                         Ok(_) => {
                             if ticked.run_state != latest_update.run_state {
                                 // to avoid *everyone* sending a tick, we probabilisticly send it
@@ -422,7 +417,7 @@ impl App {
     async fn update_tui(
         tx_tui_state: &Option<Sender<<Tabs as CustomWidget>::Data>>,
         client_tui_state: ClientTUIState,
-        coordinator_state: &Coordinator<psyche_solana_coordinator::ClientId>,
+        coordinator_state: &Coordinator,
         network_tui_state: NetworkTUIState,
     ) -> Result<()> {
         if let Some(tx_tui_state) = &tx_tui_state {

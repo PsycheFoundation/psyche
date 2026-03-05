@@ -29,3 +29,8 @@ build_docker_solana_test_client_no_python:
 build_docker_solana_test_validator:
     PSYCHE_HOME=$(realpath ..) nix build .#docker-psyche-solana-test-validator --out-link nix-results/docker-psyche-solana-test-validator --impure
     nix-results/docker-psyche-solana-test-validator | docker load
+
+# Build the gateway node Docker image
+build_docker_gateway_node:
+    nix build .#docker-psyche-gateway-node --out-link nix-results/docker-psyche-gateway-node
+    nix-results/docker-psyche-gateway-node | docker load

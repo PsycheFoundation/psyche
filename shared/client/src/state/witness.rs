@@ -28,8 +28,8 @@ pub enum WitnessingError {
     SendThreadCrashed,
 }
 
-pub struct WitnessStepMetadata<T: NodeIdentity> {
-    pub identity: T,
+pub struct WitnessStepMetadata {
+    pub identity: NodeIdentity,
     pub model_task_runner: ModelTaskRunner,
     pub tx_witness: mpsc::UnboundedSender<OpportunisticData>,
 }
@@ -40,14 +40,14 @@ pub struct WitnessStep {
     sending_witness: Option<JoinHandle<Result<(), WitnessingError>>>,
 }
 
-impl<T: NodeIdentity> WitnessStepMetadata<T> {
+impl WitnessStepMetadata {
     pub fn start(
         &self,
         _client_index: u64,
-        _state: &Coordinator<T>,
+        _state: &Coordinator,
         trainers: MaybeRunningEvals,
-        previous_round: &mut RoundState<T>,
-        current_round: &mut RoundState<T>,
+        previous_round: &mut RoundState,
+        current_round: &mut RoundState,
         metadata: WitnessMetadata,
     ) -> Result<WitnessStep, WitnessingError> {
         if trainers.is_empty() {
@@ -85,9 +85,9 @@ impl WitnessStep {
         Ok(self.evals)
     }
 
-    pub fn get_witness_to_send<T: NodeIdentity>(
-        previous_round: &mut RoundState<T>,
-        current_round: &mut RoundState<T>,
+    pub fn get_witness_to_send(
+        previous_round: &mut RoundState,
+        current_round: &mut RoundState,
     ) -> Option<Witness> {
         if previous_round.sent_witness {
             return None;

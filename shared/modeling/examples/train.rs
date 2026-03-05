@@ -12,7 +12,6 @@ use psyche_modeling::{
     DataParallel, Devices, LocalTrainer, ModelLoadError, ParallelModels, Trainer,
     auto_model_for_causal_lm_from_pretrained, save_tensors_into_safetensors,
 };
-use psyche_network::AuthenticatableIdentity;
 use psyche_tui::{logging, setup_ctrl_c};
 use std::{sync::Arc, thread::JoinHandle, time::SystemTime};
 use tch::Kind;
@@ -34,42 +33,6 @@ impl From<AttnImpl> for AttentionImplementation {
             #[cfg(feature = "parallelism")]
             AttnImpl::FlashAttention2 => AttentionImplementation::FlashAttention2,
         }
-    }
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq, Default, Copy)]
-struct DummyNodeIdentity(());
-
-impl AuthenticatableIdentity for DummyNodeIdentity {
-    type PrivateKey = ();
-
-    fn from_signed_challenge_bytes(
-        _bytes: &[u8],
-        _challenge: [u8; 32],
-    ) -> std::result::Result<Self, psyche_network::FromSignedBytesError> {
-        unimplemented!()
-    }
-
-    fn to_signed_challenge_bytes(
-        &self,
-        _private_key: &Self::PrivateKey,
-        _challenge: [u8; 32],
-    ) -> Vec<u8> {
-        unimplemented!()
-    }
-
-    fn get_p2p_public_key(&self) -> &[u8; 32] {
-        unimplemented!()
-    }
-
-    fn raw_p2p_sign(&self, _private_key: &Self::PrivateKey, _bytes: &[u8]) -> [u8; 64] {
-        unimplemented!()
-    }
-}
-
-impl std::fmt::Display for DummyNodeIdentity {
-    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        unimplemented!()
     }
 }
 
@@ -233,7 +196,7 @@ async fn main() -> Result<()> {
         None => Shuffle::DontShuffle,
     };
 
-    let mut dataset: DataProvider<DummyNodeIdentity> = match LocalDataProvider::new_from_directory(
+    let mut dataset: DataProvider = match LocalDataProvider::new_from_directory(
         &args.data_path,
         args.token_size.try_into()?,
         args.sequence_length,

@@ -12,7 +12,7 @@ use std::{
     process::{Child, Command},
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     thread::JoinHandle,
     time::Duration,
@@ -78,7 +78,7 @@ impl TorchDistributedCommunicator {
                         kwargs.set_item("world_size", world_size.unwrap()).unwrap();
                         kwargs.set_item("is_master", true).unwrap();
                         kwargs.set_item("timeout", timeout).unwrap();
-                        kwargs.set_item("use_libuv", false).unwrap();
+                        kwargs.set_item("use_libuv", true).unwrap();
                         Some(tcp_store.call((), Some(&kwargs))?)
                     } else {
                         None
@@ -212,8 +212,7 @@ pub struct PythonDistributedCausalLM {
     // synchronizes access to underlying model
     iteration: Arc<AtomicUsize>,
     pub(crate) parallelism: ParallelismConfig,
-    #[allow(unused)]
-    children: Vec<Child>,
+    shutting_down: Arc<AtomicBool>,
 }
 
 unsafe impl Send for PythonDistributedCausalLM {}
@@ -363,13 +362,33 @@ impl PythonDistributedCausalLM {
             })
             .collect();
         let children = children?;
+        let shutting_down = Arc::new(AtomicBool::new(false));
+
+        // Spawn a watcher thread per sidecar that blocks on child.wait().
+        // If a sidecar exits unexpectedly (not during clean shutdown), abort to avoid NCCL hangs.
+        for (i, mut child) in children.into_iter().enumerate() {
+            let shutting_down = shutting_down.clone();
+            std::thread::spawn(move || {
+                let status = child.wait();
+                std::thread::sleep(Duration::from_millis(200));
+                if !shutting_down.load(Ordering::Acquire) {
+                    error!(
+                        "Sidecar (rank {}) exited unexpectedly with status: {:?}. Aborting",
+                        i + 1,
+                        status
+                    );
+                    std::process::abort();
+                }
+            });
+        }
+
         let (comm, local) = local.join().unwrap()?;
 
         Ok(Self {
             comm,
             local: local.into(),
             parallelism,
-            children,
+            shutting_down,
             iteration: Arc::new(AtomicUsize::new(0)),
         })
     }
@@ -466,8 +485,6 @@ impl CausalLM for PythonDistributedCausalLM {
             loss_scale,
         );
 
-        self.comm.delete(&iteration.to_string()).unwrap();
-
         (logits, loss)
     }
 
@@ -506,6 +523,8 @@ impl CausalLM for PythonDistributedCausalLM {
     }
 
     fn shutdown(&self) {
+        self.shutting_down.store(true, Ordering::Release);
+
         let operation = serde_json::json!({
             "operation": "exit",
         });
@@ -526,6 +545,12 @@ impl CausalLM for PythonDistributedCausalLM {
 
     fn convert(&self, state_dict: Option<HashMap<String, Tensor>>) -> HashMap<String, Tensor> {
         self.local.convert(state_dict)
+    }
+}
+
+impl Drop for PythonDistributedCausalLM {
+    fn drop(&mut self) {
+        self.shutting_down.store(true, Ordering::Release);
     }
 }
 

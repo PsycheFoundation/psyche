@@ -142,7 +142,7 @@ def main():
             world_size=args.world_size,
             is_master=False,
             timeout=timedelta(hours=2),
-            use_libuv=False,
+            use_libuv=True,
         )
 
     dist.init_process_group(

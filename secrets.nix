@@ -16,9 +16,9 @@ in
 
   ## Deployments
 
-  # all RPC urls for our devnet indexer
-  "secrets/devnet/backend.age".publicKeys = keys.allKeys;
+  # all RPC urls for our old, soon-to-be-deprecated devnet indexer
+  "secrets/devnet/backend-old.age".publicKeys = keys.allKeys;
 
   # all RPC urls for our mainnet indexer
-  "secrets/mainnet/backend.age".publicKeys = keys.allKeys;
+  "secrets/mainnet/backend-old.age".publicKeys = keys.allKeys;
 }

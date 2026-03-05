@@ -13,7 +13,16 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 #[derive(
-    Clone, Debug, Copy, Zeroable, AnchorDeserialize, AnchorSerialize, Serialize, Deserialize, TS,
+    Clone,
+    Debug,
+    Copy,
+    Zeroable,
+    AnchorDeserialize,
+    AnchorSerialize,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    TS,
 )]
 #[repr(C)]
 pub enum Model {
@@ -83,6 +92,7 @@ pub enum LLMTrainingDataType {
     Debug,
     Zeroable,
     Copy,
+    PartialEq,
     TS,
 )]
 #[repr(C)]
@@ -109,6 +119,7 @@ pub enum LLMTrainingDataLocation {
     Debug,
     Zeroable,
     Copy,
+    PartialEq,
     TS,
 )]
 #[repr(C)]
@@ -163,6 +174,7 @@ impl LLMTrainingDataLocationAndWeight {
     Debug,
     Zeroable,
     Copy,
+    PartialEq,
     TS,
 )]
 #[repr(C)]
@@ -184,7 +196,16 @@ pub enum HttpTrainingDataLocation {
 }
 
 #[derive(
-    AnchorSerialize, AnchorDeserialize, Serialize, Deserialize, Clone, Debug, Zeroable, Copy, TS,
+    AnchorSerialize,
+    AnchorDeserialize,
+    Serialize,
+    Deserialize,
+    Clone,
+    Debug,
+    Zeroable,
+    Copy,
+    PartialEq,
+    TS,
 )]
 #[repr(C)]
 pub struct LLM {
@@ -240,6 +261,32 @@ impl HubRepo {
 }
 
 #[derive(
+    Clone,
+    Debug,
+    Copy,
+    AnchorDeserialize,
+    AnchorSerialize,
+    InitSpace,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    TS,
+)]
+pub struct GcsRepo {
+    pub bucket: FixedString<{ SOLANA_MAX_STRING_LEN }>,
+    pub prefix: Option<FixedString<{ SOLANA_MAX_STRING_LEN }>>,
+}
+
+impl GcsRepo {
+    pub fn dummy() -> Self {
+        Self {
+            bucket: FixedString::new(),
+            prefix: None,
+        }
+    }
+}
+
+#[derive(
     AnchorSerialize,
     AnchorDeserialize,
     InitSpace,
@@ -249,6 +296,7 @@ impl HubRepo {
     Debug,
     Zeroable,
     Copy,
+    PartialEq,
     TS,
 )]
 #[repr(C)]
@@ -257,6 +305,8 @@ pub enum Checkpoint {
     Dummy(HubRepo),
     Hub(HubRepo),
     P2P(HubRepo),
+    Gcs(GcsRepo),
+    P2PGcs(GcsRepo),
 }
 
 impl std::fmt::Display for Checkpoint {
@@ -268,6 +318,10 @@ impl std::fmt::Display for Checkpoint {
             Checkpoint::P2P(hub_repo) => {
                 write!(f, "P2P - Hub repo: {}", &hub_repo.repo_id)
             }
+            Checkpoint::Gcs(gcs_repo) | Checkpoint::P2PGcs(gcs_repo) => match &gcs_repo.prefix {
+                Some(prefix) => write!(f, "gs://{}/{}", &gcs_repo.bucket, prefix),
+                None => write!(f, "gs://{}", &gcs_repo.bucket),
+            },
         }
     }
 }
@@ -308,6 +362,9 @@ impl Model {
                     Checkpoint::Ephemeral => true,
                     Checkpoint::Hub(hub_repo) => hub_repo.repo_id.is_empty(),
                     Checkpoint::P2P(hub_repo) => hub_repo.repo_id.is_empty(),
+                    Checkpoint::Gcs(gcs_repo) | Checkpoint::P2PGcs(gcs_repo) => {
+                        gcs_repo.bucket.is_empty()
+                    }
                 };
 
                 if bad_checkpoint {

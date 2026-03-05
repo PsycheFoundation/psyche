@@ -7,8 +7,10 @@ mod program_error;
 
 use anchor_lang::prelude::*;
 pub use client::Client;
-pub use client::ClientId;
+pub use clients_state::ClientsEpochRates;
+pub use clients_state::ClientsState;
 pub use instance_state::CoordinatorInstanceState;
+pub use instance_state::RunMetadata;
 use logic::*;
 pub use program_error::ProgramError;
 use psyche_coordinator::Committee;
@@ -21,13 +23,12 @@ use psyche_coordinator::Witness;
 use psyche_coordinator::WitnessBloom;
 use psyche_coordinator::WitnessMetadata;
 use psyche_coordinator::WitnessProof;
-use psyche_coordinator::model::{HubRepo, Model};
+use psyche_coordinator::model::Model;
 use psyche_core::MerkleRoot;
+use psyche_core::NodeIdentity;
 use serde::Deserialize;
 use serde::Serialize;
 use ts_rs::TS;
-
-pub use crate::instance_state::RunMetadata;
 
 declare_id!("4SHugWqSXwKE5fqDchkJcPEqnoZE22VYKtSTVm7axbT7");
 
@@ -125,7 +126,7 @@ pub fn coordinator_account_from_bytes_mut(
 
 #[account(zero_copy)]
 #[repr(C)]
-#[derive(Serialize, Deserialize, TS)]
+#[derive(Serialize, Deserialize, PartialEq, TS)]
 pub struct CoordinatorAccount {
     pub version: u64,
     pub state: CoordinatorInstanceState,
@@ -291,7 +292,7 @@ pub mod psyche_solana_coordinator {
 
     pub fn health_check(
         ctx: Context<PermissionlessCoordinatorAccounts>,
-        id: ClientId,
+        id: NodeIdentity,
         committee: Committee,
         position: u64,
         index: u64,
@@ -313,7 +314,7 @@ pub mod psyche_solana_coordinator {
 
     pub fn checkpoint(
         ctx: Context<PermissionlessCoordinatorAccounts>,
-        repo: HubRepo,
+        repo: psyche_coordinator::model::Checkpoint,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();

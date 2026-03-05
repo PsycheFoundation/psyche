@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 
 use iroh::EndpointId;
+use iroh::endpoint::{AfterHandshakeOutcome, ConnectionInfo, EndpointHooks};
 
 pub trait Allowlist: std::fmt::Debug + Clone {
     fn allowed(&self, addr: EndpointId) -> bool;
@@ -87,5 +88,29 @@ impl Allowlist for AllowDynamic {
 impl Default for AllowDynamic {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AllowlistHook<A> {
+    allowlist: A,
+}
+
+impl<A: Allowlist> AllowlistHook<A> {
+    pub fn new(allowlist: A) -> Self {
+        Self { allowlist }
+    }
+}
+
+impl<A: Allowlist + Send + Sync> EndpointHooks for AllowlistHook<A> {
+    async fn after_handshake(&self, conn: &ConnectionInfo) -> AfterHandshakeOutcome {
+        if self.allowlist.allowed(conn.remote_id()) {
+            AfterHandshakeOutcome::Accept
+        } else {
+            AfterHandshakeOutcome::Reject {
+                error_code: 1u32.into(),
+                reason: b"not in allowlist".to_vec(),
+            }
+        }
     }
 }

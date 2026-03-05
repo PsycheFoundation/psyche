@@ -1,16 +1,16 @@
 use anyhow::{Error, Result};
 use bytemuck::Zeroable;
 use hf_hub::Repo;
-use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
+use psyche_centralized_shared::{ClientToServerMessage, ServerToClientMessage};
+use psyche_client::HubUploadInfo;
+use psyche_client::UploadInfo;
 use psyche_client::{
     Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
 };
 use psyche_coordinator::{Coordinator, HealthChecks, model};
+use psyche_core::NodeIdentity;
 use psyche_metrics::ClientMetrics;
-use psyche_network::{
-    AuthenticatableIdentity, EndpointId, NetworkTUIState, NetworkTui, SecretKey, TcpClient,
-    allowlist,
-};
+use psyche_network::{EndpointId, NetworkTUIState, NetworkTui, SecretKey, TcpClient, allowlist};
 use psyche_tui::logging::LoggerWidget;
 use psyche_tui::{CustomWidget, TabbedWidget};
 use psyche_watcher::{Backend as WatcherBackend, CoordinatorTui, OpportunisticData};
@@ -28,19 +28,19 @@ pub type TabsData = <Tabs as CustomWidget>::Data;
 
 pub enum ToSend {
     Witness(Box<OpportunisticData>),
-    HealthCheck(HealthChecks<ClientId>),
-    Checkpoint(model::HubRepo),
+    HealthCheck(HealthChecks),
+    Checkpoint(model::Checkpoint),
 }
 
 struct Backend {
     allowlist: allowlist::AllowDynamic,
-    rx: mpsc::UnboundedReceiver<Coordinator<ClientId>>,
+    rx: mpsc::UnboundedReceiver<Coordinator>,
     tx: mpsc::UnboundedSender<ToSend>,
 }
 
 #[async_trait::async_trait]
-impl WatcherBackend<ClientId> for Backend {
-    async fn wait_for_new_state(&mut self) -> Result<Coordinator<ClientId>> {
+impl WatcherBackend for Backend {
+    async fn wait_for_new_state(&mut self) -> Result<Coordinator> {
         let new_state = self
             .rx
             .recv()
@@ -51,7 +51,7 @@ impl WatcherBackend<ClientId> for Backend {
                 .epoch_state
                 .clients
                 .iter()
-                .map(|c| EndpointId::from_bytes(c.id.get_p2p_public_key()).unwrap()),
+                .map(|c| EndpointId::from_bytes(c.id.p2p_identity()).unwrap()),
         );
         Ok(new_state)
     }
@@ -62,12 +62,12 @@ impl WatcherBackend<ClientId> for Backend {
             .send(ToSend::Witness(Box::new(opportunistic_data)))?)
     }
 
-    async fn send_health_check(&mut self, health_checks: HealthChecks<ClientId>) -> Result<()> {
+    async fn send_health_check(&mut self, health_checks: HealthChecks) -> Result<()> {
         self.tx.send(ToSend::HealthCheck(health_checks))?;
         Ok(())
     }
 
-    async fn send_checkpoint(&mut self, checkpoint: model::HubRepo) -> Result<()> {
+    async fn send_checkpoint(&mut self, checkpoint: model::Checkpoint) -> Result<()> {
         self.tx.send(ToSend::Checkpoint(checkpoint))?;
         Ok(())
     }
@@ -78,8 +78,8 @@ pub struct App {
     cancel: CancellationToken,
     update_tui_interval: Interval,
     tx_tui_state: Option<Sender<TabsData>>,
-    coordinator_state: Coordinator<ClientId>,
-    server_conn: TcpClient<ClientId, ClientToServerMessage, ServerToClientMessage>,
+    coordinator_state: Coordinator,
+    server_conn: TcpClient<ClientToServerMessage, ServerToClientMessage>,
 
     metrics: Arc<ClientMetrics>,
 }
@@ -89,21 +89,15 @@ pub async fn build_app(
     server_addr: String,
     tx_tui_state: Option<Sender<TabsData>>,
     p: TrainArgs,
-) -> Result<(
-    App,
-    allowlist::AllowDynamic,
-    NC,
-    RunInitConfig<ClientId, ClientId>,
-)> {
+) -> Result<(App, allowlist::AllowDynamic, NC, RunInitConfig)> {
     let metrics = Arc::new(ClientMetrics::new(
         p.metrics_local_port,
         Some(Duration::from_secs(30)),
     ));
     let identity_secret_key = read_identity_secret_key(p.identity_secret_key_path.as_ref())?
         .unwrap_or_else(|| SecretKey::generate(&mut rand::rng()));
-    let server_conn = TcpClient::<ClientId, ClientToServerMessage, ServerToClientMessage>::connect(
+    let server_conn = TcpClient::<ClientToServerMessage, ServerToClientMessage>::connect(
         &server_addr,
-        identity_secret_key.public().into(),
         identity_secret_key.clone(),
     )
     .await?;
@@ -133,7 +127,7 @@ pub async fn build_app(
     )
     .await?;
 
-    let state_options: RunInitConfig<ClientId, ClientId> = RunInitConfig {
+    let state_options = RunInitConfig {
         data_parallelism: p.data_parallelism,
         tensor_parallelism: p.tensor_parallelism,
         micro_batch_size: p.micro_batch_size,
@@ -145,9 +139,8 @@ pub async fn build_app(
         hub_read_token,
         hub_max_concurrent_downloads: p.hub_max_concurrent_downloads,
         wandb_info,
-        identity: identity_secret_key.public().into(),
-        network_identity: identity_secret_key.public().into(),
-        private_key: identity_secret_key,
+        identity: NodeIdentity::from_single_key(*identity_secret_key.public().as_bytes()),
+        p2p_secret_key: identity_secret_key,
         optim_stats_every_n_steps: p.optim_stats_steps,
         grad_accum_in_fp32: p.grad_accum_in_fp32,
         dummy_training_delay_secs: p.dummy_training_delay_secs,
@@ -172,22 +165,23 @@ impl App {
         &mut self,
         allowlist: allowlist::AllowDynamic,
         p2p: NC,
-        state_options: RunInitConfig<ClientId, ClientId>,
+        state_options: RunInitConfig,
     ) -> Result<()> {
         // sanity checks
         if let Some(checkpoint_config) = &state_options.checkpoint_config {
-            if let Some(hub_upload) = &checkpoint_config.hub_upload {
+            if let Some(UploadInfo::Hub(HubUploadInfo {
+                hub_repo,
+                hub_token,
+            })) = &checkpoint_config.upload_info
+            {
                 let api = hf_hub::api::tokio::ApiBuilder::new()
-                    .with_token(Some(hub_upload.hub_token.clone()))
+                    .with_token(Some(hub_token.clone()))
                     .build()?;
-                let repo_api = api.repo(Repo::new(
-                    hub_upload.hub_repo.clone(),
-                    hf_hub::RepoType::Model,
-                ));
+                let repo_api = api.repo(Repo::new(hub_repo.clone(), hf_hub::RepoType::Model));
                 if !repo_api.is_writable().await {
                     anyhow::bail!(
                         "Checkpoint upload repo {} is not writable with the passed API key.",
-                        hub_upload.hub_repo
+                        hub_repo
                     )
                 }
             }
@@ -261,7 +255,7 @@ impl App {
     async fn on_server_message(
         &mut self,
         message: ServerToClientMessage,
-        tx: &mpsc::UnboundedSender<Coordinator<ClientId>>,
+        tx: &mpsc::UnboundedSender<Coordinator>,
     ) {
         match message {
             ServerToClientMessage::Coordinator(state) => {

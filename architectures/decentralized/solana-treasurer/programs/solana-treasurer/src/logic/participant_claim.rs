@@ -66,13 +66,14 @@ pub fn participant_claim_processor(
     context: Context<ParticipantClaimAccounts>,
     params: ParticipantClaimParams,
 ) -> Result<()> {
+    let user_bytes = params.user.as_ref();
     let coordinator_account = context.accounts.coordinator_account.load()?;
     let client_state = match coordinator_account
         .state
         .clients_state
         .clients
         .iter()
-        .find(|client| client.id.signer == params.user)
+        .find(|client| client.id.signer() == user_bytes)
     {
         Some(info) => info,
         None => return err!(ProgramError::ParticipantClientNotFound),

@@ -12,6 +12,8 @@ use tracing::{Instrument, debug, info};
 #[derive(Debug, Clone)]
 pub struct ConnectionData {
     pub endpoint_id: EndpointId,
+    /// Throughput in bytes/sec
+    pub bandwidth: f64,
     pub selected_path: Option<SelectedPath>,
 }
 
@@ -68,7 +70,7 @@ impl ConnectionMonitor {
                     let remote_id = conn.remote_id();
                     let alpn = String::from_utf8_lossy(conn.alpn()).to_string();
 
-                    let selected_path = Self::extract_connection_info(&conn);
+                    let selected_path = Self::extract_selected_path(&conn.paths());
 
                     if let Some(ref path) = selected_path {
                         info!(
@@ -87,8 +89,13 @@ impl ConnectionMonitor {
 
                     {
                         let mut conns = connections.write().unwrap();
+                        let prev_bandwidth = conns
+                            .get(&remote_id)
+                            .map(|d| d.bandwidth)
+                            .unwrap_or(0.0);
                         conns.insert(remote_id, ConnectionData {
                             endpoint_id: remote_id,
+                            bandwidth: prev_bandwidth,
                             selected_path,
                         });
                     }
@@ -103,7 +110,7 @@ impl ConnectionMonitor {
                         loop {
                             tokio::select! {
                                 _ = update_interval.tick() => {
-                                    let selected_path = Self::extract_connection_info_from_watcher(&paths_watcher);
+                                    let selected_path = Self::extract_selected_path(&paths_watcher);
 
                                     let mut conns = connections_clone.write().unwrap();
                                     if let Some(data) = conns.get_mut(&remote_id) {
@@ -164,9 +171,7 @@ impl ConnectionMonitor {
                                             );
                                         }
                                     }
-
-                                    let mut conns = connections_clone.write().unwrap();
-                                    conns.remove(&remote_id);
+                                    connections_clone.write().unwrap().remove(&remote_id);
                                     break;
                                 }
                             }
@@ -185,19 +190,11 @@ impl ConnectionMonitor {
         }
     }
 
-    /// extract selected path info from ConnectionInfo
-    fn extract_connection_info(conn: &ConnectionInfo) -> Option<SelectedPath> {
-        let paths_watcher = conn.paths();
-        Self::extract_connection_info_from_watcher(&paths_watcher)
-    }
-
     /// extract selected path info from a paths watcher
-    fn extract_connection_info_from_watcher<T: Watcher<Value = iroh::endpoint::PathInfoList>>(
+    fn extract_selected_path<T: Watcher<Value = iroh::endpoint::PathInfoList>>(
         paths_watcher: &T,
     ) -> Option<SelectedPath> {
         let paths = paths_watcher.peek();
-
-        // check for selected path
         paths
             .iter()
             .find(|p| p.is_selected())
@@ -205,6 +202,14 @@ impl ConnectionMonitor {
                 addr: format!("{:?}", path.remote_addr()),
                 rtt: path.rtt(),
             })
+    }
+
+    /// update bandwidth for a specific peer from application-level download data
+    pub fn update_peer_bandwidth(&self, endpoint_id: &EndpointId, bandwidth: f64) {
+        let mut conns = self.connections.write().unwrap();
+        if let Some(data) = conns.get_mut(endpoint_id) {
+            data.bandwidth = bandwidth;
+        }
     }
 
     /// get connection data for a specific endpoint
@@ -217,5 +222,17 @@ impl ConnectionMonitor {
     pub fn get_all_connections(&self) -> Vec<ConnectionData> {
         let conns = self.connections.read().unwrap();
         conns.values().cloned().collect()
+    }
+
+    /// get latency for a specific endpoint
+    pub fn get_latency(&self, endpoint_id: &EndpointId) -> Option<Duration> {
+        let conns = self.connections.read().unwrap();
+        conns.get(endpoint_id).and_then(|data| data.latency())
+    }
+
+    /// get measured throughput (bytes/sec) for a specific endpoint
+    pub fn get_bandwidth(&self, endpoint_id: &EndpointId) -> Option<f64> {
+        let conns = self.connections.read().unwrap();
+        conns.get(endpoint_id).map(|data| data.bandwidth)
     }
 }

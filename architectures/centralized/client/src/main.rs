@@ -16,6 +16,9 @@ use tracing::info;
 
 mod app;
 
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 #[derive(Parser, Debug)]
 struct Args {
     #[command(subcommand)]

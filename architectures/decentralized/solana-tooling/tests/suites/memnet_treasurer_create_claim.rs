@@ -1,6 +1,6 @@
 use psyche_coordinator::CoordinatorConfig;
+use psyche_core::NodeIdentity;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
-use psyche_solana_coordinator::ClientId;
 use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
@@ -307,7 +307,7 @@ pub async fn run() {
         &authorization,
         &coordinator1_instance,
         &coordinator1_account,
-        ClientId::new(client1.pubkey(), Default::default()),
+        NodeIdentity::from_single_key(client1.pubkey().to_bytes()),
         &claimer1.pubkey(),
     )
     .await
@@ -319,7 +319,7 @@ pub async fn run() {
         &authorization,
         &coordinator1_instance,
         &coordinator1_account,
-        ClientId::new(client2.pubkey(), Default::default()),
+        NodeIdentity::from_single_key(client2.pubkey().to_bytes()),
         &claimer2.pubkey(),
     )
     .await
@@ -331,7 +331,7 @@ pub async fn run() {
         &authorization,
         &coordinator2_instance,
         &coordinator2_account,
-        ClientId::new(client1.pubkey(), Default::default()),
+        NodeIdentity::from_single_key(client1.pubkey().to_bytes()),
         &claimer1.pubkey(),
     )
     .await
@@ -343,7 +343,7 @@ pub async fn run() {
         &authorization,
         &coordinator2_instance,
         &coordinator2_account,
-        ClientId::new(client2.pubkey(), Default::default()),
+        NodeIdentity::from_single_key(client2.pubkey().to_bytes()),
         &claimer2.pubkey(),
     )
     .await

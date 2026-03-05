@@ -13,10 +13,10 @@ use psyche_coordinator::model::LLMTrainingDataType;
 use psyche_coordinator::model::Model;
 use psyche_core::ConstantLR;
 use psyche_core::LearningRateSchedule;
+use psyche_core::NodeIdentity;
 use psyche_core::OptimizerDefinition;
 use psyche_solana_authorizer::logic::AuthorizationGranteeUpdateParams;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
-use psyche_solana_coordinator::ClientId;
 use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::instruction::Witness;
 use psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
@@ -173,7 +173,7 @@ pub async fn run() {
             config: Some(CoordinatorConfig {
                 warmup_time,
                 cooldown_time,
-                max_round_train_time: 888,
+                max_round_train_time: 15,
                 round_witness_time,
                 min_clients: 1,
                 init_min_clients: 1,
@@ -266,7 +266,7 @@ pub async fn run() {
             &authorization,
             &coordinator_instance,
             &coordinator_account,
-            ClientId::new(clients[i].pubkey(), Default::default()),
+            NodeIdentity::from_single_key(clients[i].pubkey().to_bytes()),
             &claimers[i].pubkey(),
         )
         .await
@@ -356,7 +356,7 @@ pub async fn run() {
                     .epoch_state
                     .clients
                     .iter()
-                    .position(|c| c.id.signer.eq(&client.pubkey()))
+                    .position(|c| c.id.signer() == &client.pubkey().to_bytes())
                     .unwrap() as u64,
             );
             if witness_proof.position >= SOLANA_MAX_NUM_WITNESSES as u64 {
