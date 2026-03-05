@@ -1,3 +1,4 @@
+use anchor_lang::Discriminator;
 use psyche_coordinator::ClientState;
 use psyche_coordinator::Coordinator;
 use psyche_coordinator::CoordinatorConfig;
@@ -37,7 +38,7 @@ use solana_sdk::pubkey::Pubkey;
 
 #[tokio::test]
 pub async fn run() {
-    let coordinator_account_struct = CoordinatorAccount {
+    let coordinator_account_from_reference = CoordinatorAccount {
         version: CoordinatorAccount::VERSION,
         state: CoordinatorInstanceState {
             metadata: RunMetadata {
@@ -167,20 +168,24 @@ pub async fn run() {
         },
         nonce: 78787878,
     };
-    let coordinator_account_bytes_from_struct =
-        bytemuck::bytes_of(&coordinator_account_struct);
-    let coordinator_account_bytes_from_snapshot =
-        include_bytes!("../fixtures/coordinator-account.so");
     /*
     std::fs::write(
         "./tests/fixtures/coordinator-account.so",
-        coordinator_account_bytes_from_struct,
+        bytemuck::bytes_of(&coordinator_account_from_reference),
     )
     .unwrap();
     */
-    assert_eq!(
-        coordinator_account_bytes_from_struct,
-        coordinator_account_bytes_from_snapshot
+    let coordinator_account_snapshot_bytes = &[
+        CoordinatorAccount::DISCRIMINATOR,
+        include_bytes!("../fixtures/coordinator-account.so"),
+    ]
+    .concat();
+    let coordinator_account_from_snapshot =
+        coordinator_account_from_bytes(coordinator_account_snapshot_bytes)
+            .unwrap();
+    assert!(
+        &coordinator_account_from_reference
+            == coordinator_account_from_snapshot
     );
 }
 
