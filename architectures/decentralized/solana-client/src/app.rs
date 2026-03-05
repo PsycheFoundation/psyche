@@ -1,4 +1,3 @@
-use crate::network_identity::NetworkIdentity;
 use psyche_solana_rpc::SolanaBackend;
 
 use anchor_client::{
@@ -51,7 +50,8 @@ pub struct App {
     metrics: Arc<ClientMetrics>,
     allowlist: allowlist::AllowDynamic,
     p2p: NC,
-    state_options: RunInitConfig<NetworkIdentity>,
+    state_options: RunInitConfig,
+    wallet_keypair: Arc<Keypair>,
 }
 
 pub struct AppParams {
@@ -117,7 +117,7 @@ pub async fn build_app(
     )
     .await?;
 
-    let state_options: RunInitConfig<NetworkIdentity> = RunInitConfig {
+    let state_options = RunInitConfig {
         data_parallelism: p.data_parallelism,
         tensor_parallelism: p.tensor_parallelism,
         micro_batch_size: p.micro_batch_size,
@@ -130,8 +130,7 @@ pub async fn build_app(
         hub_max_concurrent_downloads: p.hub_max_concurrent_downloads,
         wandb_info,
         identity,
-        network_identity: identity.into(),
-        private_key: (wallet_keypair.clone(), identity_secret_key),
+        p2p_secret_key: identity_secret_key,
         optim_stats_every_n_steps: p.optim_stats_steps,
         grad_accum_in_fp32: p.grad_accum_in_fp32,
         dummy_training_delay_secs: p.dummy_training_delay_secs,
@@ -156,6 +155,7 @@ pub async fn build_app(
         metrics,
         p2p,
         state_options,
+        wallet_keypair,
     };
     Ok(app)
 }
@@ -165,7 +165,7 @@ impl App {
         let backend = SolanaBackend::new(
             self.cluster.clone(),
             self.backup_clusters.clone(),
-            self.state_options.private_key.0.clone(),
+            self.wallet_keypair.clone(),
             CommitmentConfig::confirmed(),
         )?;
         let coordinator_instance_pubkey =
@@ -215,11 +215,11 @@ impl App {
         let backend = Arc::new(SolanaBackend::new(
             self.cluster.clone(),
             self.backup_clusters.clone(),
-            self.state_options.private_key.0.clone(),
+            self.wallet_keypair.clone(),
             CommitmentConfig::confirmed(),
         )?);
-        let signer = self.state_options.private_key.0.pubkey();
-        let p2p_identity = self.state_options.private_key.1.public();
+        let signer = self.wallet_keypair.pubkey();
+        let p2p_identity = self.state_options.p2p_secret_key.public();
 
         let start_coordinator_state = backend
             .get_coordinator_account(&coordinator_account)

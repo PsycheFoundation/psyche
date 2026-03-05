@@ -3,7 +3,6 @@ use std::time::Duration;
 use anyhow::{Error, Result};
 use psyche_centralized_client::app::App as ClientApp;
 use psyche_centralized_client::app::build_app as build_client_app;
-use psyche_centralized_shared::ClientId;
 use psyche_client::NC;
 use psyche_client::RunInitConfig;
 use psyche_network::allowlist;
@@ -21,7 +20,7 @@ impl Client {
     pub async fn default(
         server_port: u16,
         run_id: &str,
-    ) -> (Self, allowlist::AllowDynamic, NC, RunInitConfig<ClientId>) {
+    ) -> (Self, allowlist::AllowDynamic, NC, RunInitConfig) {
         let client_app_params = dummy_client_app_params_with_training_delay(server_port, run_id, 5);
         let (client_app, allowlist, p2p, state_options) = build_client_app(
             client_app_params.cancel,
@@ -39,7 +38,7 @@ impl Client {
         server_port: u16,
         run_id: &str,
         training_delay_secs: u64,
-    ) -> (Self, allowlist::AllowDynamic, NC, RunInitConfig<ClientId>) {
+    ) -> (Self, allowlist::AllowDynamic, NC, RunInitConfig) {
         let client_app_params =
             dummy_client_app_params_with_training_delay(server_port, run_id, training_delay_secs);
         let (client_app, allowlist, p2p, state_options) = build_client_app(
@@ -58,7 +57,7 @@ impl Client {
         &mut self,
         allowlist: allowlist::AllowDynamic,
         p2p: NC,
-        state_options: RunInitConfig<ClientId>,
+        state_options: RunInitConfig,
     ) -> Result<()> {
         debug!("spawned new client: {:?}", p2p.endpoint_addr().await);
         let client_run = self.inner.run(allowlist, p2p, state_options);

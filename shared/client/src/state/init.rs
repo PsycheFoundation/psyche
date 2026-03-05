@@ -18,7 +18,7 @@ use psyche_modeling::{
     DataParallel, DeepseekForCausalLM, Devices, DummyModel, LlamaConfig, LlamaForCausalLM,
     LocalTrainer, ModelLoadError, ParallelModels, PretrainedSource, Trainer, auto_tokenizer,
 };
-use psyche_network::{AuthenticatableIdentity, BlobTicket};
+use psyche_network::{BlobTicket, SecretKey};
 use psyche_watcher::OpportunisticData;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tch::{Kind, Tensor};
@@ -38,11 +38,10 @@ use super::{
 };
 use iroh_blobs::api::Tag;
 
-pub struct RunInitConfig<A: AuthenticatableIdentity> {
+pub struct RunInitConfig {
     // identity for connecting to the data server
     pub identity: NodeIdentity,
-    pub network_identity: A,
-    pub private_key: A::PrivateKey,
+    pub p2p_secret_key: SecretKey,
 
     // p2p model parameters sharing config
     pub max_concurrent_parameter_requests: usize,
@@ -150,8 +149,8 @@ struct RawLoadedModel {
 type OneshotModelParameterSender = oneshot::Sender<HashMap<String, Tensor>>;
 type OneShotModelConfigSender = oneshot::Sender<(String, Tokenizer, Vec<String>)>;
 
-pub struct RunInitConfigAndIO<A: AuthenticatableIdentity> {
-    pub init_config: RunInitConfig<A>,
+pub struct RunInitConfigAndIO {
+    pub init_config: RunInitConfig,
 
     pub tx_health_check: UnboundedSender<HealthChecks>,
     pub tx_witness: UnboundedSender<OpportunisticData>,
@@ -167,9 +166,9 @@ pub struct RunInitConfigAndIO<A: AuthenticatableIdentity> {
     pub metrics: Arc<ClientMetrics>,
 }
 
-impl<A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<A> {
+impl RunInitConfigAndIO {
     /// Call this on first warmup - when we need to enter the run, we have to load the model, connect to the data server, etc
-    pub async fn init_run(self, state: Coordinator) -> Result<StepStateMachine<A>, InitRunError> {
+    pub async fn init_run(self, state: Coordinator) -> Result<StepStateMachine, InitRunError> {
         let Self {
             init_config,
             tx_witness,
@@ -204,8 +203,7 @@ impl<A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<A> {
                 LLMTrainingDataLocation::Server(data_server) => DataProvider::Server(
                     DataProviderTcpClient::connect(
                         (&data_server).into(),
-                        init_config.network_identity,
-                        init_config.private_key,
+                        init_config.p2p_secret_key.clone(),
                     )
                     .await?,
                 ),
@@ -718,7 +716,7 @@ impl<A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<A> {
 
         // TODO add data fetching for verifying, too..
         let data_provider = data.map_err(InitRunError::DataProviderConnect)?;
-        let data_fetcher = DataFetcher::<A>::new(data_provider, init_config.data_parallelism * 2);
+        let data_fetcher = DataFetcher::new(data_provider, init_config.data_parallelism * 2);
 
         let trainers: Vec<Trainer> = match models {
             RawLoadedModelType::ParallelNativeModels(models) => {

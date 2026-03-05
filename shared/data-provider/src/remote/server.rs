@@ -2,7 +2,7 @@ use anyhow::Result;
 use bytemuck::Zeroable;
 use psyche_coordinator::Coordinator;
 use psyche_core::BatchId;
-use psyche_network::{AuthenticatableIdentity, ClientNotification, TcpServer};
+use psyche_network::{ClientNotification, PublicKey, TcpServer};
 use psyche_watcher::Backend;
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, warn};
@@ -14,36 +14,32 @@ use crate::{
 
 use super::shared::{ClientToServerMessage, RejectionReason, ServerToClientMessage};
 
-pub struct DataProviderTcpServer<A, D, W>
+pub struct DataProviderTcpServer<D, W>
 where
-    A: AuthenticatableIdentity,
     D: TokenizedDataProvider + LengthKnownDataProvider,
     W: Backend,
 {
-    tcp_server: TcpServer<A, ClientToServerMessage, ServerToClientMessage>,
+    tcp_server: TcpServer<ClientToServerMessage, ServerToClientMessage>,
     pub(crate) local_data_provider: D,
     backend: W,
     pub(crate) state: Coordinator,
-    // pub(crate) selected_data: IntervalTree<u64, T>,
     pub(crate) in_round: HashSet<[u8; 32]>,
-    pub(crate) provided_sequences: HashMap<A, usize>,
+    pub(crate) provided_sequences: HashMap<PublicKey, usize>,
 }
 
-impl<A, D, W> DataProviderTcpServer<A, D, W>
+impl<D, W> DataProviderTcpServer<D, W>
 where
-    A: AuthenticatableIdentity + 'static,
     D: TokenizedDataProvider + LengthKnownDataProvider + 'static,
     W: Backend + 'static,
 {
     pub async fn start(local_data_provider: D, backend: W, port: u16) -> Result<Self> {
-        let tcp_server = TcpServer::<A, ClientToServerMessage, ServerToClientMessage>::start(
+        let tcp_server = TcpServer::<ClientToServerMessage, ServerToClientMessage>::start(
             format!("0.0.0.0:{port}").parse()?,
         )
         .await?;
         Ok(DataProviderTcpServer {
             tcp_server,
             local_data_provider,
-            // selected_data: IntervalTree::new(),
             in_round: HashSet::new(),
             provided_sequences: HashMap::new(),
             backend,
@@ -68,19 +64,19 @@ where
             }
         }
     }
-    pub async fn handle_client_message(&mut self, from: A, message: ClientToServerMessage) {
+    pub async fn handle_client_message(&mut self, from: PublicKey, message: ClientToServerMessage) {
         match message {
             ClientToServerMessage::RequestTrainingData { data_ids } => {
-                let result = self.try_send_data(from.clone(), data_ids).await;
+                let result = self.try_send_data(from, data_ids).await;
                 match result {
                     Ok(data) => {
                         let old_count = *self.provided_sequences.get(&from).unwrap_or(&0);
                         self.provided_sequences
-                            .insert(from.clone(), old_count + data_ids.len());
+                            .insert(from, old_count + data_ids.len());
                         match self
                             .tcp_server
                             .send_to(
-                                from.clone(),
+                                from,
                                 ServerToClientMessage::TrainingData {
                                     data_ids,
                                     raw_data: data,
@@ -100,7 +96,7 @@ where
                         match self
                             .tcp_server
                             .send_to(
-                                from.clone(),
+                                from,
                                 ServerToClientMessage::RequestRejected { data_ids, reason },
                             )
                             .await
@@ -120,22 +116,13 @@ where
 
     async fn try_send_data(
         &mut self,
-        to: A,
+        to: PublicKey,
         data_ids: BatchId,
     ) -> Result<Vec<TokenizedData>, RejectionReason> {
-        if !self.in_round.contains(to.get_p2p_public_key()) {
+        if !self.in_round.contains(to.as_bytes()) {
             return Err(RejectionReason::NotInThisRound);
         }
 
-        // for data_id in &data_ids {
-        //     if self
-        //         .selected_data
-        //         .get(*data_id as u64)
-        //         .is_some_and(|x| *x != to)
-        //     {
-        //         return Err(RejectionReason::WrongDataIdForStep);
-        //     }
-        // }
         let data = self
             .local_data_provider
             .get_samples(data_ids)

@@ -8,12 +8,10 @@ use psyche_data_provider::{
     DataProviderTcpClient, DataProviderTcpServer, LengthKnownDataProvider, TokenizedData,
     TokenizedDataProvider,
 };
-use psyche_network::{AuthenticatableIdentity, FromSignedBytesError, Networkable};
+use psyche_network::SecretKey;
 use psyche_tui::logging;
 use psyche_watcher::{Backend as WatcherBackend, OpportunisticData};
 use rand::Rng;
-use serde::{Deserialize, Serialize};
-use std::fmt::Display;
 use tracing::info;
 
 // Simulated backend for demonstration
@@ -39,48 +37,6 @@ impl WatcherBackend for DummyBackend {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq, Copy)]
-struct DummyNodeIdentity(u64);
-
-impl Display for DummyNodeIdentity {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}", self.0))?;
-        Ok(())
-    }
-}
-
-impl AuthenticatableIdentity for DummyNodeIdentity {
-    type PrivateKey = ();
-
-    fn from_signed_challenge_bytes(
-        bytes: &[u8],
-        challenge: [u8; 32],
-    ) -> Result<Self, FromSignedBytesError> {
-        let (serialized_challenge, bytes) = bytes.split_at(32);
-        if challenge != serialized_challenge {
-            return Err(FromSignedBytesError::MismatchedChallenge(
-                challenge,
-                serialized_challenge.into(),
-            ));
-        }
-        Self::from_bytes(bytes).map_err(|_| FromSignedBytesError::Deserialize)
-    }
-
-    fn to_signed_challenge_bytes(&self, _private_key: &(), challenge: [u8; 32]) -> Vec<u8> {
-        let mut b = challenge.to_vec();
-        b.extend(self.to_bytes());
-        b
-    }
-
-    fn get_p2p_public_key(&self) -> &[u8; 32] {
-        todo!()
-    }
-
-    fn raw_p2p_sign(&self, _private_key: &Self::PrivateKey, _bytes: &[u8]) -> [u8; 64] {
-        todo!()
-    }
-}
-
 struct DummyDataProvider;
 impl TokenizedDataProvider for DummyDataProvider {
     async fn get_samples(&mut self, _data_ids: BatchId) -> anyhow::Result<Vec<TokenizedData>> {
@@ -100,28 +56,23 @@ impl LengthKnownDataProvider for DummyDataProvider {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = logging().init()?;
 
-    let clients: Vec<_> = (0..4).map(DummyNodeIdentity).collect();
+    let num_clients = 4;
     let backend = DummyBackend;
 
     tokio::spawn(async move {
         let local_data_provider = DummyDataProvider;
-        let mut server = DataProviderTcpServer::<DummyNodeIdentity, _, _>::start(
-            local_data_provider,
-            backend,
-            5740,
-        )
-        .await
-        .unwrap();
+        let mut server = DataProviderTcpServer::start(local_data_provider, backend, 5740)
+            .await
+            .unwrap();
         loop {
             server.poll().await;
         }
     });
 
-    let mut clients = try_join_all(
-        clients
-            .into_iter()
-            .map(|i| DataProviderTcpClient::connect("localhost:5740".to_string(), i, ())),
-    )
+    let mut clients = try_join_all((0..num_clients).map(|_| {
+        let secret_key = SecretKey::generate(&mut rand::rng());
+        DataProviderTcpClient::connect("localhost:5740".to_string(), secret_key)
+    }))
     .await?;
     info!("clients initialized successfully");
     loop {

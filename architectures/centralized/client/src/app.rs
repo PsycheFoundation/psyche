@@ -1,7 +1,7 @@
 use anyhow::{Error, Result};
 use bytemuck::Zeroable;
 use hf_hub::Repo;
-use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
+use psyche_centralized_shared::{ClientToServerMessage, ServerToClientMessage};
 use psyche_client::HubUploadInfo;
 use psyche_client::UploadInfo;
 use psyche_client::{
@@ -79,7 +79,7 @@ pub struct App {
     update_tui_interval: Interval,
     tx_tui_state: Option<Sender<TabsData>>,
     coordinator_state: Coordinator,
-    server_conn: TcpClient<ClientId, ClientToServerMessage, ServerToClientMessage>,
+    server_conn: TcpClient<ClientToServerMessage, ServerToClientMessage>,
 
     metrics: Arc<ClientMetrics>,
 }
@@ -89,16 +89,15 @@ pub async fn build_app(
     server_addr: String,
     tx_tui_state: Option<Sender<TabsData>>,
     p: TrainArgs,
-) -> Result<(App, allowlist::AllowDynamic, NC, RunInitConfig<ClientId>)> {
+) -> Result<(App, allowlist::AllowDynamic, NC, RunInitConfig)> {
     let metrics = Arc::new(ClientMetrics::new(
         p.metrics_local_port,
         Some(Duration::from_secs(30)),
     ));
     let identity_secret_key = read_identity_secret_key(p.identity_secret_key_path.as_ref())?
         .unwrap_or_else(|| SecretKey::generate(&mut rand::rng()));
-    let server_conn = TcpClient::<ClientId, ClientToServerMessage, ServerToClientMessage>::connect(
+    let server_conn = TcpClient::<ClientToServerMessage, ServerToClientMessage>::connect(
         &server_addr,
-        identity_secret_key.public().into(),
         identity_secret_key.clone(),
     )
     .await?;
@@ -128,7 +127,7 @@ pub async fn build_app(
     )
     .await?;
 
-    let state_options: RunInitConfig<ClientId> = RunInitConfig {
+    let state_options = RunInitConfig {
         data_parallelism: p.data_parallelism,
         tensor_parallelism: p.tensor_parallelism,
         micro_batch_size: p.micro_batch_size,
@@ -141,8 +140,7 @@ pub async fn build_app(
         hub_max_concurrent_downloads: p.hub_max_concurrent_downloads,
         wandb_info,
         identity: NodeIdentity::from_single_key(*identity_secret_key.public().as_bytes()),
-        network_identity: identity_secret_key.public().into(),
-        private_key: identity_secret_key,
+        p2p_secret_key: identity_secret_key,
         optim_stats_every_n_steps: p.optim_stats_steps,
         grad_accum_in_fp32: p.grad_accum_in_fp32,
         dummy_training_delay_secs: p.dummy_training_delay_secs,
@@ -167,7 +165,7 @@ impl App {
         &mut self,
         allowlist: allowlist::AllowDynamic,
         p2p: NC,
-        state_options: RunInitConfig<ClientId>,
+        state_options: RunInitConfig,
     ) -> Result<()> {
         // sanity checks
         if let Some(checkpoint_config) = &state_options.checkpoint_config {

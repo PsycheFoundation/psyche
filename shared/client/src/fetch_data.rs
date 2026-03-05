@@ -2,7 +2,6 @@ use psyche_coordinator::{Coordinator, get_batch_ids_for_node};
 use psyche_core::{BatchId, NodeIdentity};
 use psyche_data_provider::{DataProvider, TokenizedDataProvider};
 use psyche_modeling::{Batch, BatchData, BatchDataCPU};
-use psyche_network::AuthenticatableIdentity;
 use std::{
     collections::{BTreeMap, HashSet},
     sync::Arc,
@@ -21,14 +20,14 @@ pub type BatchIdSet = HashSet<BatchId>;
 const MAX_RETRIES: u32 = 7;
 const BASE_DELAY_MS: u64 = 2000;
 
-pub struct DataFetcher<A: AuthenticatableIdentity> {
-    data_provider: Arc<Mutex<DataProvider<A>>>,
+pub struct DataFetcher {
+    data_provider: Arc<Mutex<DataProvider>>,
     active_fetch_task: Option<(BatchStep, JoinHandle<()>)>,
     buffer_size: usize,
 }
 
-impl<A: AuthenticatableIdentity + 'static> DataFetcher<A> {
-    pub fn new(data_provider: DataProvider<A>, buffer_size: usize) -> Self {
+impl DataFetcher {
+    pub fn new(data_provider: DataProvider, buffer_size: usize) -> Self {
         Self {
             data_provider: Arc::new(Mutex::new(data_provider)),
             active_fetch_task: None,

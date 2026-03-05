@@ -1,11 +1,6 @@
 use psyche_coordinator::{Coordinator, HealthChecks, model};
-use psyche_network::{
-    AuthenticatableIdentity, EndpointId, FromSignedBytesError, PublicKey, SecretKey, SignedMessage,
-};
 use psyche_watcher::OpportunisticData;
 use serde::{Deserialize, Serialize};
-use std::fmt::Display;
-use ts_rs::TS;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClientToServerMessage {
@@ -18,71 +13,4 @@ pub enum ClientToServerMessage {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerToClientMessage {
     Coordinator(Box<Coordinator>),
-}
-
-#[derive(Serialize, Deserialize, Clone, Hash, PartialEq, Eq, Debug, Copy, TS)]
-#[ts(type = "string")]
-pub struct ClientId(pub(crate) EndpointId);
-
-impl Default for ClientId {
-    fn default() -> Self {
-        Self(PublicKey::from_bytes(&[0u8; 32]).unwrap())
-    }
-}
-
-impl Display for ClientId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}", self.0.fmt_short()))?;
-        Ok(())
-    }
-}
-
-impl AuthenticatableIdentity for ClientId {
-    type PrivateKey = SecretKey;
-    fn from_signed_challenge_bytes(
-        bytes: &[u8],
-        challenge: [u8; 32],
-    ) -> Result<Self, FromSignedBytesError> {
-        let (key, decoded_challenge) = SignedMessage::<[u8; 32]>::verify_and_decode(bytes)
-            .map_err(|_| FromSignedBytesError::Deserialize)?;
-        if decoded_challenge != challenge {
-            return Err(FromSignedBytesError::MismatchedChallenge(
-                challenge,
-                decoded_challenge.into(),
-            ));
-        }
-        Ok(Self(key))
-    }
-
-    fn to_signed_challenge_bytes(
-        &self,
-        private_key: &Self::PrivateKey,
-        challenge: [u8; 32],
-    ) -> Vec<u8> {
-        assert_eq!(private_key.public(), self.0);
-        SignedMessage::sign_and_encode(private_key, &challenge)
-            .expect("alloc error")
-            .to_vec()
-    }
-
-    fn get_p2p_public_key(&self) -> &[u8; 32] {
-        self.0.as_bytes()
-    }
-
-    fn raw_p2p_sign(&self, private_key: &Self::PrivateKey, bytes: &[u8]) -> [u8; 64] {
-        private_key.sign(bytes).to_bytes()
-    }
-}
-
-impl From<PublicKey> for ClientId {
-    fn from(value: PublicKey) -> Self {
-        Self(value)
-    }
-}
-
-impl From<ClientId> for psyche_core::NodeIdentity {
-    fn from(id: ClientId) -> Self {
-        let key = *id.0.as_bytes();
-        psyche_core::NodeIdentity::from_single_key(key)
-    }
 }

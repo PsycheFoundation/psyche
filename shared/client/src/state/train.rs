@@ -14,8 +14,8 @@ use psyche_modeling::{
     TrainerThreadCommunicationError,
 };
 use psyche_network::{
-    AuthenticatableIdentity, Hash, SerializeDistroResultError, SerializedDistroResult,
-    TransmittableDistroResult, distro_results_to_bytes,
+    Hash, SerializeDistroResultError, SerializedDistroResult, TransmittableDistroResult,
+    distro_results_to_bytes,
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -90,9 +90,9 @@ pub enum TrainError {
     CoordinatorError(CoordinatorError),
 }
 
-pub struct TrainingStepMetadata<A: AuthenticatableIdentity> {
+pub struct TrainingStepMetadata {
     pub identity: NodeIdentity,
-    pub data_fetcher: DataFetcher<A>,
+    pub data_fetcher: DataFetcher,
     pub tx_health_check: mpsc::UnboundedSender<HealthChecks>,
     pub tx_distro_result: mpsc::UnboundedSender<DistroBroadcastAndPayload>,
 
@@ -136,7 +136,7 @@ impl TrainingStep {
     }
 }
 
-impl<A: AuthenticatableIdentity + 'static> TrainingStepMetadata<A> {
+impl TrainingStepMetadata {
     pub fn start(
         &mut self,
         client_index: u64,

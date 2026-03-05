@@ -7,9 +7,7 @@ use iroh_blobs::api::Tag;
 use psyche_coordinator::{Committee, Coordinator, RunState, Witness, WitnessProof};
 use psyche_core::{IntegrationTestLogMarker, MerkleRoot, MerkleTree, NodeIdentity, sha256};
 use psyche_modeling::{DistroResult, Trainer};
-use psyche_network::{
-    AuthenticatableIdentity, BlobTicket, Hash, P2PEndpointInfo, TransmittableDistroResult,
-};
+use psyche_network::{BlobTicket, Hash, P2PEndpointInfo, TransmittableDistroResult};
 use psyche_watcher::OpportunisticData;
 use std::{
     fmt,
@@ -37,13 +35,13 @@ use super::{
     witness::{WitnessStep, WitnessStepMetadata, WitnessingError},
 };
 
-pub struct StepStateMachine<A: AuthenticatableIdentity + 'static> {
+pub struct StepStateMachine {
     identity: NodeIdentity,
 
     stats_logger: Arc<Mutex<StatsLogger>>,
 
     warmup: WarmupStepMetadata,
-    training: TrainingStepMetadata<A>,
+    training: TrainingStepMetadata,
     witness: WitnessStepMetadata,
     cooldown: CooldownStepMetadata,
 
@@ -121,12 +119,12 @@ pub enum ApplyMessageOutcome {
     Invalid,
 }
 
-impl<A: AuthenticatableIdentity + 'static> StepStateMachine<A> {
+impl StepStateMachine {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         identity: NodeIdentity,
         warmup: WarmupStepMetadata,
-        training: TrainingStepMetadata<A>,
+        training: TrainingStepMetadata,
         witness: WitnessStepMetadata,
         cooldown: CooldownStepMetadata,
         trainers: Vec<Trainer>,
@@ -930,19 +928,19 @@ impl fmt::Display for ActiveStep {
     }
 }
 
-pub enum InitStage<A: AuthenticatableIdentity + 'static> {
-    NotYetInitialized(Option<Box<RunInitConfigAndIO<A>>>),
+pub enum InitStage {
+    NotYetInitialized(Option<Box<RunInitConfigAndIO>>),
     #[allow(clippy::type_complexity)]
     Initializing(
         Box<(
-            JoinHandle<Result<StepStateMachine<A>, InitRunError>>,
+            JoinHandle<Result<StepStateMachine, InitRunError>>,
             Coordinator,
         )>,
     ),
-    Running(Box<StepStateMachine<A>>),
+    Running(Box<StepStateMachine>),
 }
 
-pub struct RunManager<A: AuthenticatableIdentity + 'static>(InitStage<A>);
+pub struct RunManager(InitStage);
 
 #[derive(Error, Debug)]
 pub enum ApplyStateError {
@@ -953,8 +951,8 @@ pub enum ApplyStateError {
     Step(#[from] StepError),
 }
 
-impl<A: AuthenticatableIdentity + 'static> RunManager<A> {
-    pub fn new(config: RunInitConfigAndIO<A>) -> Self {
+impl RunManager {
+    pub fn new(config: RunInitConfigAndIO) -> Self {
         Self(InitStage::NotYetInitialized(Some(config.into())))
     }
 
@@ -1106,8 +1104,8 @@ impl<A: AuthenticatableIdentity + 'static> RunManager<A> {
     }
 }
 
-impl<A: AuthenticatableIdentity + 'static> From<&RunManager<A>> for ClientTUIState {
-    fn from(run: &RunManager<A>) -> Self {
+impl From<&RunManager> for ClientTUIState {
+    fn from(run: &RunManager) -> Self {
         match &run.0 {
             InitStage::Running(state_machine) => {
                 let coordinator = &state_machine.coordinator_state;

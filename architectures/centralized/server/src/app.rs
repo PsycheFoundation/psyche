@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow, bail};
 use async_trait::async_trait;
-use psyche_centralized_shared::{ClientId, ClientToServerMessage, ServerToClientMessage};
+use psyche_centralized_shared::{ClientToServerMessage, ServerToClientMessage};
 use psyche_coordinator::model::{self, Checkpoint, LLM, LLMTrainingDataLocation, Model};
 use psyche_coordinator::{
     Client, ClientState, Coordinator, CoordinatorError, HealthChecks, Round, RunState,
@@ -12,7 +12,7 @@ use psyche_data_provider::{
     DataProviderTcpServer, DataServerTui, LocalDataProvider, download_model_from_gcs_async,
     download_model_repo_async,
 };
-use psyche_network::{ClientNotification, TcpServer};
+use psyche_network::{ClientNotification, PublicKey, TcpServer};
 use psyche_tui::{
     CustomWidget, MaybeTui, TabbedWidget, logging::LoggerWidget, maybe_start_render_loop,
 };
@@ -46,7 +46,7 @@ pub(super) const TAB_NAMES: [&str; 4] =
 type TabsData = <Tabs as CustomWidget>::Data;
 
 struct Backend {
-    net_server: TcpServer<ClientId, ClientToServerMessage, ServerToClientMessage>,
+    net_server: TcpServer<ClientToServerMessage, ServerToClientMessage>,
     pending_clients: HashSet<NodeIdentity>,
 }
 
@@ -86,7 +86,7 @@ impl psyche_watcher::Backend for ChannelCoordinatorBackend {
     }
 }
 
-type DataServer = DataProviderTcpServer<ClientId, LocalDataProvider, ChannelCoordinatorBackend>;
+type DataServer = DataProviderTcpServer<LocalDataProvider, ChannelCoordinatorBackend>;
 
 pub struct App {
     cancel: CancellationToken,
@@ -262,7 +262,7 @@ impl App {
             update_tui_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
             let net_server =
-                TcpServer::<ClientId, ClientToServerMessage, ServerToClientMessage>::start(
+                TcpServer::<ClientToServerMessage, ServerToClientMessage>::start(
                     SocketAddr::new(
                         std::net::IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
                         coordinator_server_port.unwrap_or(0),
@@ -354,8 +354,8 @@ impl App {
         Ok(())
     }
 
-    fn on_disconnect(&mut self, from: ClientId) -> Result<()> {
-        let from_identity: NodeIdentity = from.into();
+    fn on_disconnect(&mut self, from: PublicKey) -> Result<()> {
+        let from_identity = NodeIdentity::from_single_key(*from.as_bytes());
         self.backend.pending_clients.remove(&from_identity);
 
         if self.withdraw_on_disconnect {
@@ -377,15 +377,15 @@ impl App {
         Ok(())
     }
 
-    async fn on_client_message(&mut self, from: ClientId, event: ClientToServerMessage) {
-        let from_identity: NodeIdentity = from.into();
+    async fn on_client_message(&mut self, from: PublicKey, event: ClientToServerMessage) {
+        let from_identity = NodeIdentity::from_single_key(*from.as_bytes());
         let broadcast = match event {
             ClientToServerMessage::Join { run_id } => {
                 // TODO: check whitelist
                 let coord_run_id = String::from(&self.coordinator.run_id);
                 if coord_run_id == run_id {
                     info!("added pending client {from}");
-                    self.backend.pending_clients.insert(from.into());
+                    self.backend.pending_clients.insert(from_identity);
                 } else {
                     info!("{from:?} tried to join unknown run {run_id}");
                 }
