@@ -14,8 +14,8 @@ use psyche_modeling::{
     TrainerThreadCommunicationError,
 };
 use psyche_network::{
-    AuthenticatableIdentity, Hash, SerializeDistroResultError, SerializedDistroResult,
-    TransmittableDistroResult, distro_results_to_bytes,
+    Hash, SerializeDistroResultError, SerializedDistroResult, TransmittableDistroResult,
+    distro_results_to_bytes,
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -90,10 +90,10 @@ pub enum TrainError {
     CoordinatorError(CoordinatorError),
 }
 
-pub struct TrainingStepMetadata<T: NodeIdentity, A: AuthenticatableIdentity> {
-    pub identity: T,
-    pub data_fetcher: DataFetcher<T, A>,
-    pub tx_health_check: mpsc::UnboundedSender<HealthChecks<T>>,
+pub struct TrainingStepMetadata {
+    pub identity: NodeIdentity,
+    pub data_fetcher: DataFetcher,
+    pub tx_health_check: mpsc::UnboundedSender<HealthChecks>,
     pub tx_distro_result: mpsc::UnboundedSender<DistroBroadcastAndPayload>,
 
     pub write_gradients_dir: Option<PathBuf>,
@@ -136,14 +136,14 @@ impl TrainingStep {
     }
 }
 
-impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata<T, A> {
+impl TrainingStepMetadata {
     pub fn start(
         &mut self,
         client_index: u64,
-        state: &Coordinator<T>,
+        state: &Coordinator,
         trainers: Vec<Trainer>,
-        previous_round: &mut RoundState<T>,
-        current_round: &mut RoundState<T>,
+        previous_round: &mut RoundState,
+        current_round: &mut RoundState,
     ) -> Result<TrainingStep, TrainError> {
         if trainers.is_empty() {
             return Err(TrainError::NoTrainers);
@@ -481,9 +481,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
     fn apply_results(
         &mut self,
         trainers: Vec<Trainer>,
-        state: &Coordinator<T>,
-        previous_round: &mut RoundState<T>,
-        current_round: &mut RoundState<T>,
+        state: &Coordinator,
+        previous_round: &mut RoundState,
+        current_round: &mut RoundState,
     ) -> Result<JoinHandle<Result<Vec<Trainer>, ApplyError>>, ApplyError> {
         if current_round.height == 0 {
             // the first TWO training step of each epoch has no apply phase.
@@ -563,7 +563,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                         }
                     };
                     trace!("Commitments for batch {batch_id}: {batch_commitments:?}");
-                    let consensus = match Coordinator::<T>::select_consensus_commitment_by_witnesses(
+                    let consensus = match Coordinator::select_consensus_commitment_by_witnesses(
                         &batch_commitments
                             .iter()
                             .map(|x| x.1.0)
@@ -648,10 +648,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
     }
 }
 
-fn start_sending_health_checks<T: NodeIdentity>(
-    round_state: &mut RoundState<T>,
-    state: &Coordinator<T>,
-    tx_health_check: mpsc::UnboundedSender<HealthChecks<T>>,
+fn start_sending_health_checks(
+    round_state: &mut RoundState,
+    state: &Coordinator,
+    tx_health_check: mpsc::UnboundedSender<HealthChecks>,
 ) -> Result<Option<JoinHandle<Result<(), TrainError>>>, TrainError> {
     // we won't have any information to health check with until at least one round of training has finished
     if round_state.height == 0 {
@@ -730,9 +730,9 @@ enum WriteGradientsError {
     },
 }
 
-async fn write_gradients_to_disk<T: NodeIdentity>(
+async fn write_gradients_to_disk(
     write_gradients_dir: PathBuf,
-    identity: T,
+    identity: NodeIdentity,
     distro_result: TransmittableDistroResult,
 ) -> Result<(), WriteGradientsError> {
     debug!("Trying to write distro result to disk...");

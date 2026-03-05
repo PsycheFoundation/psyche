@@ -11,9 +11,9 @@ use psyche_coordinator::model::LLMTrainingDataType;
 use psyche_coordinator::model::Model;
 use psyche_core::ConstantLR;
 use psyche_core::LearningRateSchedule;
+use psyche_core::NodeIdentity;
 use psyche_core::OptimizerDefinition;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
-use psyche_solana_coordinator::ClientId;
 use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::instruction::Witness;
 use psyche_solana_coordinator::logic::InitCoordinatorParams;
@@ -157,7 +157,8 @@ pub async fn run() {
     );
 
     // Generate the client key
-    let client_id = ClientId::new(client.pubkey(), Default::default());
+    let client_id =
+        NodeIdentity::new(client.pubkey().to_bytes(), Default::default());
 
     // Add client to whitelist
     let authorization = process_authorizer_authorization_create(

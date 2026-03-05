@@ -8,9 +8,7 @@ use psyche_coordinator::CheckpointerSelection;
 use psyche_coordinator::{Committee, Coordinator, RunState, Witness, WitnessProof};
 use psyche_core::{IntegrationTestLogMarker, MerkleRoot, MerkleTree, NodeIdentity, sha256};
 use psyche_modeling::{DistroResult, Trainer};
-use psyche_network::{
-    AuthenticatableIdentity, BlobTicket, Hash, P2PEndpointInfo, TransmittableDistroResult,
-};
+use psyche_network::{BlobTicket, Hash, P2PEndpointInfo, TransmittableDistroResult};
 use psyche_watcher::OpportunisticData;
 use std::{
     fmt,
@@ -38,14 +36,14 @@ use super::{
     witness::{WitnessStep, WitnessStepMetadata, WitnessingError},
 };
 
-pub struct StepStateMachine<T: NodeIdentity, A: AuthenticatableIdentity + 'static> {
-    identity: T,
+pub struct StepStateMachine {
+    identity: NodeIdentity,
 
     stats_logger: Arc<Mutex<StatsLogger>>,
 
     warmup: WarmupStepMetadata,
-    training: TrainingStepMetadata<T, A>,
-    witness: WitnessStepMetadata<T>,
+    training: TrainingStepMetadata,
+    witness: WitnessStepMetadata,
     cooldown: CooldownStepMetadata,
 
     active_step: ActiveStep,
@@ -54,14 +52,14 @@ pub struct StepStateMachine<T: NodeIdentity, A: AuthenticatableIdentity + 'stati
     tx_opportunistic_data: mpsc::UnboundedSender<OpportunisticData>,
     tx_broadcast_finished: mpsc::UnboundedSender<FinishedBroadcast>,
 
-    current_round: RoundState<T>,
-    previous_round: RoundState<T>,
+    current_round: RoundState,
+    previous_round: RoundState,
     step_finish_time: Option<Instant>,
     sent_warmup_finished: bool,
     sent_warmup_witness: bool,
     sent_cooldown_witness: bool,
 
-    coordinator_state: Coordinator<T>,
+    coordinator_state: Coordinator,
 }
 
 #[derive(Error, Debug)]
@@ -119,16 +117,16 @@ pub enum ApplyMessageOutcome {
     Invalid,
 }
 
-impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, A> {
+impl StepStateMachine {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        identity: T,
+        identity: NodeIdentity,
         warmup: WarmupStepMetadata,
-        training: TrainingStepMetadata<T, A>,
-        witness: WitnessStepMetadata<T>,
+        training: TrainingStepMetadata,
+        witness: WitnessStepMetadata,
         cooldown: CooldownStepMetadata,
         trainers: Vec<Trainer>,
-        coordinator_state: Coordinator<T>,
+        coordinator_state: Coordinator,
         tx_request_download: mpsc::UnboundedSender<(BlobTicket, Tag)>,
         tx_opportunistic_data: mpsc::UnboundedSender<OpportunisticData>,
         tx_broadcast_finished: mpsc::UnboundedSender<FinishedBroadcast>,
@@ -397,7 +395,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
 
     pub fn apply_message(
         &mut self,
-        from_client_id: T,
+        from_client_id: NodeIdentity,
         broadcast: Broadcast,
     ) -> Result<ApplyMessageOutcome, ApplyMessageError> {
         let result_step = broadcast.step;
@@ -681,7 +679,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
                 let mut blooms = blooms.lock().unwrap();
                 if let Some(remaining_batch_ids) = &mut *batch_ids_not_yet_trained_on {
                     if let Some((participant_bloom, broadcast_bloom)) = blooms.as_mut() {
-                        participant_bloom.add(&sha256(from.as_ref()));
+                        participant_bloom.add(&sha256(from.signer()));
                         if remaining_batch_ids.contains(&batch_id) {
                             // first received payload for this batch id, vote for it in consensus
                             broadcast_bloom.add(&commitment.data_hash);
@@ -745,7 +743,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
         });
     }
 
-    async fn apply_state(&mut self, state: Coordinator<T>) -> Result<(), StepError> {
+    async fn apply_state(&mut self, state: Coordinator) -> Result<(), StepError> {
         let client_index = match state
             .epoch_state
             .clients
@@ -887,7 +885,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> StepStateMachine<T, 
             (ActiveStep::Witness(witnessing), RunState::Cooldown) => {
                 let trainers = witnessing.finish().await?.stop_evals().await?;
 
-                ActiveStep::Cooldown(self.cooldown.start(trainers, &state, client_index)?)
+                ActiveStep::Cooldown(self.cooldown.start(trainers, client_index, &state)?)
             }
             // cooldown is done, we consider waiting for members and warmup to be basically the same
             (ActiveStep::Cooldown(cooldown), RunState::WaitingForMembers)
@@ -975,19 +973,19 @@ impl fmt::Display for ActiveStep {
     }
 }
 
-pub enum InitStage<T: NodeIdentity, A: AuthenticatableIdentity + 'static> {
-    NotYetInitialized(Option<Box<RunInitConfigAndIO<T, A>>>),
+pub enum InitStage {
+    NotYetInitialized(Option<Box<RunInitConfigAndIO>>),
     #[allow(clippy::type_complexity)]
     Initializing(
         Box<(
-            JoinHandle<Result<StepStateMachine<T, A>, InitRunError>>,
-            Coordinator<T>,
+            JoinHandle<Result<StepStateMachine, InitRunError>>,
+            Coordinator,
         )>,
     ),
-    Running(Box<StepStateMachine<T, A>>),
+    Running(Box<StepStateMachine>),
 }
 
-pub struct RunManager<T: NodeIdentity, A: AuthenticatableIdentity + 'static>(InitStage<T, A>);
+pub struct RunManager(InitStage);
 
 #[derive(Error, Debug)]
 pub enum ApplyStateError {
@@ -998,12 +996,12 @@ pub enum ApplyStateError {
     Step(#[from] StepError),
 }
 
-impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
-    pub fn new(config: RunInitConfigAndIO<T, A>) -> Self {
+impl RunManager {
+    pub fn new(config: RunInitConfigAndIO) -> Self {
         Self(InitStage::NotYetInitialized(Some(config.into())))
     }
 
-    pub fn coordinator_state(&self) -> Option<&Coordinator<T>> {
+    pub fn coordinator_state(&self) -> Option<&Coordinator> {
         match &self.0 {
             InitStage::NotYetInitialized(..) => None,
             InitStage::Initializing(init_state) => Some(&init_state.1),
@@ -1028,7 +1026,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
 
     pub fn apply_message(
         &mut self,
-        from_client_id: T,
+        from_client_id: NodeIdentity,
         training_result: Broadcast,
     ) -> Result<ApplyMessageOutcome, ApplyMessageError> {
         match &mut self.0 {
@@ -1058,7 +1056,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
         }
     }
 
-    pub async fn apply_state(&mut self, state: Coordinator<T>) -> Result<(), ApplyStateError> {
+    pub async fn apply_state(&mut self, state: Coordinator) -> Result<(), ApplyStateError> {
         let new_state = match &mut self.0 {
             InitStage::NotYetInitialized(init_info @ Some(..))
             // We run the initialization only when we are sure that we didn't just recently joined in Warmup
@@ -1137,10 +1135,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunManager<T, A> {
     }
 }
 
-impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> From<&RunManager<T, A>>
-    for ClientTUIState
-{
-    fn from(run: &RunManager<T, A>) -> Self {
+impl From<&RunManager> for ClientTUIState {
+    fn from(run: &RunManager) -> Self {
         match &run.0 {
             InitStage::Running(state_machine) => {
                 let coordinator = &state_machine.coordinator_state;

@@ -6,13 +6,12 @@ use crate::{
 use anyhow::anyhow;
 use anyhow::{Error, Result, bail};
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
-use psyche_core::{IntegrationTestLogMarker, NodeIdentity};
+use psyche_core::IntegrationTestLogMarker;
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
 use psyche_network::{
-    AuthenticatableIdentity, DownloadComplete, DownloadSchedulerHandle, DownloadType, EndpointId,
-    ModelRequestType, NetworkEvent, NetworkTUIState, PeerManagerHandle, RetryConfig,
-    RetryQueueResult, SharableModel, TransmittableDownload, allowlist,
-    blob_ticket_param_request_task, raw_p2p_verify,
+    DownloadComplete, DownloadSchedulerHandle, DownloadType, EndpointId, ModelRequestType,
+    NetworkEvent, NetworkTUIState, PeerManagerHandle, RetryConfig, RetryQueueResult, SharableModel,
+    TransmittableDownload, allowlist, blob_ticket_param_request_task, raw_p2p_verify,
 };
 use psyche_watcher::{Backend, BackendWatcher};
 use tokenizers::Tokenizer;
@@ -21,7 +20,6 @@ use iroh_blobs::api::Tag;
 use rand::{Rng, RngCore, seq::SliceRandom};
 use std::{
     collections::BTreeSet,
-    marker::PhantomData,
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -36,12 +34,11 @@ use tracing::{debug, error, info, trace, trace_span, warn};
 
 pub type TUIStates = (ClientTUIState, NetworkTUIState);
 
-pub struct Client<T: NodeIdentity, A: AuthenticatableIdentity, B: Backend<T> + 'static> {
+pub struct Client {
     rx_tui: watch::Receiver<TUIStates>,
     req_tui_state: Arc<Notify>,
     cancel: CancellationToken,
     join: JoinHandle<Result<()>>,
-    _t: PhantomData<(T, A, B)>,
 }
 
 const REBROADCAST_SHAREABLE: Duration = Duration::from_secs(10);
@@ -50,15 +47,13 @@ const OPPROTUNISTIC_WITNESS_INTERVAL: Duration = Duration::from_millis(500);
 const CHECK_CONNECTION_INTERVAL: Duration = Duration::from_secs(10);
 const MAX_ERRORS_PER_PEER: u8 = 5;
 
-impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'static>
-    Client<T, A, B>
-{
+impl Client {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        backend: B,
+        backend: impl Backend + 'static,
         allowlist: allowlist::AllowDynamic,
         mut p2p: NC,
-        init_config: RunInitConfig<T, A>,
+        init_config: RunInitConfig,
         metrics: Arc<ClientMetrics>,
     ) -> Self {
         let cancel = CancellationToken::new();
@@ -66,8 +61,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
         let req_tui_state = Arc::new(Notify::new());
 
         let identity = init_config.identity;
-        let network_identity = init_config.network_identity.clone();
-        let private_key = init_config.private_key.clone();
+        let p2p_secret_key = init_config.p2p_secret_key.clone();
         let param_requests_cancel_token = CancellationToken::new();
         let join = tokio::spawn({
             let cancel = cancel.clone();
@@ -103,7 +97,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                 let mut current_downloaded_parameters = 0_u64;
                 let mut total_parameters = None;
 
-                let mut run = RunManager::<T, A>::new(RunInitConfigAndIO {
+                let mut run = RunManager::new(RunInitConfigAndIO {
                     init_config,
                     metrics: metrics.clone(),
                     tx_witness,
@@ -408,7 +402,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 hex::encode(merkle.inner),
                             );
 
-                            let signature = network_identity.raw_p2p_sign(&private_key, &commitment_data_hash);
+                            let signature = p2p_secret_key.sign(&commitment_data_hash).to_bytes();
                             let commitment = Commitment { data_hash: commitment_data_hash, signature};
                             let training_result = Broadcast { step, proof, nonce: rand::rng().next_u32(), commitment, data: BroadcastType::Finished(Finished {
                                 broadcast_merkle: merkle, warmup
@@ -436,7 +430,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 (size as f64 ) / 1_000_000f64
                             );
 
-                            let signature = network_identity.raw_p2p_sign(&private_key, &commitment_data_hash);
+                            let signature = p2p_secret_key.sign(&commitment_data_hash).to_bytes();
                             let commitment = Commitment { data_hash: commitment_data_hash, signature};
                             let training_result = Broadcast { step, proof, nonce: rand::rng().random(), commitment, data: BroadcastType::TrainingResult(TrainingResult { batch_id, ticket })};
 
@@ -579,7 +573,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
                                 return Ok(());
                             };
 
-                            let me = EndpointId::from_bytes(identity.get_p2p_public_key())?;
+                            let me = EndpointId::from_bytes(identity.p2p_identity())?;
                             let peer_ids: Vec<EndpointId> = participating_endpoint_ids(&coordinator_state)
                                 .into_iter()
                                 .filter(|peer_id| peer_id != &me)
@@ -649,7 +643,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
         });
 
         Self {
-            _t: Default::default(),
             cancel,
             req_tui_state,
             rx_tui,
@@ -671,8 +664,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static, B: Backend<T> + 'sta
     }
 }
 
-fn ensure_gossip_connected<T: NodeIdentity>(
-    run_state: &Coordinator<T>,
+fn ensure_gossip_connected(
+    run_state: &Coordinator,
     p2p: &mut NC,
     last_connection_attempt: &mut SystemTime,
 ) {
@@ -737,16 +730,16 @@ fn ensure_gossip_connected<T: NodeIdentity>(
     }
 }
 
-fn participating_endpoint_ids<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<EndpointId> {
+fn participating_endpoint_ids(state: &Coordinator) -> Vec<EndpointId> {
     state
         .epoch_state
         .clients
         .iter()
-        .map(|c| EndpointId::from_bytes(c.id.get_p2p_public_key()).unwrap())
+        .map(|c| EndpointId::from_bytes(c.id.p2p_identity()).unwrap())
         .collect()
 }
 
-fn all_endpoint_ids_shuffled<T: NodeIdentity>(state: &Coordinator<T>) -> Vec<EndpointId> {
+fn all_endpoint_ids_shuffled(state: &Coordinator) -> Vec<EndpointId> {
     let mut addrs = participating_endpoint_ids(state);
     addrs.shuffle(&mut rand::rng());
     addrs
