@@ -1,3 +1,5 @@
+#[cfg(feature = "parallelism")]
+use crate::parallelism_lookup;
 use crate::{WandBInfo, fetch_data::DataFetcher};
 use psyche_coordinator::{
     Coordinator, HealthChecks,
@@ -51,6 +53,8 @@ pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub device: Devices,
     pub hub_read_token: Option<String>,
     pub hub_max_concurrent_downloads: usize,
+    /// If true, auto-detect parallelism from lookup table (overrides dp/tp/micro_batch_size)
+    pub parallelism_auto: bool,
     pub data_parallelism: usize,
     pub tensor_parallelism: usize,
     pub micro_batch_size: usize,
@@ -119,6 +123,9 @@ pub enum InitRunError {
     #[error("Unsupported architecture: {0}")]
     UnsupportedArchitecture(String),
 
+    #[error("Parallelism auto-detection failed: {0}")]
+    ParallelismLookupFailed(anyhow::Error),
+
     #[cfg(feature = "python")]
     #[error("Python distributed error: {0}")]
     PythonDistributedError(#[from] psyche_modeling::PythonDistributedCausalLMError),
@@ -173,7 +180,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         state: Coordinator<T>,
     ) -> Result<StepStateMachine<T, A>, InitRunError> {
         let Self {
-            init_config,
+            mut init_config,
             tx_witness,
             tx_health_check,
             tx_model,
@@ -196,6 +203,42 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         }
 
         let model::Model::LLM(llm) = state.model;
+
+        // Parallelism auto-detection
+        #[cfg(not(feature = "parallelism"))]
+        if init_config.parallelism_auto {
+            return Err(InitRunError::ParallelismLookupFailed(anyhow::anyhow!(
+                "--parallelism-auto requires building with --features=parallelism"
+            )));
+        }
+
+        #[cfg(feature = "parallelism")]
+        if init_config.parallelism_auto {
+            if init_config.data_parallelism != 1
+                || init_config.tensor_parallelism != 1
+                || init_config.micro_batch_size != 1
+            {
+                tracing::warn!(
+                    "--parallelism-auto is set, ignoring manual dp/tp/micro_batch_size values"
+                );
+            }
+
+            let config = parallelism_lookup::lookup(
+                &llm.checkpoint,
+                init_config.checkpoint_config.run_down_client.as_ref(),
+                init_config.hub_read_token.as_deref(),
+            )
+            .await
+            .map_err(InitRunError::ParallelismLookupFailed)?;
+
+            info!(
+                "Parallelism auto-detected: dp={}, tp={}, micro_batch_size={}",
+                config.dp, config.tp, config.micro_batch_size
+            );
+            init_config.data_parallelism = config.dp;
+            init_config.tensor_parallelism = config.tp;
+            init_config.micro_batch_size = config.micro_batch_size;
+        }
 
         let hub_read_token = init_config.hub_read_token.clone();
         let hub_max_concurrent_downloads = init_config.hub_max_concurrent_downloads;

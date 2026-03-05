@@ -23,7 +23,10 @@ pub use gcs::{
     GcsCheckpointManifest, GcsManifestMetadata, GcsUploadInfo, ManifestFileEntry, ManifestMetadata,
     download_model_from_gcs_async, download_model_from_gcs_sync, upload_to_gcs,
 };
-pub use gcs_signed::{download_model_from_gcs_signed_async, upload_to_gcs_signed};
+pub use gcs_signed::{
+    download_model_from_gcs_signed_async, download_parallelism_data_from_gcs_signed,
+    upload_to_gcs_signed,
+};
 pub use hub::{
     HubUploadInfo, download_dataset_repo_async, download_dataset_repo_sync,
     download_model_repo_async, download_model_repo_sync, upload_to_hub,

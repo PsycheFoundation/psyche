@@ -142,6 +142,50 @@ pub async fn upload_to_gcs_signed(
     Ok(())
 }
 
+/// Download parallelism_data.json from GCS via signed URLs.
+/// Returns the JSON content as a string.
+pub async fn download_parallelism_data_from_gcs_signed(
+    run_down: &RunDownClient,
+) -> Result<String, DownloadError> {
+    let http = reqwest::Client::new();
+
+    let download_response = run_down
+        .get_download_urls()
+        .await
+        .map_err(|e| DownloadError::RunDown(e.to_string()))?;
+
+    let entry = download_response
+        .urls
+        .iter()
+        .find(|e| e.path.ends_with("parallelism_data.json"))
+        .ok_or_else(|| {
+            DownloadError::RunDown(
+                "parallelism_data.json not found in GCS. Upload it alongside the model files."
+                    .to_string(),
+            )
+        })?;
+
+    info!("Downloading parallelism_data.json via signed URL");
+
+    let response = http
+        .get(&entry.url)
+        .send()
+        .await
+        .map_err(|e| DownloadError::RunDown(e.to_string()))?;
+
+    if !response.status().is_success() {
+        return Err(DownloadError::RunDown(format!(
+            "Failed to download parallelism_data.json: {}",
+            response.status()
+        )));
+    }
+
+    response
+        .text()
+        .await
+        .map_err(|e| DownloadError::RunDown(e.to_string()))
+}
+
 pub async fn download_model_from_gcs_signed_async(
     run_down: &RunDownClient,
 ) -> Result<Vec<PathBuf>, DownloadError> {
