@@ -50,8 +50,8 @@ impl RunDownClient {
 
     fn generate_signature(&self, expires_in_seconds: u64, nonce: u64) -> String {
         let message = format!(
-            "nous-run-down-service:{}:{}:{}",
-            self.run_id, expires_in_seconds, nonce
+            "nous-run-down-service:{}:{}:{}:{}",
+            self.run_id, self.wallet_address, expires_in_seconds, nonce
         );
         let signature_bytes = (self.sign_fn)(message.as_bytes());
         bs58::encode(&signature_bytes).into_string()
