@@ -1,7 +1,7 @@
 mod app;
 mod dashboard;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use app::{App, DataServerInfo};
 use clap::{ArgAction, Parser};
 use psyche_coordinator::Coordinator;
@@ -122,6 +122,10 @@ fn load_config_state(
             format!("failed to read coordinator state toml file {state_path:?}")
         })?,
     )?)?;
+
+    if let Err(err) = coordinator.config.check_error() {
+        bail!("Invalid coordinator config {err:?}");
+    }
 
     let data_server_config = match data_config_path {
         Some(config_path) => {
