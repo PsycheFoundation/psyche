@@ -170,10 +170,6 @@ impl App {
         init_warmup_time: Option<u64>,
         withdraw_on_disconnect: bool,
     ) -> Result<Self> {
-        if !coordinator.config.check() {
-            bail!("Coordinator sanity check failed");
-        }
-
         async {
             Self::reset_ephemeral(&mut coordinator);
 

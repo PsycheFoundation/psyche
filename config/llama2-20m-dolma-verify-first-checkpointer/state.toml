@@ -2,7 +2,7 @@ run_id = "llama2-20m-dolma"
 run_state = "WaitingForMembers"
 [config]
 warmup_time = 30
-cooldown_time = 0
+cooldown_time = 1
 epoch_time = 600
 max_round_train_time = 30
 round_witness_time = 2
