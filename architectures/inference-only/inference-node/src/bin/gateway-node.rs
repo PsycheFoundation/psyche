@@ -673,11 +673,8 @@ async fn run_gateway() -> Result<()> {
     let (network_tx, mut network_rx) = mpsc::channel::<(EndpointId, InferenceMessage)>(100);
     let (gossip_tx, mut gossip_rx) = mpsc::channel::<InferenceGossipMessage>(100);
 
-<<<<<<< HEAD
     let endpoint_addr = network.router().endpoint().addr();
     // Load persisted model assignments
-=======
->>>>>>> 78e40a8a2 (Adding target by node id for LoadModel messages, updating endpoint to display full node status and updating justfile)
     let model_assignments = load_assignments(ASSIGNMENTS_FILE);
 
     let state = Arc::new(GatewayState {
@@ -697,11 +694,6 @@ async fn run_gateway() -> Result<()> {
         let cancel = cancel.clone();
         tokio::spawn(async move {
             let mut task_set = tokio::task::JoinSet::new();
-<<<<<<< HEAD
-
-=======
-            
->>>>>>> 78e40a8a2 (Adding target by node id for LoadModel messages, updating endpoint to display full node status and updating justfile)
             let mut cleanup_interval = tokio::time::interval(Duration::from_secs(15));
             cleanup_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
