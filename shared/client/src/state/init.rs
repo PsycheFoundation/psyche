@@ -1,3 +1,5 @@
+#[cfg(feature = "parallelism")]
+use crate::parallelism_lookup;
 use crate::{WandBInfo, fetch_data::DataFetcher};
 use psyche_coordinator::{
     Coordinator, HealthChecks,
@@ -51,6 +53,8 @@ pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub device: Devices,
     pub hub_read_token: Option<String>,
     pub hub_max_concurrent_downloads: usize,
+    /// If true, auto-detect parallelism from lookup table (overrides dp/tp/micro_batch_size)
+    pub parallelism_auto: bool,
     pub data_parallelism: usize,
     pub tensor_parallelism: usize,
     pub micro_batch_size: usize,
@@ -118,6 +122,9 @@ pub enum InitRunError {
 
     #[error("Unsupported architecture: {0}")]
     UnsupportedArchitecture(String),
+
+    #[error("Parallelism auto-detection failed: {0}")]
+    ParallelismLookupFailed(#[from] anyhow::Error),
 
     #[cfg(feature = "python")]
     #[error("Python distributed error: {0}")]
@@ -198,6 +205,59 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         }
 
         let model::Model::LLM(llm) = state.model;
+
+        // Resolve parallelism configuration
+        #[cfg(not(feature = "parallelism"))]
+        if init_config.parallelism_auto {
+            return Err(InitRunError::ParallelismLookupFailed(anyhow::anyhow!(
+                "--parallelism-auto requires building with --features=parallelism"
+            )));
+        }
+
+        #[cfg(feature = "parallelism")]
+        let (data_parallelism, tensor_parallelism, micro_batch_size) =
+            if init_config.parallelism_auto {
+                if init_config.data_parallelism != 1
+                    || init_config.tensor_parallelism != 1
+                    || init_config.micro_batch_size != 1
+                {
+                    tracing::warn!(
+                        "--parallelism-auto is set, ignoring manual dp/tp/micro_batch_size values"
+                    );
+                }
+
+                let model_repo_id: String = match &llm.checkpoint {
+                    model::Checkpoint::Hub(hub_repo) | model::Checkpoint::P2P(hub_repo) => {
+                        (&hub_repo.repo_id).into()
+                    }
+                    _ => {
+                        return Err(InitRunError::ParallelismLookupFailed(anyhow::anyhow!(
+                            "--parallelism-auto requires a Hub or P2P checkpoint"
+                        )));
+                    }
+                };
+
+                let config = parallelism_lookup::lookup(&model_repo_id)?;
+                (config.dp, config.tp, config.micro_batch_size)
+            } else {
+                (
+                    init_config.data_parallelism,
+                    init_config.tensor_parallelism,
+                    init_config.micro_batch_size,
+                )
+            };
+
+        #[cfg(not(feature = "parallelism"))]
+        let (data_parallelism, tensor_parallelism, micro_batch_size) = (
+            init_config.data_parallelism,
+            init_config.tensor_parallelism,
+            init_config.micro_batch_size,
+        );
+
+        info!(
+            "Parallelism: dp={}, tp={}, micro_batch_size={}",
+            data_parallelism, tensor_parallelism, micro_batch_size
+        );
 
         let hub_read_token = init_config.hub_read_token.clone();
         let hub_max_concurrent_downloads = init_config.hub_max_concurrent_downloads;
@@ -281,7 +341,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
                     let model = RawLoadedModel {
                         models: RawLoadedModelType::ParallelNativeModels(
-                            (0..(init_config.data_parallelism * init_config.tensor_parallelism))
+                            (0..(data_parallelism * tensor_parallelism))
                                 .map(|_| {
                                     if let Some(training_delay) =
                                         init_config.dummy_training_delay_secs
@@ -478,12 +538,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             tokenizer.clone(),
                             init_config.eval_task_max_docs,
                             // if doing python fsdp we only have one effective dp rank for inference
-                            if init_config.data_parallelism > 1
+                            if data_parallelism > 1
                                 && llm.architecture == model::LLMArchitecture::HfAuto
                             {
                                 1
                             } else {
-                                init_config.data_parallelism
+                                data_parallelism
                             },
                         );
 
@@ -507,8 +567,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             model::LLMArchitecture::HfAuto | model::LLMArchitecture::Torchtitan => {
                                 #[cfg(feature = "python")]
                                 {
-                                    let dp = init_config.data_parallelism;
-                                    let tp = init_config.tensor_parallelism;
+                                    let dp = data_parallelism;
+                                    let tp = tensor_parallelism;
 
                                     tokio::task::spawn_blocking(move || {
                                         if tp != 1 || dp != 1 {
@@ -560,31 +620,25 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             architecture => {
                                 let mut futures: Vec<
                                     JoinHandle<Result<Box<dyn CausalLM>, ModelLoadError>>,
-                                > = Vec::with_capacity(
-                                    init_config.data_parallelism * init_config.tensor_parallelism,
-                                );
+                                > = Vec::with_capacity(data_parallelism * tensor_parallelism);
                                 let devices = init_config.device.clone();
 
-                                for dp in 0..init_config.data_parallelism {
+                                for dp in 0..data_parallelism {
                                     let communicator_id: Option<CommunicatorId> =
-                                        match init_config.tensor_parallelism {
+                                        match tensor_parallelism {
                                             0 | 1 => None,
                                             #[cfg(feature = "parallelism")]
                                             _ => Some(tch::CStore::new().into()),
                                             #[cfg(not(feature = "parallelism"))]
                                             _ => unimplemented!(),
                                         };
-                                    for tp in 0..init_config.tensor_parallelism {
+                                    for tp in 0..tensor_parallelism {
                                         let tensor_parallelism_world =
                                             communicator_id.as_ref().map(|communicator_id| {
-                                                (
-                                                    communicator_id.clone(),
-                                                    tp,
-                                                    init_config.tensor_parallelism,
-                                                )
+                                                (communicator_id.clone(), tp, tensor_parallelism)
                                             });
                                         let source = source.clone();
-                                        let rank = dp * init_config.tensor_parallelism + tp;
+                                        let rank = dp * tensor_parallelism + tp;
                                         let devices = devices.clone();
                                         let device = devices.device_for_rank(rank);
                                         futures.push(tokio::task::spawn_blocking(move || {
@@ -644,9 +698,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         info!(
                             integration_test_log_marker = %IntegrationTestLogMarker::LoadedModel,
                             checkpoint = %llm.checkpoint,
-                            gpus = init_config.data_parallelism * init_config.tensor_parallelism,
-                            dp = init_config.data_parallelism,
-                            tp = init_config.tensor_parallelism,
+                            gpus = data_parallelism * tensor_parallelism,
+                            dp = data_parallelism,
+                            tp = tensor_parallelism,
                             "loaded_model",
                         );
 
@@ -721,8 +775,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
         // TODO add data fetching for verifying, too..
         let data_provider = data.map_err(InitRunError::DataProviderConnect)?;
-        let data_fetcher =
-            DataFetcher::<T, A>::new(data_provider, init_config.data_parallelism * 2);
+        let data_fetcher = DataFetcher::<T, A>::new(data_provider, data_parallelism * 2);
 
         let trainers: Vec<Trainer> = match models {
             RawLoadedModelType::ParallelNativeModels(models) => {
@@ -730,26 +783,24 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                 for model in models {
                     if tp_models
                         .last()
-                        .map(|x| x.len() == init_config.tensor_parallelism)
+                        .map(|x| x.len() == tensor_parallelism)
                         .unwrap_or(true)
                     {
-                        tp_models.push(Vec::with_capacity(init_config.tensor_parallelism));
+                        tp_models.push(Vec::with_capacity(tensor_parallelism));
                     }
                     tp_models.last_mut().unwrap().push(model);
                 }
 
                 let data_parallel: Option<Vec<(CommunicatorId, Arc<dyn Barrier>)>> =
-                    if init_config.data_parallelism > 1 {
+                    if data_parallelism > 1 {
                         #[cfg(feature = "parallelism")]
                         {
                             Some(
-                                (0..init_config.tensor_parallelism)
+                                (0..tensor_parallelism)
                                     .map(|_| {
                                         (
                                             tch::CStore::new().into(),
-                                            Arc::new(CancellableBarrier::new(
-                                                init_config.tensor_parallelism,
-                                            ))
+                                            Arc::new(CancellableBarrier::new(tensor_parallelism))
                                                 as Arc<dyn Barrier>,
                                         )
                                     })
@@ -776,13 +827,12 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     id: id.clone(),
                                     barrier: barrier.clone(),
                                     rank: dp,
-                                    world_size: init_config.data_parallelism,
+                                    world_size: data_parallelism,
                                 })
                                 .collect()
                         });
-                        let barrier =
-                            Arc::new(CancellableBarrier::new(init_config.tensor_parallelism))
-                                as Arc<dyn Barrier>;
+                        let barrier = Arc::new(CancellableBarrier::new(tensor_parallelism))
+                            as Arc<dyn Barrier>;
                         LocalTrainer::new(
                             ParallelModels {
                                 models,
@@ -791,7 +841,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                             },
                             llm.lr_schedule,
                             llm.optimizer,
-                            init_config.micro_batch_size,
+                            micro_batch_size,
                             init_config.optim_stats_every_n_steps,
                             init_config.grad_accum_in_fp32,
                         )
@@ -810,7 +860,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         },
                         llm.lr_schedule,
                         llm.optimizer,
-                        init_config.micro_batch_size,
+                        micro_batch_size,
                         init_config.optim_stats_every_n_steps,
                         init_config.grad_accum_in_fp32,
                     )
@@ -824,7 +874,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                         model,
                         llm.lr_schedule,
                         llm.optimizer,
-                        init_config.micro_batch_size,
+                        micro_batch_size,
                         init_config.optim_stats_every_n_steps,
                         init_config.grad_accum_in_fp32,
                     )?

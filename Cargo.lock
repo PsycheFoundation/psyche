@@ -7149,6 +7149,7 @@ dependencies = [
  "iroh",
  "iroh-blobs",
  "lazy_static",
+ "nvml-wrapper",
  "postcard",
  "psyche-coordinator",
  "psyche-core",

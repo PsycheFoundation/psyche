@@ -114,6 +114,10 @@ pub struct TrainArgs {
     #[clap(long, env, value_parser = parse_trim_quotes)]
     pub run_id: String,
 
+    /// Auto-detect parallelism settings from lookup table based on model and GPU count
+    #[clap(long, env)]
+    pub parallelism_auto: bool,
+
     #[clap(long, default_value_t = 1, env)]
     pub data_parallelism: usize,
 

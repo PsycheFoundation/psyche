@@ -136,6 +136,7 @@ pub async fn build_app(
     .await?;
 
     let state_options: RunInitConfig<ClientId, ClientId> = RunInitConfig {
+        parallelism_auto: p.parallelism_auto,
         data_parallelism: p.data_parallelism,
         tensor_parallelism: p.tensor_parallelism,
         micro_batch_size: p.micro_batch_size,
