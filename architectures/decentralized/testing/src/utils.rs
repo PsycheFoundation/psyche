@@ -159,6 +159,7 @@ pub struct ConfigBuilder {
     min_clients: Option<usize>,
     batch_size: u32,
     architecture: String,
+    waiting_for_members_extra_time: Option<u32>,
 }
 
 impl Default for ConfigBuilder {
@@ -187,6 +188,7 @@ impl ConfigBuilder {
             min_clients: None,
             batch_size: 4,
             architecture: String::from("HfLlama"),
+            waiting_for_members_extra_time: None,
         }
     }
 
@@ -211,6 +213,11 @@ impl ConfigBuilder {
         self
     }
 
+    pub fn with_waiting_for_members_extra_time(mut self, time: u32) -> Self {
+        self.waiting_for_members_extra_time = Some(time);
+        self
+    }
+
     pub fn build(mut self) -> PathBuf {
         // Use min_clients if set, otherwise default to num_clients
         let min_clients = self.min_clients.unwrap_or(self.num_clients);
@@ -228,6 +235,10 @@ impl ConfigBuilder {
 
         #[cfg(feature = "python")]
         self.set_value("config.warmup_time", 100);
+
+        if let Some(time) = self.waiting_for_members_extra_time {
+            self.set_value("config.waiting_for_members_extra_time", time);
+        }
 
         let config_content = toml::to_string(&self.base_config).unwrap();
         let config_file_path = PathBuf::from("../../../config/solana-test/test-config.toml");
