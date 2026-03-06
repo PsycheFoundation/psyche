@@ -27,36 +27,6 @@ import { readVersionedFile, writeVersionedFile } from './versioned.js'
 import { CURRENT_VERSION } from 'shared/formats/type.js'
 import { existsSync, renameSync } from 'fs'
 
-// any run ID outside this list will not be returned to the frontend in the summary list,
-const ALLOWLISTED_RUN_IDS =
-	process.env.NODE_ENV === 'development'
-		? null
-		: [
-				'consilience-40b-1',
-				'hermes-3-8b',
-				'hermes-3-8b-2',
-				'hermes-4-8b',
-				'hermes-4-8b-2',
-				'dm-fwedu-baseline',
-				'dm-fwedu-baseline-2',
-				'dm-dclm-baseline',
-				'dm-fwedu-dclm',
-				'dm-fwedu-dclm-fpdf',
-				'dm-fwedu-dclm-fw2hq',
-				'dm-fwedu-dclm-stack',
-				'dm-fwedu-dclm-stack-nmath',
-				'dm-fwedu-dclm-wiki-pes',
-				'dm-consilience-rc1',
-				'dm-consilience-rc2',
-				'dm-consilience-rc3',
-				'dm-consilience-rc4',
-				'hermes-4-36b',
-				'hermes-4.1-36b',
-				'hermes-4.3-36b',
-				'hermes-4.3-36b-2',
-				'moe-10b-a1b-8k-wsd-lr3e4-1t',
-			]
-
 type WitnessV2 = Omit<
 	WitnessMetadata,
 	'evals' | 'prompt_results' | 'prompt_index'
@@ -100,8 +70,6 @@ interface RunHistoryV2 {
 
 interface RunSummaries {
 	runs: RunSummary[]
-	totalTokens: bigint
-	totalTokensPerSecondActive: bigint
 }
 
 export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
@@ -457,29 +425,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 					] as const
 			)
 		)
-		const runs = rawRuns
-			.map((r) => r[0])
-			.filter(
-				(r): r is RunSummary =>
-					!!r && (!ALLOWLISTED_RUN_IDS || ALLOWLISTED_RUN_IDS.includes(r.id))
-			)
+		const runs = rawRuns.map((r) => r[0]).filter((r): r is RunSummary => !!r)
 		const summaries = {
 			runs,
-			totalTokens: runs.reduce(
-				(sum, run) =>
-					sum + (run.trainingStep?.tokensCompletedAtStartOfStep ?? 0n),
-				0n
-			),
-			totalTokensPerSecondActive: runs.reduce((sum, summary) => {
-				const ACTIVE_TIMEOUT_MS = 10 * 60 * 1000
-				if (
-					summary?.status.type !== 'active' ||
-					Date.now() - summary.lastUpdate.time.getTime() > ACTIVE_TIMEOUT_MS
-				) {
-					return sum
-				}
-				return sum + (summary.trainingStep?.lastTokensPerSecond ?? 0n)
-			}, 0n),
 		}
 		this.#summaryCache = summaries
 		return summaries
@@ -487,13 +435,7 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 
 	getNumRuns(): number {
 		return [...this.#runs.values()].reduce(
-			(sum, runs) =>
-				sum +
-				runs.filter(
-					(r) =>
-						r.lastState &&
-						(!ALLOWLISTED_RUN_IDS || ALLOWLISTED_RUN_IDS.includes(r.runId))
-				).length,
+			(sum, runs) => sum + runs.filter((r) => r.lastState).length,
 			0
 		)
 	}

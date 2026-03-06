@@ -81,8 +81,16 @@ export const fakeRunSummaries: RunSummary[] = [
 		type: 'text',
 		pauseHistory: [],
 		lastUpdate: {
-			time: new Date('2025-01-15T09:30:00'),
+			time: new Date(),
 			slot: 123440n,
+		},
+		trainingStep: {
+			lastTokensPerSecond: 125n,
+			startedAt: {
+				slot: 123440n,
+				time: new Date(),
+			},
+			tokensCompletedAtStartOfStep: 15n,
 		},
 	},
 	{
