@@ -207,6 +207,10 @@ gateway-node:
         --discovery-mode n0 \
         --relay-kind n0
 
+run-docker-gateway-node *ARGS:
+    just nix build_docker_gateway_node
+    docker run -d {{ ARGS }} psyche-gateway-node
+
 # Run full inference stack (gateway + inference node in tmux)
 inference-stack model="gpt2":
     #!/usr/bin/env bash

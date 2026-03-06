@@ -61,7 +61,14 @@ pub async fn e2e_testing_setup(
     docker_client: Arc<Docker>,
     init_num_clients: usize,
 ) -> DockerTestCleanup {
-    e2e_testing_setup_with_min(docker_client, init_num_clients, init_num_clients, None).await
+    e2e_testing_setup_with_min(
+        docker_client,
+        init_num_clients,
+        init_num_clients,
+        None,
+        None,
+    )
+    .await
 }
 
 /// Setup with explicit min_clients value and optional owner keypair path.
@@ -72,10 +79,17 @@ pub async fn e2e_testing_setup_with_min(
     init_num_clients: usize,
     min_clients: usize,
     owner_keypair_path: Option<&Path>,
+    waiting_for_members_extra_time: Option<u32>,
 ) -> DockerTestCleanup {
     remove_old_client_containers(docker_client).await;
 
-    spawn_psyche_network_with_min(init_num_clients, min_clients, owner_keypair_path).unwrap();
+    spawn_psyche_network_with_min(
+        init_num_clients,
+        min_clients,
+        owner_keypair_path,
+        waiting_for_members_extra_time,
+    )
+    .unwrap();
 
     spawn_ctrl_c_task();
 
@@ -270,7 +284,7 @@ pub async fn spawn_new_client_with_monitoring(
 
 // Updated spawn function
 pub fn spawn_psyche_network(init_num_clients: usize) -> Result<(), DockerWatcherError> {
-    spawn_psyche_network_with_min(init_num_clients, init_num_clients, None)
+    spawn_psyche_network_with_min(init_num_clients, init_num_clients, None, None)
 }
 
 /// Spawn the psyche network with explicit min_clients and optional owner keypair.
@@ -278,19 +292,24 @@ pub fn spawn_psyche_network_with_min(
     init_num_clients: usize,
     min_clients: usize,
     owner_keypair_path: Option<&Path>,
+    waiting_for_members_extra_time: Option<u32>,
 ) -> Result<(), DockerWatcherError> {
     #[cfg(not(feature = "python"))]
-    let config_file_path = ConfigBuilder::new()
+    let mut builder = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
-        .with_min_clients(min_clients)
-        .build();
+        .with_min_clients(min_clients);
     #[cfg(feature = "python")]
-    let config_file_path = ConfigBuilder::new()
+    let mut builder = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
         .with_min_clients(min_clients)
         .with_architecture("HfAuto")
-        .with_batch_size(8 * std::cmp::max(init_num_clients, 1) as u32)
-        .build();
+        .with_batch_size(8 * std::cmp::max(init_num_clients, 1) as u32);
+
+    if let Some(time) = waiting_for_members_extra_time {
+        builder = builder.with_waiting_for_members_extra_time(time);
+    }
+
+    let config_file_path = builder.build();
 
     println!("[+] Config file written to: {}", config_file_path.display());
 

@@ -101,12 +101,12 @@ pub fn coordinator_join_run(
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
     authorization: &Pubkey,
-    client_id: psyche_solana_coordinator::ClientId,
+    client_id: psyche_core::NodeIdentity,
 ) -> Instruction {
     anchor_instruction(
         psyche_solana_coordinator::ID,
         psyche_solana_coordinator::accounts::JoinRunAccounts {
-            user: client_id.signer,
+            user: anchor_client::solana_sdk::pubkey::Pubkey::new_from_array(*client_id.signer()),
             authorization: *authorization,
             coordinator_instance: *coordinator_instance,
             coordinator_account: *coordinator_account,
@@ -183,7 +183,7 @@ pub fn coordinator_health_check(
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
     user: &Pubkey,
-    client_id: psyche_solana_coordinator::ClientId,
+    client_id: psyche_core::NodeIdentity,
     check: psyche_coordinator::CommitteeProof,
 ) -> Instruction {
     anchor_instruction(
