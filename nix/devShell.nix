@@ -13,9 +13,18 @@
         rustWorkspaceArgs
         craneLib
         env
-        psychePythonVenv
-        psychePythonVenvWithExtension
+        mkPythonVenv
+        psychePythonExtension
+        allPythonDeps
         ;
+
+      psychePythonVenv = mkPythonVenv { };
+      psychePythonVenvWithExtension = mkPythonVenv {
+        extraPackages = {
+          psyche = psychePythonExtension;
+        };
+        additionalNixPackages = allPythonDeps;
+      };
     in
     {
       # fmt as precommit hook

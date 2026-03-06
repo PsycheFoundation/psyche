@@ -11,60 +11,7 @@ lib.makeScope pkgs.newScope (
     };
     util = import ./util.nix;
 
-    workspaceCargoToml = builtins.fromTOML (builtins.readFile ../Cargo.toml);
-
-    # expand globs in workspace members from cargo.toml
-    expandWorkspaceMembers =
-      members:
-      lib.flatten (
-        lib.map (
-          memberPattern:
-          if lib.hasSuffix "/*" memberPattern then
-            let
-              dir = lib.removeSuffix "/*" memberPattern;
-              dirPath = ../${dir};
-              entries = builtins.readDir dirPath;
-              subdirs = lib.filterAttrs (n: v: v == "directory") entries;
-            in
-            lib.mapAttrsToList (name: _: "${dir}/${name}") subdirs
-          else
-            [ memberPattern ]
-        ) members
-      );
-
-    expandedMembers = expandWorkspaceMembers workspaceCargoToml.workspace.members;
-
-    # find all crates with packages.nix
-    discoverCratesWithPackagesNix =
-      members:
-      lib.filter (pkg: pkg != null) (
-        lib.map (
-          memberPath:
-          let
-            fullPath = ../${memberPath};
-            packagesNixPath = fullPath + "/packages.nix";
-            cargoTomlPath = fullPath + "/Cargo.toml";
-
-            isExcluded = builtins.elem memberPath [
-              "python/" # python venv with special dependencies
-            ];
-
-            hasCargoToml = builtins.pathExists cargoTomlPath;
-            hasPackagesNix = builtins.pathExists packagesNixPath;
-          in
-          if hasCargoToml && hasPackagesNix && !isExcluded then
-            let
-              cargoToml = builtins.fromTOML (builtins.readFile cargoTomlPath);
-              packageName = cargoToml.package.name or (baseNameOf memberPath);
-            in
-            {
-              name = packageName;
-              path = fullPath;
-            }
-          else
-            null
-        ) members
-      );
+    inherit (psycheLib) rustPackages;
 
     externalRustPackages = {
       solana-toolbox-cli = pkgs.rustPlatform.buildRustPackage rec {
@@ -85,13 +32,6 @@ lib.makeScope pkgs.newScope (
         buildInputs = with pkgs; [ openssl ];
       };
     };
-
-    # a packages.nix returns an attrset of packages (including examples)
-    rustPackages = util.mergeAttrsetsNoConflicts "can't merge rust package sets." (
-      lib.map (pkg: import (pkg.path + "/packages.nix") { inherit psycheLib pkgs inputs; }) (
-        discoverCratesWithPackagesNix expandedMembers
-      )
-    );
 
     dockerPackages = import ./docker.nix {
       inherit
