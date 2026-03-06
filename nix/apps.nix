@@ -34,8 +34,7 @@
           script = pkgs.writeShellApplication {
             name = "solana-test-${testName}";
             runtimeInputs = with pkgs; [
-              docker-client
-              dockerd
+              docker
               rootlesskit
               slirp4netns
               just
@@ -49,10 +48,10 @@
             ];
             text = ''
               # Start rootless docker
-              export XDG_RUNTIME_DIR=$(mktemp -d)
-              rootlesskit --net=slirp4netns --copy-up=/etc --disable-host-loopback dockerd \
-                --host "unix://$XDG_RUNTIME_DIR/docker.sock" \
-                --pidfile "$XDG_RUNTIME_DIR/dockerd.pid" &
+              XDG_RUNTIME_DIR=$(mktemp -d)
+              export XDG_RUNTIME_DIR
+              dockerd-rootless \
+                --host "unix://$XDG_RUNTIME_DIR/docker.sock" &
               ROOTLESSKIT_PID=$!
 
               export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
