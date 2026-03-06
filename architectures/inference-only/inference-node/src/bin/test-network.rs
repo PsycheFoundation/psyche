@@ -103,9 +103,13 @@ async fn main() -> Result<()> {
     sleep(Duration::from_secs(3)).await;
 
     let availability_msg = InferenceGossipMessage::NodeAvailable {
-        model_name: format!("test-model-{}", args.node_id),
+        model_name: Some(format!("test-model-{}", args.node_id)),
         checkpoint_id: None,
         capabilities: vec!["test".to_string()],
+        timestamp_ms: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64,
     };
 
     network
@@ -143,17 +147,21 @@ async fn main() -> Result<()> {
                 match event {
                     Ok(Some(NetworkEvent::MessageReceived((peer_id, msg)))) => {
                         match msg {
-                            InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities } => {
+                            InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities, timestamp_ms: _ } => {
                                 peer_count += 1;
                                 info!("PEER DISCOVERED!");
                                 info!("  Peer ID: {}", peer_id.fmt_short());
-                                info!("  Model: {}", model_name);
+                                info!("  Model: {}", model_name.as_deref().unwrap_or("<idle>"));
                                 info!("  Checkpoint: {:?}", checkpoint_id);
                                 info!("  Capabilities: {:?}", capabilities);
                                 info!("  Total peers seen: {}", peer_count);
                             }
                             InferenceGossipMessage::NodeUnavailable => {
                                 info!("Peer {} left the network", peer_id.fmt_short());
+                            }
+                            InferenceGossipMessage::LoadModel { model_name, model_source } => {
+                                info!("LoadModel request from {}: {} ({:?})",
+                                      peer_id.fmt_short(), model_name, model_source);
                             }
                             InferenceGossipMessage::ReloadCheckpoint { checkpoint_id, checkpoint_source } => {
                                 info!("Checkpoint reload request from {}: {} ({})",

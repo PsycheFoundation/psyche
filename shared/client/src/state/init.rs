@@ -18,7 +18,7 @@ use psyche_modeling::{
     DataParallel, DeepseekForCausalLM, Devices, DummyModel, LlamaConfig, LlamaForCausalLM,
     LocalTrainer, ModelLoadError, ParallelModels, PretrainedSource, Trainer, auto_tokenizer,
 };
-use psyche_network::{AuthenticatableIdentity, BlobTicket};
+use psyche_network::{BlobTicket, SecretKey};
 use psyche_watcher::OpportunisticData;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tch::{Kind, Tensor};
@@ -38,11 +38,10 @@ use super::{
 };
 use iroh_blobs::api::Tag;
 
-pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
+pub struct RunInitConfig {
     // identity for connecting to the data server
-    pub identity: T,
-    pub network_identity: A,
-    pub private_key: A::PrivateKey,
+    pub identity: NodeIdentity,
+    pub p2p_secret_key: SecretKey,
 
     // p2p model parameters sharing config
     pub max_concurrent_parameter_requests: usize,
@@ -150,10 +149,10 @@ struct RawLoadedModel {
 type OneshotModelParameterSender = oneshot::Sender<HashMap<String, Tensor>>;
 type OneShotModelConfigSender = oneshot::Sender<(String, Tokenizer, Vec<String>)>;
 
-pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
-    pub init_config: RunInitConfig<T, A>,
+pub struct RunInitConfigAndIO {
+    pub init_config: RunInitConfig,
 
-    pub tx_health_check: UnboundedSender<HealthChecks<T>>,
+    pub tx_health_check: UnboundedSender<HealthChecks>,
     pub tx_witness: UnboundedSender<OpportunisticData>,
     pub tx_checkpoint: UnboundedSender<model::Checkpoint>,
     pub tx_model: UnboundedSender<HashMap<String, Tensor>>,
@@ -167,12 +166,9 @@ pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub metrics: Arc<ClientMetrics>,
 }
 
-impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T, A> {
+impl RunInitConfigAndIO {
     /// Call this on first warmup - when we need to enter the run, we have to load the model, connect to the data server, etc
-    pub async fn init_run(
-        self,
-        state: Coordinator<T>,
-    ) -> Result<StepStateMachine<T, A>, InitRunError> {
+    pub async fn init_run(self, state: Coordinator) -> Result<StepStateMachine, InitRunError> {
         let Self {
             init_config,
             tx_witness,
@@ -207,8 +203,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                 LLMTrainingDataLocation::Server(data_server) => DataProvider::Server(
                     DataProviderTcpClient::connect(
                         (&data_server).into(),
-                        init_config.network_identity,
-                        init_config.private_key,
+                        init_config.p2p_secret_key.clone(),
                     )
                     .await?,
                 ),
@@ -509,6 +504,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 {
                                     let dp = init_config.data_parallelism;
                                     let tp = init_config.tensor_parallelism;
+                                    let num_local_ranks = init_config.device.size() as i64;
 
                                     tokio::task::spawn_blocking(move || {
                                         if tp != 1 || dp != 1 {
@@ -520,7 +516,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                 psyche_modeling::ParallelismConfig { dp, tp },
                                                 Some(llm.max_seq_len as usize),
                                                 init_config.sidecar_port,
-                                                None,
+                                                Some(num_local_ranks),
                                             )
                                             .map(RawLoadedModelType::PythonDistributed)
                                             .map_err(InitRunError::PythonDistributedError)
@@ -721,8 +717,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
         // TODO add data fetching for verifying, too..
         let data_provider = data.map_err(InitRunError::DataProviderConnect)?;
-        let data_fetcher =
-            DataFetcher::<T, A>::new(data_provider, init_config.data_parallelism * 2);
+        let data_fetcher = DataFetcher::new(data_provider, init_config.data_parallelism * 2);
 
         let trainers: Vec<Trainer> = match models {
             RawLoadedModelType::ParallelNativeModels(models) => {
