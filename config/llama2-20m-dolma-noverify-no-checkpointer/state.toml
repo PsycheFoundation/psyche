@@ -24,7 +24,7 @@ max_seq_len = 2048
 cold_start_warmup_steps = 0
 [model.LLM.data_location]
 Server = "127.0.0.1:20001"
-[model.LLM.checkpoint.Hub]
+[model.LLM.checkpoint.Dummy]
 repo_id = "emozilla/llama2-20m-init"
 [model.LLM.lr_schedule.Cosine]
 base_lr = 4.0e-4

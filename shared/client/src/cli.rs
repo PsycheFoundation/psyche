@@ -1,14 +1,13 @@
 use crate::{CheckpointConfig, WandBInfo};
 
-use crate::UploadInfo;
 use anyhow::{Result, anyhow, bail};
 use clap::Args;
-use psyche_data_provider::{GcsUploadInfo, HubUploadInfo};
 use psyche_eval::tasktype_from_name;
 use psyche_modeling::Devices;
 use psyche_network::{DiscoveryMode, RelayKind, SecretKey};
 use psyche_tui::LogOutput;
 use std::{path::PathBuf, time::Duration};
+use tracing::info;
 
 pub fn read_identity_secret_key(
     identity_secret_key_path: Option<&PathBuf>,
@@ -141,20 +140,8 @@ pub struct TrainArgs {
     pub prompt_task: bool,
 
     /// If provided, every model parameters update will be save in this directory after each epoch.
-    #[clap(long, env)]
-    pub checkpoint_dir: Option<PathBuf>,
-
-    /// Path to the Hugging Face repository containing model data and configuration.
-    #[clap(long, env)]
-    pub hub_repo: Option<String>,
-
-    /// Name of the GCS bucket containing model data and configuration.
-    #[clap(long, env)]
-    pub gcs_bucket: Option<String>,
-
-    /// Prefix within the GCS bucket for model data and configuration.
-    #[clap(long, env)]
-    pub gcs_prefix: Option<String>,
+    #[clap(long, env, default_value_os_t = default_checkpoint_dir())]
+    pub checkpoint_dir: PathBuf,
 
     #[clap(long, env, default_value_t = 3)]
     pub hub_max_concurrent_downloads: usize,
@@ -204,6 +191,10 @@ pub struct TrainArgs {
 
     #[clap(long, default_value_t = 3, env)]
     pub keep_steps: u32,
+
+    /// Skip saving and uploading checkpoints (for testing).
+    #[clap(long, default_value_t = false, env, hide = true)]
+    pub skip_checkpoint_upload: bool,
 }
 
 impl TrainArgs {
@@ -232,74 +223,23 @@ impl TrainArgs {
         Ok(wandb_info)
     }
 
-    pub fn checkpoint_config(&self) -> Result<Option<CheckpointConfig>> {
-        let hub_read_token = std::env::var("HF_TOKEN").ok();
+    pub fn checkpoint_config(&self) -> Result<CheckpointConfig> {
+        let hub_token = std::env::var("HF_TOKEN").ok();
 
-        if self.hub_repo.is_some() && self.gcs_bucket.is_some() {
-            bail!("Use either GCS or HF hub for checkpoint uploads, not both.");
-        }
-
-        let checkpoint_dir = match &self.checkpoint_dir {
-            Some(dir) => dir,
-            None => {
-                if self.hub_repo.is_some() || self.gcs_bucket.is_some() {
-                    bail!(
-                        "--hub-repo or --gcs-bucket was set, but no --checkpoint-dir was passed!"
-                    );
-                }
-                return Ok(None);
-            }
-        };
-
-        let upload_info = self.build_upload_info(&hub_read_token)?;
-
-        if upload_info.is_some() && self.keep_steps == 0 {
+        if self.keep_steps == 0 {
             bail!(
                 "keep_steps must be >= 1 for checkpoint uploads (got {})",
                 self.keep_steps
             );
         }
 
-        Ok(Some(CheckpointConfig {
-            checkpoint_dir: checkpoint_dir.clone(),
-            upload_info,
+        Ok(CheckpointConfig {
+            checkpoint_dir: self.checkpoint_dir.clone(),
             delete_old_steps: self.delete_old_steps,
             keep_steps: self.keep_steps,
-        }))
-    }
-
-    fn build_upload_info(&self, hub_token: &Option<String>) -> Result<Option<UploadInfo>> {
-        if let Some(repo) = &self.hub_repo {
-            return self.build_hub_upload_info(repo, hub_token);
-        }
-
-        if let Some(bucket) = &self.gcs_bucket {
-            return self.build_gcs_upload_info(bucket);
-        }
-
-        Ok(None)
-    }
-
-    fn build_hub_upload_info(
-        &self,
-        repo: &str,
-        token: &Option<String>,
-    ) -> Result<Option<UploadInfo>> {
-        let token = token.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("hub-repo and checkpoint-dir set, but no HF_TOKEN env variable.")
-        })?;
-
-        Ok(Some(UploadInfo::Hub(HubUploadInfo {
-            hub_repo: repo.to_string(),
-            hub_token: token.to_string(),
-        })))
-    }
-
-    fn build_gcs_upload_info(&self, bucket: &str) -> Result<Option<UploadInfo>> {
-        Ok(Some(UploadInfo::Gcs(GcsUploadInfo {
-            gcs_bucket: bucket.to_string(),
-            gcs_prefix: self.gcs_prefix.clone(),
-        })))
+            hub_token,
+            skip_upload: self.skip_checkpoint_upload,
+        })
     }
 
     pub fn eval_tasks(&self) -> Result<Vec<psyche_eval::Task>> {
@@ -327,6 +267,17 @@ impl TrainArgs {
             .collect();
         result
     }
+}
+
+fn default_checkpoint_dir() -> PathBuf {
+    let final_dir = if std::path::Path::new("/scratch").exists() {
+        PathBuf::from("/scratch/checkpoints")
+    } else {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        PathBuf::from(home).join(".cache/psyche/local_checkpoints")
+    };
+    info!("Default checkpoint directory set to {:?}", final_dir);
+    final_dir
 }
 
 pub fn prepare_environment() {

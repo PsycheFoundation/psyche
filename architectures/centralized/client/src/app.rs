@@ -1,13 +1,13 @@
 use anyhow::{Error, Result};
 use bytemuck::Zeroable;
-use hf_hub::Repo;
+use google_cloud_storage::client::Storage;
 use psyche_centralized_shared::{ClientToServerMessage, ServerToClientMessage};
-use psyche_client::HubUploadInfo;
-use psyche_client::UploadInfo;
 use psyche_client::{
-    Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, read_identity_secret_key,
+    Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, UploadCredentials,
+    read_identity_secret_key,
 };
-use psyche_coordinator::{Coordinator, HealthChecks, model};
+use psyche_coordinator::model::Checkpoint;
+use psyche_coordinator::{Coordinator, HealthChecks};
 use psyche_core::NodeIdentity;
 use psyche_metrics::ClientMetrics;
 use psyche_network::{EndpointId, NetworkTUIState, NetworkTui, SecretKey, TcpClient, allowlist};
@@ -29,7 +29,7 @@ pub type TabsData = <Tabs as CustomWidget>::Data;
 pub enum ToSend {
     Witness(Box<OpportunisticData>),
     HealthCheck(HealthChecks),
-    Checkpoint(model::Checkpoint),
+    Checkpoint(Checkpoint),
 }
 
 struct Backend {
@@ -67,7 +67,7 @@ impl WatcherBackend for Backend {
         Ok(())
     }
 
-    async fn send_checkpoint(&mut self, checkpoint: model::Checkpoint) -> Result<()> {
+    async fn send_checkpoint(&mut self, checkpoint: Checkpoint) -> Result<()> {
         self.tx.send(ToSend::Checkpoint(checkpoint))?;
         Ok(())
     }
@@ -167,22 +167,29 @@ impl App {
         p2p: NC,
         state_options: RunInitConfig,
     ) -> Result<()> {
-        // sanity checks
-        if let Some(checkpoint_config) = &state_options.checkpoint_config {
-            if let Some(UploadInfo::Hub(HubUploadInfo {
-                hub_repo,
-                hub_token,
-            })) = &checkpoint_config.upload_info
+        // Sanity checks using the checkpoint config from state_options, not the zeroed coordinator state.
+        // The coordinator_state is only populated after receiving the first ServerToClientMessage::Coordinator.
+        if !state_options.checkpoint_config.skip_upload {
+            let credentials = if let Some(ref hub_token) = state_options.checkpoint_config.hub_token
             {
-                let api = hf_hub::api::tokio::ApiBuilder::new()
-                    .with_token(Some(hub_token.clone()))
-                    .build()?;
-                let repo_api = api.repo(Repo::new(hub_repo.clone(), hf_hub::RepoType::Model));
-                if !repo_api.is_writable().await {
+                // Use HF_TOKEN from checkpoint_config for Hub uploads
+                Some(UploadCredentials::HubToken(hub_token.clone()))
+            } else {
+                // Check if GCS credentials are available by attempting to create a client
+                match Storage::builder().build().await {
+                    Ok(_) => Some(UploadCredentials::Gcs),
+                    Err(_) => None,
+                }
+            };
+
+            match credentials {
+                Some(creds) => {
+                    creds.validate().await?;
+                }
+                None => {
                     anyhow::bail!(
-                        "Checkpoint upload repo {} is not writable with the passed API key.",
-                        hub_repo
-                    )
+                        "No upload credentials found for checkpointing. Set HF_TOKEN for HuggingFace Hub or configure GCS credentials."
+                    );
                 }
             }
         }

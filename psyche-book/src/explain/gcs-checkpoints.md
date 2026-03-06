@@ -92,6 +92,14 @@ or
 gcloud auth application-default login --scopes="https://www.googleapis.com/auth/cloud-platform"
 ```
 
+This creates a credentials file at `~/.config/gcloud/application_default_credentials.json`. To use these credentials with the run-manager, set the `GOOGLE_CREDENTIALS_FILE_PATH` variable in your env file:
+
+```bash
+GOOGLE_CREDENTIALS_FILE_PATH=/home/youruser/.config/gcloud/application_default_credentials.json
+```
+
+The run-manager will mount this file into the Docker container and configure the `GOOGLE_APPLICATION_CREDENTIALS` environment variable automatically.
+
 ### Useful Links
 
 - [Google Cloud Console](https://console.cloud.google.com)

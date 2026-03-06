@@ -179,6 +179,28 @@ pub fn coordinator_warmup_witness(
     )
 }
 
+pub fn coordinator_cooldown_witness(
+    coordinator_instance: &Pubkey,
+    coordinator_account: &Pubkey,
+    user: &Pubkey,
+    witness: psyche_coordinator::Witness,
+) -> Instruction {
+    anchor_instruction(
+        psyche_solana_coordinator::ID,
+        psyche_solana_coordinator::accounts::PermissionlessCoordinatorAccounts {
+            user: *user,
+            coordinator_instance: *coordinator_instance,
+            coordinator_account: *coordinator_account,
+        },
+        psyche_solana_coordinator::instruction::CooldownWitness {
+            proof: witness.proof,
+            participant_bloom: witness.participant_bloom,
+            broadcast_bloom: witness.broadcast_bloom,
+            broadcast_merkle: witness.broadcast_merkle,
+        },
+    )
+}
+
 pub fn coordinator_health_check(
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,

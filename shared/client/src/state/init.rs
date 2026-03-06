@@ -68,7 +68,7 @@ pub struct RunInitConfig {
     pub write_gradients_dir: Option<PathBuf>,
 
     // checkpointing
-    pub checkpoint_config: Option<CheckpointConfig>,
+    pub checkpoint_config: CheckpointConfig,
 
     // configurable dummy training time (in seconds) for this client - relevant just for testing
     pub dummy_training_delay_secs: Option<u64>,
@@ -154,7 +154,6 @@ pub struct RunInitConfigAndIO {
 
     pub tx_health_check: UnboundedSender<HealthChecks>,
     pub tx_witness: UnboundedSender<OpportunisticData>,
-    pub tx_checkpoint: UnboundedSender<model::Checkpoint>,
     pub tx_model: UnboundedSender<HashMap<String, Tensor>>,
     pub tx_parameters_req: UnboundedSender<(Vec<String>, OneshotModelParameterSender)>,
     pub tx_config: UnboundedSender<(String, String)>,
@@ -173,7 +172,6 @@ impl RunInitConfigAndIO {
             init_config,
             tx_witness,
             tx_health_check,
-            tx_checkpoint,
             tx_model,
             tx_config,
             tx_parameters_req,
@@ -457,7 +455,7 @@ impl RunInitConfigAndIO {
                                     .collect();
                                 let tokenizer = Arc::new(auto_tokenizer(&repo_files)?);
                                 (
-                                    PretrainedSource::<AutoConfig>::RepoFiles(repo_files),
+                                    PretrainedSource::<AutoConfig>::RepoFiles(repo_files.to_vec()),
                                     tokenizer,
                                     checkpoint_extra_files,
                                 )
@@ -859,7 +857,6 @@ impl RunInitConfigAndIO {
         };
 
         let cooldown = CooldownStepMetadata::new(
-            tx_checkpoint,
             tx_model,
             init_config.checkpoint_config,
             checkpoint_extra_files,
