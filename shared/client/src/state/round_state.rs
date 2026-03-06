@@ -12,16 +12,16 @@ use std::{
 
 use super::types::PayloadState;
 
-pub struct RoundState<T: NodeIdentity> {
+pub struct RoundState {
     pub height: u32,
     pub step: u32,
     pub sent_witness: bool,
     pub sent_finished: bool,
-    pub downloads: Arc<Mutex<HashMap<psyche_network::Hash, PayloadState<T>>>>,
+    pub downloads: Arc<Mutex<HashMap<psyche_network::Hash, PayloadState>>>,
     #[allow(clippy::type_complexity)]
-    pub results: HashMap<BatchId, Vec<(T, (Commitment, TrainingResult))>>,
-    pub clients_finished: HashMap<T, Finished>,
-    pub data_assignments: BTreeMap<BatchId, T>,
+    pub results: HashMap<BatchId, Vec<(NodeIdentity, (Commitment, TrainingResult))>>,
+    pub clients_finished: HashMap<NodeIdentity, Finished>,
+    pub data_assignments: BTreeMap<BatchId, NodeIdentity>,
     pub blooms: Arc<Mutex<Option<(WitnessBloom, WitnessBloom)>>>,
     pub broadcasts: Vec<[u8; 32]>,
     pub committee_info: Option<(CommitteeProof, WitnessProof, CommitteeSelection)>,
@@ -29,7 +29,7 @@ pub struct RoundState<T: NodeIdentity> {
     pub self_distro_results: Vec<Vec<DistroResult>>,
 }
 
-impl<T: NodeIdentity> RoundState<T> {
+impl RoundState {
     pub fn new() -> Self {
         Self {
             height: 0,
@@ -53,7 +53,7 @@ impl<T: NodeIdentity> RoundState<T> {
     }
 }
 
-impl<T: NodeIdentity> Default for RoundState<T> {
+impl Default for RoundState {
     fn default() -> Self {
         RoundState::new()
     }

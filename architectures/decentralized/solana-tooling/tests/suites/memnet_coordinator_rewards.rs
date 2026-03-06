@@ -6,8 +6,8 @@ use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::model::HubRepo;
 use psyche_coordinator::model::LLM;
 use psyche_coordinator::model::Model;
+use psyche_core::NodeIdentity;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
-use psyche_solana_coordinator::ClientId;
 use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::instruction::Witness;
 use psyche_solana_coordinator::logic::InitCoordinatorParams;
@@ -16,13 +16,14 @@ use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
 use psyche_solana_tooling::get_accounts::get_coordinator_account_state;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_create;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_grantor_update;
-use psyche_solana_tooling::process_coordinator_instructions::process_coordiantor_set_future_epoch_rates;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_init;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_join_run;
+use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_set_future_epoch_rates;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_set_paused;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_tick;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_witness;
 use psyche_solana_tooling::process_coordinator_instructions::process_update;
+use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 
@@ -40,6 +41,7 @@ pub async fn run() {
     // Run constants
     let main_authority = Keypair::new();
     let join_authority = Keypair::new();
+    let claimer = Pubkey::new_unique();
     let mut clients = vec![];
     for _ in 0..240 {
         clients.push(Keypair::new());
@@ -87,7 +89,7 @@ pub async fn run() {
         Some(CoordinatorConfig {
             warmup_time,
             cooldown_time,
-            max_round_train_time: 888,
+            max_round_train_time: 15,
             round_witness_time,
             min_clients: 1,
             init_min_clients: 1,
@@ -112,7 +114,7 @@ pub async fn run() {
     .unwrap();
 
     // Set the reward rate for the epoch
-    process_coordiantor_set_future_epoch_rates(
+    process_coordinator_set_future_epoch_rates(
         &mut endpoint,
         &payer,
         &main_authority,
@@ -165,7 +167,8 @@ pub async fn run() {
             &authorization,
             &coordinator_instance,
             &coordinator_account,
-            ClientId::new(client.pubkey(), Default::default()),
+            NodeIdentity::from_single_key(client.pubkey().to_bytes()),
+            &claimer,
         )
         .await
         .unwrap();
@@ -223,7 +226,7 @@ pub async fn run() {
                     .epoch_state
                     .clients
                     .iter()
-                    .position(|c| c.id.signer.eq(&client.pubkey()))
+                    .position(|c| *c.id.signer() == client.pubkey().to_bytes())
                     .unwrap() as u64,
             );
             if witness_proof.position >= SOLANA_MAX_NUM_WITNESSES as u64 {
@@ -288,7 +291,7 @@ pub async fn run() {
             .clients_state
             .clients
             .iter()
-            .find(|c| c.id.signer.eq(&client.pubkey()))
+            .find(|c| *c.id.signer() == client.pubkey().to_bytes())
             .unwrap();
         assert_eq!(
             client_state.earned,

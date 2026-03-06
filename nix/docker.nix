@@ -179,6 +179,26 @@ let
       };
     };
 
+    docker-psyche-gateway-node = pkgs.dockerTools.streamLayeredImage {
+      name = "psyche-gateway-node";
+      tag = "latest";
+
+      contents = [
+        pkgs.cacert
+        rustPackages."bin-psyche-inference-node-gateway-node"
+        (pkgs.runCommand "gateway-setup" { } ''
+          mkdir -p $out/tmp
+        '')
+      ];
+
+      config = {
+        Entrypoint = [ "/bin/bin-psyche-inference-node-gateway-node" ];
+        ExposedPorts = {
+          "8000/tcp" = { };
+        };
+      };
+    };
+
     docker-psyche-centralized-client = pkgs.dockerTools.streamLayeredImage {
       name = "psyche-centralized-client";
       tag = "latest";

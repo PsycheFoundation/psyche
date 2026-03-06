@@ -4,7 +4,6 @@ use std::{
 };
 
 use psyche_coordinator::{Coordinator, RunState, model::Model};
-use psyche_core::NodeIdentity;
 use psyche_tui::ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
@@ -111,8 +110,8 @@ impl Display for TuiRunState {
     }
 }
 
-impl<T: NodeIdentity> From<&Coordinator<T>> for TuiRunState {
-    fn from(c: &Coordinator<T>) -> Self {
+impl From<&Coordinator> for TuiRunState {
+    fn from(c: &Coordinator) -> Self {
         match c.run_state {
             RunState::Uninitialized => TuiRunState::Uninitialized,
             RunState::Paused => TuiRunState::Paused,
@@ -171,8 +170,8 @@ pub struct CoordinatorTuiState {
     pub pending_pause: bool,
 }
 
-impl<T: NodeIdentity> From<&Coordinator<T>> for CoordinatorTuiState {
-    fn from(value: &Coordinator<T>) -> Self {
+impl From<&Coordinator> for CoordinatorTuiState {
+    fn from(value: &Coordinator) -> Self {
         Self {
             run_id: (&value.run_id).into(),
             run_state: value.into(),

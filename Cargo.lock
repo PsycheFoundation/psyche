@@ -7035,6 +7035,7 @@ dependencies = [
  "psyche-centralized-shared",
  "psyche-client",
  "psyche-coordinator",
+ "psyche-core",
  "psyche-eval",
  "psyche-metrics",
  "psyche-modeling",
@@ -7146,7 +7147,6 @@ dependencies = [
  "futures",
  "hex",
  "hf-hub",
- "iroh",
  "iroh-blobs",
  "lazy_static",
  "postcard",
@@ -7517,8 +7517,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tikv-jemallocator",
- "solana-account-decoder-client-types",
- "solana-transaction-status-client-types",
  "time",
  "tokio",
  "tokio-util 0.7.18",
@@ -7536,6 +7534,14 @@ dependencies = [
  "psyche-solana-authorizer",
  "serde",
  "ts-rs",
+]
+
+[[package]]
+name = "psyche-solana-distributor"
+version = "0.1.1"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
 ]
 
 [[package]]
@@ -7580,6 +7586,7 @@ dependencies = [
  "psyche-core",
  "psyche-solana-authorizer",
  "psyche-solana-coordinator",
+ "psyche-solana-distributor",
  "psyche-solana-mining-pool",
  "psyche-solana-treasurer",
  "solana-sdk",
@@ -8377,6 +8384,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serial_test",
+ "solana-account-decoder-client-types",
  "solana-client",
  "time",
  "tokio",
@@ -12751,7 +12759,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 [[package]]
 name = "ts-rs"
 version = "10.1.0"
-source = "git+https://github.com/arilotter/ts-rs.git?rev=92ce1752227fec9bb868ad8f25b26f110a795099#92ce1752227fec9bb868ad8f25b26f110a795099"
+source = "git+https://github.com/arilotter/ts-rs.git?rev=20c5bef07f3aa8ca3aa1b5cdad11ecdd60c64d34#20c5bef07f3aa8ca3aa1b5cdad11ecdd60c64d34"
 dependencies = [
  "anchor-lang",
  "bytemuck",
@@ -12764,7 +12772,7 @@ dependencies = [
 [[package]]
 name = "ts-rs-macros"
 version = "10.1.0"
-source = "git+https://github.com/arilotter/ts-rs.git?rev=92ce1752227fec9bb868ad8f25b26f110a795099#92ce1752227fec9bb868ad8f25b26f110a795099"
+source = "git+https://github.com/arilotter/ts-rs.git?rev=20c5bef07f3aa8ca3aa1b5cdad11ecdd60c64d34#20c5bef07f3aa8ca3aa1b5cdad11ecdd60c64d34"
 dependencies = [
  "proc-macro2",
  "quote",

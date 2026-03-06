@@ -45,7 +45,7 @@ impl Command for CommandJsonDumpUser {
 
         let mut client_json = None;
         for client in coordinator_account_state.state.clients_state.clients {
-            if client.id.signer == address {
+            if *client.id.signer() == address.to_bytes() {
                 client_json = Some(json!({
                     "active": client.active,
                     "earned": client.earned,
@@ -62,7 +62,7 @@ impl Command for CommandJsonDumpUser {
             .epoch_state
             .clients
         {
-            if client.id.signer == address {
+            if *client.id.signer() == address.to_bytes() {
                 epoch_alive_json = Some(json!({
                     "state": client.state,
                     "exited_height": client.exited_height,
@@ -78,7 +78,7 @@ impl Command for CommandJsonDumpUser {
             .epoch_state
             .exited_clients
         {
-            if client.id.signer == address {
+            if *client.id.signer() == address.to_bytes() {
                 epoch_exited_json = Some(json!({
                     "state": client.state,
                     "exited_height": client.exited_height,

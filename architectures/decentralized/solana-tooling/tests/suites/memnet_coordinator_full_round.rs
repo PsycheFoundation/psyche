@@ -6,8 +6,8 @@ use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::model::HubRepo;
 use psyche_coordinator::model::LLM;
 use psyche_coordinator::model::Model;
+use psyche_core::NodeIdentity;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
-use psyche_solana_coordinator::ClientId;
 use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::instruction::Witness;
 use psyche_solana_coordinator::logic::InitCoordinatorParams;
@@ -22,6 +22,7 @@ use psyche_solana_tooling::process_coordinator_instructions::process_coordinator
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_tick;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_witness;
 use psyche_solana_tooling::process_coordinator_instructions::process_update;
+use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 
@@ -39,10 +40,11 @@ pub async fn run() {
     // Run constants
     let main_authority = Keypair::new();
     let join_authority = Keypair::new();
+    let claimer = Pubkey::new_unique();
     let client = Keypair::new();
     let ticker = Keypair::new();
-    let warmup_time = 77;
-    let round_witness_time = 88;
+    let warmup_time = 10;
+    let round_witness_time = 10;
 
     // create the empty pre-allocated coordinator_account
     let coordinator_account = endpoint
@@ -91,7 +93,7 @@ pub async fn run() {
         Some(CoordinatorConfig {
             warmup_time,
             cooldown_time: 999,
-            max_round_train_time: 888,
+            max_round_train_time: 15,
             round_witness_time,
             min_clients: 1,
             init_min_clients: 1,
@@ -139,7 +141,7 @@ pub async fn run() {
     );
 
     // Generate the client key
-    let client_id = ClientId::new(client.pubkey(), Default::default());
+    let client_id = NodeIdentity::from_single_key(client.pubkey().to_bytes());
 
     // Add client to whitelist
     let authorization = process_authorizer_authorization_create(
@@ -170,6 +172,7 @@ pub async fn run() {
         &coordinator_instance,
         &coordinator_account,
         client_id,
+        &claimer,
     )
     .await
     .unwrap_err();
@@ -183,6 +186,7 @@ pub async fn run() {
         &coordinator_instance,
         &coordinator_account,
         client_id,
+        &claimer,
     )
     .await
     .unwrap();
@@ -231,6 +235,7 @@ pub async fn run() {
         &coordinator_instance,
         &coordinator_account,
         client_id,
+        &claimer,
     )
     .await
     .unwrap();
