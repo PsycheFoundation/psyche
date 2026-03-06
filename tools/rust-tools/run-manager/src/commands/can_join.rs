@@ -77,7 +77,7 @@ impl Command for CommandCanJoin {
                 .epoch_state
                 .clients
                 .iter()
-                .find(|c| c.id.signer == address);
+                .find(|c| *c.id.signer() == address.to_bytes());
             if client_with_our_key.is_some() {
                 bail!(
                     "A client with our pubkey {address} is in the current epoch, you can't join with this key!"
