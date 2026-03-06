@@ -21,7 +21,6 @@ use crate::program_error::ProgramError;
     AnchorDeserialize,
     Serialize,
     Deserialize,
-    PartialEq,
     TS,
 )]
 #[repr(C)]
@@ -41,7 +40,6 @@ pub struct ClientsState {
     AnchorDeserialize,
     Serialize,
     Deserialize,
-    PartialEq,
     TS,
 )]
 #[repr(C)]

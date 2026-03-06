@@ -89,12 +89,13 @@ pub async fn process_treasurer_run_update(
 pub async fn process_treasurer_participant_create(
     endpoint: &mut ToolboxEndpoint,
     payer: &Keypair,
+    user: &Keypair,
     run: &Pubkey,
-    user: &Pubkey,
 ) -> Result<()> {
-    let participant = find_participant(run, user);
+    let participant = find_participant(run, &user.pubkey());
     let accounts = ParticipantCreateAccounts {
         payer: payer.pubkey(),
+        user: user.pubkey(),
         run: *run,
         participant,
         system_program: system_program::ID,
@@ -102,13 +103,13 @@ pub async fn process_treasurer_participant_create(
     let instruction = Instruction {
         accounts: accounts.to_account_metas(None),
         data: ParticipantCreate {
-            params: ParticipantCreateParams { user: *user },
+            params: ParticipantCreateParams {},
         }
         .data(),
         program_id: psyche_solana_treasurer::ID,
     };
     endpoint
-        .process_instruction_with_signers(payer, instruction, &[])
+        .process_instruction_with_signers(payer, instruction, &[user])
         .await?;
     Ok(())
 }
@@ -117,11 +118,10 @@ pub async fn process_treasurer_participant_create(
 pub async fn process_treasurer_participant_claim(
     endpoint: &mut ToolboxEndpoint,
     payer: &Keypair,
-    claimer: &Keypair,
-    claimer_collateral: &Pubkey,
+    user: &Keypair,
+    user_collateral: &Pubkey,
     collateral_mint: &Pubkey,
     run: &Pubkey,
-    user: &Pubkey,
     coordinator_account: &Pubkey,
     claim_earned_points: u64,
 ) -> Result<()> {
@@ -129,10 +129,10 @@ pub async fn process_treasurer_participant_claim(
         run,
         collateral_mint,
     );
-    let participant = find_participant(run, user);
+    let participant = find_participant(run, &user.pubkey());
     let accounts = ParticipantClaimAccounts {
-        claimer: claimer.pubkey(),
-        claimer_collateral: *claimer_collateral,
+        user: user.pubkey(),
+        user_collateral: *user_collateral,
         run: *run,
         run_collateral,
         coordinator_account: *coordinator_account,
@@ -143,7 +143,6 @@ pub async fn process_treasurer_participant_claim(
         accounts: accounts.to_account_metas(None),
         data: ParticipantClaim {
             params: ParticipantClaimParams {
-                user: *user,
                 claim_earned_points,
             },
         }
@@ -151,7 +150,7 @@ pub async fn process_treasurer_participant_claim(
         program_id: psyche_solana_treasurer::ID,
     };
     endpoint
-        .process_instruction_with_signers(payer, instruction, &[claimer])
+        .process_instruction_with_signers(payer, instruction, &[user])
         .await?;
     Ok(())
 }
