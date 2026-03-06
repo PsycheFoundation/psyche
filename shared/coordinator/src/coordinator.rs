@@ -91,10 +91,9 @@ pub enum ClientState {
     AnchorSerialize,
     TS,
 )]
-#[serde(bound = "I: NodeIdentity")]
 #[repr(C)]
-pub struct Client<I> {
-    pub id: I,
+pub struct Client {
+    pub id: NodeIdentity,
     pub state: ClientState,
     pub exited_height: u32,
 }
@@ -110,7 +109,7 @@ impl std::fmt::Display for ClientState {
     }
 }
 
-impl<I: NodeIdentity> Hash for Client<I> {
+impl Hash for Client {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.id.hash(state);
     }
@@ -169,6 +168,7 @@ pub struct Witness {
     AnchorDeserialize,
     Serialize,
     Deserialize,
+    PartialEq,
     TS,
     Default,
     Debug,
@@ -193,6 +193,7 @@ pub struct WitnessMetadata {
     AnchorDeserialize,
     Serialize,
     Deserialize,
+    PartialEq,
     TS,
     Default,
     Debug,
@@ -233,12 +234,21 @@ pub enum TickResult {
     EpochEnd(bool), // if successfully finished
 }
 
-pub type HealthChecks<T> = Vec<(T, CommitteeProof)>;
+pub type HealthChecks = Vec<(NodeIdentity, CommitteeProof)>;
 
 pub const NUM_STORED_ROUNDS: usize = 4;
 
 #[derive(
-    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorDeserialize, AnchorSerialize, TS,
+    Clone,
+    Debug,
+    Zeroable,
+    Copy,
+    Serialize,
+    Deserialize,
+    AnchorDeserialize,
+    AnchorSerialize,
+    PartialEq,
+    TS,
 )]
 #[repr(C)]
 pub struct CoordinatorConfig {
@@ -264,11 +274,19 @@ pub struct CoordinatorConfig {
 }
 
 #[derive(
-    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorSerialize, AnchorDeserialize, TS,
+    Clone,
+    Debug,
+    Zeroable,
+    Copy,
+    Serialize,
+    Deserialize,
+    AnchorSerialize,
+    AnchorDeserialize,
+    PartialEq,
+    TS,
 )]
 #[repr(C)]
-#[serde(bound = "T: NodeIdentity")]
-pub struct CoordinatorEpochState<T> {
+pub struct CoordinatorEpochState {
     pub rounds: [Round; NUM_STORED_ROUNDS],
     /// **WARNING**: Using this can be a footgun:
     /// If you need to access the clients list for a particular round,
@@ -276,8 +294,8 @@ pub struct CoordinatorEpochState<T> {
     /// This list might not be the list of clients at *that* round.
     /// Consider carefully if `get_client_at_historical_index` or
     /// `get_historical_clients` is what you actually want.
-    pub clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
-    pub exited_clients: FixedVec<Client<T>, { SOLANA_MAX_NUM_CLIENTS }>,
+    pub clients: FixedVec<Client, { SOLANA_MAX_NUM_CLIENTS }>,
+    pub exited_clients: FixedVec<Client, { SOLANA_MAX_NUM_CLIENTS }>,
     pub rounds_head: u32,
     pub start_step: u32,
     pub last_step: u32,
@@ -287,7 +305,16 @@ pub struct CoordinatorEpochState<T> {
 }
 
 #[derive(
-    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorSerialize, AnchorDeserialize, TS,
+    Clone,
+    Debug,
+    Zeroable,
+    Copy,
+    Serialize,
+    Deserialize,
+    AnchorSerialize,
+    AnchorDeserialize,
+    PartialEq,
+    TS,
 )]
 #[repr(C)]
 pub struct CoordinatorProgress {
@@ -297,11 +324,19 @@ pub struct CoordinatorProgress {
 }
 
 #[derive(
-    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorSerialize, AnchorDeserialize, TS,
+    Clone,
+    Debug,
+    Zeroable,
+    Copy,
+    Serialize,
+    Deserialize,
+    AnchorSerialize,
+    AnchorDeserialize,
+    PartialEq,
+    TS,
 )]
-#[serde(bound = "T: NodeIdentity")]
 #[repr(C)]
-pub struct Coordinator<T> {
+pub struct Coordinator {
     pub run_id: FixedString<{ SOLANA_RUN_ID_MAX_LEN }>,
 
     pub run_state: RunState,
@@ -314,7 +349,7 @@ pub struct Coordinator<T> {
     pub progress: CoordinatorProgress,
 
     #[serde(default)]
-    pub epoch_state: CoordinatorEpochState<T>, // note, gets zeroed at the start of every epoch (not persistent through epochs)
+    pub epoch_state: CoordinatorEpochState, // note, gets zeroed at the start of every epoch (not persistent through epochs)
 
     #[serde(default)]
     pub run_state_start_unix_timestamp: u64,
@@ -323,7 +358,7 @@ pub struct Coordinator<T> {
     pub pending_pause: SmallBoolean,
 }
 
-unsafe impl<T: NodeIdentity + Zeroable> Pod for Coordinator<T> {}
+unsafe impl Pod for Coordinator {}
 
 impl TryFrom<usize> for RunState {
     type Error = CoordinatorError;
@@ -357,20 +392,13 @@ impl From<RunState> for usize {
         }
     }
 }
-
-impl<T: NodeIdentity> AsRef<[u8]> for Client<T> {
-    fn as_ref(&self) -> &[u8] {
-        self.id.as_ref()
-    }
-}
-
-impl<T: NodeIdentity> PartialEq for Client<T> {
+impl PartialEq for Client {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
     }
 }
 
-impl<T: NodeIdentity> Eq for Client<T> {}
+impl Eq for Client {}
 
 impl std::fmt::Display for CoordinatorError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -407,7 +435,7 @@ impl std::fmt::Display for RunState {
     }
 }
 
-impl<T: NodeIdentity> Default for CoordinatorEpochState<T> {
+impl Default for CoordinatorEpochState {
     fn default() -> Self {
         Self {
             rounds: Default::default(),
@@ -433,8 +461,8 @@ impl Default for CoordinatorProgress {
     }
 }
 
-impl<T: NodeIdentity> Client<T> {
-    pub fn new(id: T) -> Self {
+impl Client {
+    pub fn new(id: NodeIdentity) -> Self {
         Self {
             id,
             state: ClientState::Healthy,
@@ -443,10 +471,10 @@ impl<T: NodeIdentity> Client<T> {
     }
 }
 
-impl<T: NodeIdentity> Coordinator<T> {
+impl Coordinator {
     pub fn tick<'a, 'b>(
         &'a mut self,
-        new_clients: Option<impl ExactSizeIterator<Item = &'b T>>,
+        new_clients: Option<impl ExactSizeIterator<Item = &'b NodeIdentity>>,
         unix_timestamp: u64,
         random_seed: u64,
     ) -> std::result::Result<TickResult, CoordinatorError> {
@@ -466,7 +494,7 @@ impl<T: NodeIdentity> Coordinator<T> {
 
     pub fn warmup_witness(
         &mut self,
-        from: &T,
+        from: &NodeIdentity,
         witness: Witness,
         unix_timestamp: u64,
         random_seed: u64,
@@ -513,7 +541,7 @@ impl<T: NodeIdentity> Coordinator<T> {
 
     pub fn witness(
         &mut self,
-        from: &T,
+        from: &NodeIdentity,
         witness: Witness,
         unix_timestamp: u64,
     ) -> std::result::Result<(), CoordinatorError> {
@@ -534,7 +562,7 @@ impl<T: NodeIdentity> Coordinator<T> {
             return Err(CoordinatorError::InvalidRunState);
         }
 
-        if !CommitteeSelection::from_coordinator(self, 0)?.verify_witness_for_client::<T>(
+        if !CommitteeSelection::from_coordinator(self, 0)?.verify_witness_for_client(
             from,
             &witness.proof,
             &self.epoch_state.clients,
@@ -563,8 +591,8 @@ impl<T: NodeIdentity> Coordinator<T> {
 
     pub fn health_check(
         &mut self,
-        _from: &T,
-        checks: HealthChecks<T>,
+        _from: &NodeIdentity,
+        checks: HealthChecks,
     ) -> std::result::Result<u32, CoordinatorError> {
         if self.halted() {
             return Err(CoordinatorError::Halted);
@@ -598,7 +626,7 @@ impl<T: NodeIdentity> Coordinator<T> {
 
     pub fn checkpoint(
         &mut self,
-        from: &T,
+        from: &NodeIdentity,
         index: u64,
         checkpoint_repo: Checkpoint,
     ) -> std::result::Result<(), CoordinatorError> {
@@ -684,7 +712,11 @@ impl<T: NodeIdentity> Coordinator<T> {
         Ok(())
     }
 
-    pub fn healthy(&self, id: &T, proof: &CommitteeProof) -> Result<bool, CoordinatorError> {
+    pub fn healthy(
+        &self,
+        id: &NodeIdentity,
+        proof: &CommitteeProof,
+    ) -> Result<bool, CoordinatorError> {
         let round = self
             .previous_round()
             .ok_or(CoordinatorError::NoActiveRound)?;
@@ -727,7 +759,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         }
     }
 
-    pub fn trainer_healthy(&self, id: &T) -> Result<bool, CoordinatorError> {
+    pub fn trainer_healthy(&self, id: &NodeIdentity) -> Result<bool, CoordinatorError> {
         let prev_round_witnesses = &self
             .previous_round()
             .ok_or(CoordinatorError::NoActiveRound)?
@@ -739,8 +771,8 @@ impl<T: NodeIdentity> Coordinator<T> {
 
     /// Computes the health score of a client based on witness confirmations.
     /// The score increases for each witness whose participant bloom filter contains the client's hashed ID.
-    pub fn trainer_healthy_score_by_witnesses(id: &T, witnesses: &[Witness]) -> u16 {
-        let hash = sha256(id.as_ref());
+    pub fn trainer_healthy_score_by_witnesses(id: &NodeIdentity, witnesses: &[Witness]) -> u16 {
+        let hash = sha256(id.signer());
 
         let mut score = 0u16;
         for witness in witnesses {
@@ -845,7 +877,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         &self,
         n: usize,
         prev_clients_len: u16,
-    ) -> Option<&Client<T>> {
+    ) -> Option<&Client> {
         if n < self.epoch_state.clients.len() {
             Some(&self.epoch_state.clients[n])
         } else if n < prev_clients_len as usize {
@@ -856,7 +888,7 @@ impl<T: NodeIdentity> Coordinator<T> {
         }
     }
 
-    pub fn get_historical_clients(&self, clients_len: u16) -> Vec<&Client<T>> {
+    pub fn get_historical_clients(&self, clients_len: u16) -> Vec<&Client> {
         (0..clients_len)
             .filter_map(|i| self.get_client_at_historical_index(i as usize, clients_len))
             .collect()
@@ -922,7 +954,7 @@ impl<T: NodeIdentity> Coordinator<T> {
 
     fn tick_waiting_for_members<'a, 'b>(
         &'a mut self,
-        pending_clients: Option<impl ExactSizeIterator<Item = &'b T>>,
+        pending_clients: Option<impl ExactSizeIterator<Item = &'b NodeIdentity>>,
         unix_timestamp: u64,
     ) -> std::result::Result<TickResult, CoordinatorError> {
         let Some(pending_clients) = pending_clients else {
@@ -1203,7 +1235,7 @@ impl<T: NodeIdentity> Coordinator<T> {
     }
 }
 
-impl<T> CoordinatorEpochState<T> {
+impl CoordinatorEpochState {
     // When an epoch reaches its timeout, the last step is set as the
     // current step + 2. When last_step is set to 0, we assume it has not
     // been set.

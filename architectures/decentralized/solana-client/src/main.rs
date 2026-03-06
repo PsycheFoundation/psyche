@@ -27,7 +27,6 @@ use tokio::runtime::Builder;
 use tracing::info;
 
 mod app;
-mod network_identity;
 
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
@@ -80,8 +79,11 @@ enum Commands {
         rpc_3: String,
         #[clap(long, env, default_value_t = String::from(""))]
         ws_rpc_3: String,
+
         #[clap(long, env)]
         authorizer: Option<Pubkey>,
+        #[clap(long, env)]
+        claimer: Option<Pubkey>,
     },
     Predownload {
         #[clap(flatten)]
@@ -171,6 +173,7 @@ async fn async_main() -> Result<()> {
             rpc_3,
             ws_rpc_3,
             authorizer,
+            claimer,
         } => {
             psyche_client::prepare_environment();
             info!(
@@ -237,6 +240,7 @@ async fn async_main() -> Result<()> {
                 cluster: cluster.into(),
                 backup_clusters,
                 authorizer,
+                claimer,
                 train_args: args,
             })
             .await?;

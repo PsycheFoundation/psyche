@@ -1,5 +1,3 @@
-use psyche_core::NodeIdentity;
-
 use super::{
     evals::{MaybeRunningEvals, ModelTaskRunner, RunningEvals},
     round_state::RoundState,
@@ -10,11 +8,11 @@ pub struct WarmupStepMetadata {
 }
 
 impl WarmupStepMetadata {
-    pub fn start<T: NodeIdentity>(
+    pub fn start(
         &self,
         evals_or_trainers: impl Into<MaybeRunningEvals>,
-        previous_round: &mut RoundState<T>,
-        current_round: &mut RoundState<T>,
+        previous_round: &mut RoundState,
+        current_round: &mut RoundState,
     ) -> WarmupStep {
         // reset the transient states
         *previous_round = RoundState::default();
