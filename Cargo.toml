@@ -130,6 +130,9 @@ opt-level = 1
 [profile.test]
 opt-level = 1
 
+[patch.crates-io]
+iroh-blobs = { git = "https://github.com/pefontana/iroh-blobs.git", rev = "3600dbc" }
+
 [workspace.metadata.release]
 tag-name = "v{{version}}"
 sign-tag = true
