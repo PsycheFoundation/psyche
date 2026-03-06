@@ -13,7 +13,6 @@ use psyche_coordinator::Witness;
 use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::model::HttpLLMTrainingDataLocation;
 use psyche_coordinator::model::HttpTrainingDataLocation;
-use psyche_coordinator::model::HubRepo;
 use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::Model;
 use psyche_core::FixedString;

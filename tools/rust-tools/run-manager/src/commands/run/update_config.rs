@@ -9,7 +9,9 @@ use psyche_solana_treasurer::logic::RunUpdateParams;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+use crate::commands::Command;
 use crate::{SolanaBackend, instructions};
+use async_trait::async_trait;
 
 #[derive(Debug, Clone, Args)]
 #[command()]
@@ -38,6 +40,13 @@ pub struct CommandUpdateConfigParams {
     // end metadata
     #[clap(long, env)]
     client_version: Option<String>,
+}
+
+#[async_trait]
+impl Command for CommandUpdateConfigParams {
+    async fn execute(self, backend: SolanaBackend) -> Result<()> {
+        command_update_config_execute(backend, self).await
+    }
 }
 
 pub async fn command_update_config_execute(
