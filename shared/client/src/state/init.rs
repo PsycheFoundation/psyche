@@ -118,6 +118,9 @@ pub enum InitRunError {
     #[error("Unsupported architecture: {0}")]
     UnsupportedArchitecture(String),
 
+    #[error("Device is not usable: {0}")]
+    DeviceNotUsable(anyhow::Error),
+
     #[cfg(feature = "python")]
     #[error("Python distributed error: {0}")]
     PythonDistributedError(#[from] psyche_modeling::PythonDistributedCausalLMError),
@@ -192,6 +195,12 @@ impl RunInitConfigAndIO {
                 psyche_modeling::ModelLoadError::UnavailbleDevice(init_config.device),
             ));
         }
+
+        // Fail fast if the device is not usable
+        init_config
+            .device
+            .ensure_usable()
+            .map_err(InitRunError::DeviceNotUsable)?;
 
         let model::Model::LLM(llm) = state.model;
 
