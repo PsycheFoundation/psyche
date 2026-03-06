@@ -26,6 +26,9 @@ pub enum UploadError {
     #[error("GCS operation failed: {0}")]
     GcsStorage(#[from] google_cloud_storage::http::Error),
 
+    #[error("GCS error: {0}")]
+    Gcs(String),
+
     // Common errors
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -44,6 +47,9 @@ pub enum DownloadError {
 
     #[error("GCS operation failed: {0}")]
     GcsStorage(#[from] google_cloud_storage::http::Error),
+
+    #[error("GCS error: {0}")]
+    Gcs(String),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

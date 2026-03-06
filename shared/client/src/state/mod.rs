@@ -13,7 +13,7 @@ mod train;
 mod warmup;
 mod witness;
 
-pub use init::{InitRunError, RunInitConfig, RunInitConfigAndIO};
+pub use init::{InitRunError, ModelExtraData, RunInitConfig, RunInitConfigAndIO};
 pub use psyche_data_provider::{GcsUploadInfo, HubUploadInfo};
 pub use round_state::RoundState;
 pub use steps::{ApplyMessageOutcome, RunManager};

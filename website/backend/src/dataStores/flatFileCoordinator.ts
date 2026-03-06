@@ -4,7 +4,6 @@ import {
 	Model,
 	PsycheCoordinator,
 	RunMetadata,
-	lr_at_step,
 } from 'psyche-deserialize-zerocopy-wasm'
 import {
 	RunSummary,
@@ -290,14 +289,6 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 
 		lastRun.lastUpdated = eventTime
 		lastRun.lastState = newState
-
-		const step = newState.coordinator.progress.step
-		if (step > (lastRun.observedLrByStep.at(-1)?.[0] ?? 0)) {
-			const lr = lr_at_step(newState.coordinator.model.LLM.lr_schedule, step)
-			if (isGoodNumber(lr)) {
-				lastRun.observedLrByStep.push([step, lr])
-			}
-		}
 
 		if (configChanged) {
 			lastRun.configChanges.push({
@@ -683,8 +674,6 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 					maxRoundTrainTime: Number(config.max_round_train_time),
 					roundWitnessTime: Number(config.round_witness_time),
 					warmupTime: Number(config.warmup_time),
-
-					lrSchedule: c.coordinator.model.LLM.lr_schedule,
 				},
 			}
 		}
@@ -756,7 +745,6 @@ function makeRunSummary(
 		: undefined
 
 	const summary: RunSummary = {
-		arch: c.model.LLM.architecture,
 		id: c.run_id,
 		index: index,
 		isOnlyRunAtThisIndex,

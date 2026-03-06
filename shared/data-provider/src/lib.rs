@@ -19,11 +19,13 @@ pub use errors::{DownloadError, UploadError};
 pub use file_extensions::{DATA_FILE_EXTENSIONS, PARQUET_EXTENSION};
 pub use gcs::{
     GcsCheckpointManifest, GcsManifestMetadata, GcsUploadInfo, ManifestFileEntry, ManifestMetadata,
-    download_model_from_gcs_async, download_model_from_gcs_sync, upload_to_gcs,
+    download_model_from_gcs_async, download_model_from_gcs_sync, fetch_json_from_gcs,
+    upload_json_to_gcs, upload_to_gcs,
 };
 pub use hub::{
     HubUploadInfo, download_dataset_repo_async, download_dataset_repo_sync,
-    download_model_repo_async, download_model_repo_sync, upload_to_hub,
+    download_model_repo_async, download_model_repo_sync, fetch_json_from_hub,
+    upload_model_extra_data_to_hub, upload_to_hub,
 };
 pub use local::LocalDataProvider;
 pub use parquet::record::{ListAccessor, MapAccessor, RowAccessor};

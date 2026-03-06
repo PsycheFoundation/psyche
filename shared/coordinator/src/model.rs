@@ -5,10 +5,7 @@ use anchor_lang::{
     prelude::{borsh, msg},
 };
 use bytemuck::{Zeroable, ZeroableInOption};
-use psyche_core::{
-    ConstantLR, FixedString, FixedVec, LearningRateSchedule, OptimizerDefinition, Shuffle,
-    TokenSize,
-};
+use psyche_core::{FixedString, FixedVec, Shuffle, TokenSize};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -190,24 +187,14 @@ pub enum HttpTrainingDataLocation {
 pub struct LLM {
     pub max_seq_len: u32,
     pub cold_start_warmup_steps: u32,
-    pub architecture: LLMArchitecture,
     pub checkpoint: Checkpoint,
-    pub data_type: LLMTrainingDataType,
-    pub data_location: LLMTrainingDataLocation,
-    pub lr_schedule: LearningRateSchedule,
-    pub optimizer: OptimizerDefinition,
 }
 
 impl LLM {
     pub fn dummy() -> Self {
         Self {
-            architecture: LLMArchitecture::HfLlama,
             checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
-            data_location: LLMTrainingDataLocation::default(),
-            data_type: LLMTrainingDataType::Pretraining,
-            lr_schedule: LearningRateSchedule::Constant(ConstantLR::default()),
             max_seq_len: 2048,
-            optimizer: OptimizerDefinition::Dummy,
             cold_start_warmup_steps: 0,
         }
     }
@@ -283,6 +270,8 @@ pub enum Checkpoint {
     Dummy(HubRepo),
     Hub(HubRepo),
     P2P(HubRepo),
+    /// P2P checkpoint that originated from a Dummy checkpoint (for testing)
+    P2PDummy,
     Gcs(GcsRepo),
     P2PGcs(GcsRepo),
 }
@@ -290,7 +279,7 @@ pub enum Checkpoint {
 impl std::fmt::Display for Checkpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Checkpoint::Dummy(_hub_repo) => write!(f, "Dummy"),
+            Checkpoint::Dummy(_) | Checkpoint::P2PDummy => write!(f, "Dummy"),
             Checkpoint::Ephemeral => write!(f, "Ephemeral"),
             Checkpoint::Hub(hub_repo) => write!(f, "{}", &hub_repo.repo_id),
             Checkpoint::P2P(hub_repo) => {
@@ -313,30 +302,8 @@ impl Model {
                     return false;
                 }
 
-                let bad_data_location = match llm.data_location {
-                    LLMTrainingDataLocation::Dummy => false,
-                    LLMTrainingDataLocation::Server(url) => url.is_empty(),
-                    LLMTrainingDataLocation::Local(_) => false,
-                    LLMTrainingDataLocation::Http(HttpLLMTrainingDataLocation {
-                        location, ..
-                    }) => match location {
-                        HttpTrainingDataLocation::SingleUrl(url) => url.is_empty(),
-                        HttpTrainingDataLocation::NumberedFiles {
-                            url_template,
-                            num_files,
-                            ..
-                        } => url_template.is_empty() || num_files == 0,
-                        HttpTrainingDataLocation::Gcp { bucket_name, .. } => bucket_name.is_empty(),
-                    },
-                    LLMTrainingDataLocation::WeightedHttp(url) => url.is_empty(),
-                    LLMTrainingDataLocation::Preprocessed(url) => url.is_empty(),
-                };
-                if bad_data_location {
-                    msg!("model check failed: bad LLM training data location.");
-                    return false;
-                }
                 let bad_checkpoint = match llm.checkpoint {
-                    Checkpoint::Dummy(_hub_repo) => false,
+                    Checkpoint::Dummy(_) | Checkpoint::P2PDummy => false,
                     Checkpoint::Ephemeral => true,
                     Checkpoint::Hub(hub_repo) => hub_repo.repo_id.is_empty(),
                     Checkpoint::P2P(hub_repo) => hub_repo.repo_id.is_empty(),
@@ -349,14 +316,7 @@ impl Model {
                     msg!("model check failed: bad checkpoint");
                     return false;
                 }
-                if !match llm.optimizer {
-                    OptimizerDefinition::Dummy => false,
-                    OptimizerDefinition::AdamW { .. } => true,
-                    OptimizerDefinition::Distro { .. } => true,
-                } {
-                    msg!("model check failed: bad optimizer");
-                    return false;
-                }
+
                 true
             }
         }
