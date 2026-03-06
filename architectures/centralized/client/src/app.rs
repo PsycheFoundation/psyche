@@ -31,7 +31,7 @@ pub type TabsData = <Tabs as CustomWidget>::Data;
 
 pub enum ToSend {
     Witness(Box<OpportunisticData>),
-    HealthCheck(HealthChecks<ClientId>),
+    HealthCheck(HealthChecks),
     Checkpoint(Checkpoint),
 }
 
