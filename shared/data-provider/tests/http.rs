@@ -70,7 +70,7 @@ async fn test_http_data_provider() -> Result<()> {
         TokenSize::TwoBytes,
         SEQUENCE_LEN,
         Shuffle::DontShuffle,
-    )?;
+    );
 
     // Test first sequence
     println!("first sequence..");
@@ -135,7 +135,7 @@ async fn test_http_data_provider_shuffled() -> Result<()> {
         TokenSize::TwoBytes,
         SEQUENCE_LEN,
         Shuffle::Seeded(seed),
-    )?;
+    );
 
     let batch_id = BatchId((0, 0).into());
 
@@ -152,7 +152,7 @@ async fn test_http_data_provider_shuffled() -> Result<()> {
         TokenSize::TwoBytes,
         SEQUENCE_LEN,
         Shuffle::Seeded(seed),
-    )?;
+    );
 
     // Test first sequence with second provider
     let samples2 = timeout(Duration::from_secs(2), provider2.get_samples(batch_id)).await??;
@@ -170,7 +170,7 @@ async fn test_http_data_provider_shuffled() -> Result<()> {
         TokenSize::TwoBytes,
         SEQUENCE_LEN,
         Shuffle::DontShuffle,
-    )?;
+    );
 
     // Test first sequence with third provider
     let samples3 = timeout(Duration::from_secs(2), provider3.get_samples(batch_id)).await??;

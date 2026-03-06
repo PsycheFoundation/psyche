@@ -64,8 +64,7 @@ total_steps = 25000
 ```toml
 # so far only LLMs are supported.
 [model.LLM]
-# Architecture of the model to train on can be HfLlama or HfDeepseek for now.
-# If running with Python sidecars this must be set to HfAuto.
+# Architecture of the model to train on can be HfLlama, HfDeepseek, or, when using the Python integration, HfAuto or TorchTitan.
 architecture = "HfLlama"
 data_type = "Pretraining"
 max_seq_len = 2048

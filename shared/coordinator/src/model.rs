@@ -43,6 +43,19 @@ pub enum LLMArchitecture {
     Torchtitan,
 }
 
+impl LLMArchitecture {
+    /// Separate from a display impl, since we actually match on these in the codebase
+    pub fn to_python_model_string(&self) -> String {
+        match self {
+            LLMArchitecture::HfLlama => "HfLlama",
+            LLMArchitecture::HfDeepseek => "HfDeepseek",
+            LLMArchitecture::HfAuto => "HfAuto",
+            LLMArchitecture::Torchtitan => "Torchtitan",
+        }
+        .to_string()
+    }
+}
+
 impl std::fmt::Display for LLMArchitecture {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

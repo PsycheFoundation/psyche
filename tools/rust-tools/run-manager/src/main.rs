@@ -24,8 +24,8 @@ use commands::authorization::{
 use commands::can_join::CommandCanJoin;
 use commands::run::{
     CommandCheckpoint, CommandCloseRun, CommandCreateRun, CommandDownloadResults,
-    CommandJsonDumpRun, CommandJsonDumpUser, CommandSetFutureEpochRates, CommandSetPaused,
-    CommandTick, CommandUpdateConfig, CommandUploadData,
+    CommandDumpConfig, CommandJsonDumpRun, CommandJsonDumpUser, CommandSetFutureEpochRates,
+    CommandSetPaused, CommandTick, CommandUpdateConfig, CommandUploadData,
 };
 use commands::treasury::{CommandTreasurerClaimRewards, CommandTreasurerTopUpRewards};
 use run_manager::docker::coordinator_client::CoordinatorClient;
@@ -164,6 +164,12 @@ enum Commands {
         cluster: ClusterArgs,
         #[clap(flatten)]
         params: CommandJsonDumpUser,
+    },
+    DumpConfig {
+        #[clap(flatten)]
+        cluster: ClusterArgs,
+        #[clap(flatten)]
+        params: CommandDumpConfig,
     },
     DownloadResults {
         #[clap(flatten)]
@@ -385,6 +391,9 @@ async fn async_main() -> Result<()> {
             params.execute(create_backend_readonly(cluster)?).await
         }
         Commands::JsonDumpUser { cluster, params } => {
+            params.execute(create_backend_readonly(cluster)?).await
+        }
+        Commands::DumpConfig { cluster, params } => {
             params.execute(create_backend_readonly(cluster)?).await
         }
         Commands::JoinAuthorizationCreate {

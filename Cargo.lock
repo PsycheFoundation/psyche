@@ -7394,9 +7394,7 @@ dependencies = [
  "memmap2 0.9.9",
  "psyche-core",
  "psyche-data-provider",
- "psyche-network",
  "psyche-python-extension-impl",
- "psyche-tui",
  "pyo3",
  "pyo3-tch",
  "rand 0.9.2",
@@ -12759,6 +12757,28 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
+]
+
+[[package]]
+name = "train"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "clap-markdown",
+ "psyche-coordinator",
+ "psyche-core",
+ "psyche-data-provider",
+ "psyche-modeling",
+ "psyche-network",
+ "psyche-python-extension-impl",
+ "psyche-tui",
+ "serde",
+ "tch",
+ "tokio",
+ "tokio-util 0.7.18",
+ "toml 0.8.23",
+ "tracing",
 ]
 
 [[package]]

@@ -69,6 +69,7 @@
                 cargo-watch
                 cargo-expand
                 cargo-nextest
+                cargo-all-features
 
                 self'.packages.solana-toolbox-cli
 
