@@ -203,7 +203,7 @@ fn inference(
                     psyche_modeling::ParallelismConfig { dp: tp, tp: 1 },
                     None,
                     None,
-                    None,
+                    Some(args.device.size() as i64),
                 )?) as Box<dyn CausalLM>
             }
         }
