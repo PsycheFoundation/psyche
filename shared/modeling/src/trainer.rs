@@ -197,7 +197,8 @@ impl Batch {
 
                     let padding_input_ids =
                         Tensor::zeros([padding_needed as i64, seq_len], (Kind::Int64, device));
-                    gpu_data.input_ids = Tensor::cat(&[&gpu_data.input_ids, &padding_input_ids], 0);
+                    gpu_data.input_ids =
+                        crate::mps_compat::cat(&[&gpu_data.input_ids, &padding_input_ids], 0);
 
                     if let Some(labels) = gpu_data.labels.take() {
                         let padding_labels = Tensor::full(
@@ -205,14 +206,16 @@ impl Batch {
                             -100i64,
                             (Kind::Int64, device),
                         );
-                        gpu_data.labels = Some(Tensor::cat(&[&labels, &padding_labels], 0));
+                        gpu_data.labels =
+                            Some(crate::mps_compat::cat(&[&labels, &padding_labels], 0));
                     }
 
                     if gpu_data.position_ids.is_some() {
                         let pos_row = Tensor::arange(seq_len, (Kind::Int64, device));
                         let padding_pos = pos_row.unsqueeze(0).repeat([padding_needed as i64, 1]);
                         if let Some(pos) = gpu_data.position_ids.take() {
-                            gpu_data.position_ids = Some(Tensor::cat(&[&pos, &padding_pos], 0));
+                            gpu_data.position_ids =
+                                Some(crate::mps_compat::cat(&[&pos, &padding_pos], 0));
                         }
                     }
 

@@ -34,7 +34,14 @@ impl TransformDCT {
 
                 // Pregenerate DCT basis matrices
                 if let std::collections::hash_map::Entry::Vacant(e) = f_dict.entry(sc) {
-                    let i = Tensor::eye(sc, (Kind::Float, variable.device()));
+                    // Metal does not support FFT/complex operations; compute on CPU
+                    // In this case since it's an Identity matrix it shouldn't matter too much.
+                    let dct_device = if variable.device() == Device::Mps {
+                        Device::Cpu
+                    } else {
+                        variable.device()
+                    };
+                    let i = Tensor::eye(sc, (Kind::Float, dct_device));
                     e.insert(
                         Self::dct(&i, true)
                             .to_kind(variable.kind())
@@ -402,19 +409,21 @@ impl CompressDCT {
         kind: Kind,
         device: Device,
     ) -> Tensor {
-        let idx_concat = Tensor::cat(idx, -1).to_device(device);
-        let val_concat = Tensor::cat(val, -1).to_device(device);
+        let idx_concat = crate::mps_compat::cat_owned(idx, -1).to_device(device);
+        let val_concat = crate::mps_compat::cat_owned(val, -1).to_device(device);
         // Call the decompress method
         Self::decompress(&idx_concat, &val_concat, xshape, totalk, kind, device)
     }
 }
 
 fn compress_idx(max_value: i64, idx: &Tensor) -> Tensor {
+    // Metal does not support uint16/uint32 for now so in those cases we work around the compression
+    // IMPORTANT this will not work in production, it's just for testing locally.
     if max_value <= 256 {
         idx.to_kind(Kind::Uint8)
-    } else if max_value <= 65536 {
+    } else if max_value <= 65536 && idx.device() != Device::Mps {
         idx.to_kind(Kind::UInt16).view_dtype(Kind::Uint8)
-    } else if max_value <= 4294967296 {
+    } else if max_value <= 4294967296 && idx.device() != Device::Mps {
         idx.to_kind(Kind::UInt32).view_dtype(Kind::Uint8)
     } else {
         idx.shallow_clone()
@@ -422,11 +431,13 @@ fn compress_idx(max_value: i64, idx: &Tensor) -> Tensor {
 }
 
 fn decompress_idx(max_value: i64, idx: &Tensor) -> Tensor {
+    // Metal does not support uint16/uint32 for now so in those cases we work around the compression
+    // IMPORTANT this will not work in production, it's just for testing locally.
     if max_value <= 256 {
         idx.view_dtype(Kind::Uint8)
-    } else if max_value <= 65536 {
+    } else if max_value <= 65536 && idx.device() != Device::Mps {
         idx.view_dtype(Kind::UInt16)
-    } else if max_value <= 4294967296 {
+    } else if max_value <= 4294967296 && idx.device() != Device::Mps {
         idx.view_dtype(Kind::UInt32)
     } else {
         idx.shallow_clone()

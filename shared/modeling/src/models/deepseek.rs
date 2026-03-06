@@ -111,7 +111,7 @@ pub fn apply_rotary_pos_emb(
     let freqs = inv_freq_expanded.matmul(&position_ids_expanded); // [pos_b, head_dim_2, seq_len]
     let freqs = freqs.transpose(1, 2); // [pos_b, seq_len, head_dim_2]
 
-    let emb = Tensor::cat(&[&freqs, &freqs], -1); // [pos_b, seq_len, head_dim]
+    let emb = crate::mps_compat::cat(&[&freqs, &freqs], -1); // [pos_b, seq_len, head_dim]
 
     let mut cos = emb.cos();
     let mut sin = emb.sin();
@@ -369,8 +369,8 @@ impl MLAAttention {
 
         let (q_pe, k_pe) = apply_rotary_pos_emb(cache, &q_pe, &k_pe, position_ids);
 
-        let mut query_states = Tensor::cat(&[&q_nope, &q_pe], -1);
-        let mut key_states = Tensor::cat(&[&k_nope, &k_pe], -1);
+        let mut query_states = crate::mps_compat::cat(&[&q_nope, &q_pe], -1);
+        let mut key_states = crate::mps_compat::cat(&[&k_nope, &k_pe], -1);
 
         let y = match self.attn_implementation {
             #[cfg(feature = "parallelism")]
@@ -379,7 +379,7 @@ impl MLAAttention {
                 let full_head_dim = self.qk_nope_head_dim + self.qk_rope_head_dim;
                 if full_head_dim != self.head_v_dim {
                     let pad_size = full_head_dim - self.head_v_dim;
-                    padded_value_states = Tensor::cat(
+                    padded_value_states = crate::mps_compat::cat(
                         &[
                             &value_states,
                             &Tensor::zeros(
@@ -442,7 +442,7 @@ impl MLAAttention {
                 let mut padded_value_states = value_states.shallow_clone();
                 if self.qk_nope_head_dim + self.qk_rope_head_dim != self.head_v_dim {
                     let pad_size = self.qk_nope_head_dim + self.qk_rope_head_dim - self.head_v_dim;
-                    padded_value_states = Tensor::cat(
+                    padded_value_states = crate::mps_compat::cat(
                         &[
                             &value_states,
                             &Tensor::zeros(
@@ -804,7 +804,7 @@ impl DeepseekMoE {
             }
         }
 
-        Tensor::cat(&outputs, 0)
+        crate::mps_compat::cat_owned(&outputs, 0)
     }
 }
 

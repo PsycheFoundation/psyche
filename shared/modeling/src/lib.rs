@@ -9,6 +9,7 @@ mod distro;
 mod dummy;
 mod fp32_gradient_accumulator;
 mod models;
+pub(crate) mod mps_compat;
 mod optimizer;
 mod parallelism;
 #[cfg(feature = "python")]

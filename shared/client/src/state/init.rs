@@ -586,11 +586,25 @@ impl RunInitConfigAndIO {
                                             let device = device.ok_or_else(|| {
                                                 ModelLoadError::NoDeviceForRank(rank, devices)
                                             })?;
+                                            // Macos/Metal does not support BFloat16; use Float32 for stability
+                                            // Note that this might not work in production, it's intended for small test runs.
+                                            let model_kind = if device == tch::Device::Mps {
+                                                Kind::Float
+                                            } else {
+                                                Kind::BFloat16
+                                            };
+                                            // Same here, Metal does not support SDPA backward pass so use eager attention
+                                            let attn_implementation = if device == tch::Device::Mps
+                                            {
+                                                Some(AttentionImplementation::Eager)
+                                            } else {
+                                                attn_implementation
+                                            };
                                             match architecture {
                                                 model::LLMArchitecture::HfLlama => {
                                                     LlamaForCausalLM::from_pretrained(
                                                         &source.try_into()?,
-                                                        Some(Kind::BFloat16),
+                                                        Some(model_kind),
                                                         attn_implementation,
                                                         Some(device),
                                                         tensor_parallelism_world,
@@ -601,7 +615,7 @@ impl RunInitConfigAndIO {
                                                 model::LLMArchitecture::HfDeepseek => {
                                                     DeepseekForCausalLM::from_pretrained(
                                                         &source.try_into()?,
-                                                        Some(Kind::BFloat16),
+                                                        Some(model_kind),
                                                         attn_implementation,
                                                         Some(device),
                                                         tensor_parallelism_world,
