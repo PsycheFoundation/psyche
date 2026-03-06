@@ -1,6 +1,7 @@
 use crate::{
     DataProviderTcpClient, DummyDataProvider, LocalDataProvider, PreprocessedDataProvider,
-    TokenizedData, TokenizedDataProvider, WeightedDataProvider, http::HttpDataProvider,
+    TokenizedData, TokenizedDataProvider, WeightedDataProvider,
+    hf_preprocessed::HuggingFacePreprocessedDataProvider, http::HttpDataProvider,
 };
 
 use psyche_core::BatchId;
@@ -12,6 +13,7 @@ pub enum DataProvider {
     WeightedHttp(WeightedDataProvider<HttpDataProvider>),
     Local(LocalDataProvider),
     Preprocessed(PreprocessedDataProvider),
+    HuggingFacePreprocessed(HuggingFacePreprocessedDataProvider),
 }
 
 impl TokenizedDataProvider for DataProvider {
@@ -23,6 +25,7 @@ impl TokenizedDataProvider for DataProvider {
             DataProvider::WeightedHttp(provider) => provider.get_samples(data_ids).await,
             DataProvider::Local(provider) => provider.get_samples(data_ids).await,
             DataProvider::Preprocessed(provider) => provider.get_samples(data_ids).await,
+            DataProvider::HuggingFacePreprocessed(provider) => provider.get_samples(data_ids).await,
         }
     }
 }
