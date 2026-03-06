@@ -107,7 +107,7 @@ pub async fn build_app(
     let checkpoint_config = p.checkpoint_config()?;
     let wandb_info = p.wandb_info(format!(
         "{}-{}",
-        p.run_id.clone(),
+        p.run_id,
         identity_secret_key.public().fmt_short()
     ))?;
 
