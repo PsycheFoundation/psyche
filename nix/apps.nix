@@ -47,8 +47,9 @@
               iptables
             ];
             text = ''
-              # Start rootless docker
-              XDG_RUNTIME_DIR=$(mktemp -d)
+              echo "starting rootless docker"
+
+              XDG_RUNTIME_DIR="$(mktemp -d)"
               export XDG_RUNTIME_DIR
               dockerd-rootless \
                 --host "unix://$XDG_RUNTIME_DIR/docker.sock" &
@@ -62,7 +63,7 @@
               }
               trap cleanup EXIT
 
-              # Wait for docker to be ready
+              echo "waiting for docker to be ready"
               for i in $(seq 1 30); do
                 if docker info >/dev/null 2>&1; then
                   break
@@ -74,11 +75,11 @@
                 sleep 1
               done
 
-              # Load images from Nix store
+              echo "loading images from nix store"
               ${validatorImage} | docker load
               ${clientImage} | docker load
 
-              # Run test from repo root (withRepoContents provides it)
+              echo "running test from repo root"
               cd architectures/decentralized/testing
               test-psyche-decentralized-testing-integration_tests --nocapture "${testName}"
             '';
@@ -86,7 +87,7 @@
         in
         {
           type = "app";
-          program = "${script}/bin/solana-test-${testName}";
+          program = lib.getExe script;
         };
 
       dockerhubPasswordAge = ../secrets/dockerhub-password.age;
@@ -128,7 +129,7 @@
         in
         {
           type = "app";
-          program = "${script}/bin/push-docker-${repository}";
+          program = lib.getExe script;
         };
 
       testApps = builtins.listToAttrs (
