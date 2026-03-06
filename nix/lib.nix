@@ -544,81 +544,21 @@ let
       ''
   );
 
-  solanaCraneLib =
-    (inputs.crane.mkLib pkgs).overrideToolchain
-      inputs.solana-pkgs.packages.${system}.solana-rust;
-
-  # output the package's idl.json
-  buildSolanaIdl =
-    {
-      src,
-      programName,
-      workspaceDir,
-      sourceRoot,
-      keypair ? "",
-    }:
-    let
-      cargoLock = workspaceDir + "/Cargo.lock";
-
-      env = {
-        RUSTFLAGS = "--cfg procmacro2_semver_exempt -A warnings";
-      };
-      solanaWorkspaceArgs = rustWorkspaceDeps // {
-        inherit
-          env
-          src
-          sourceRoot
-          cargoLock
-          ;
-      };
-      solanaCargoArtifacts = solanaCraneLib.buildDepsOnly (
-        solanaWorkspaceArgs
-        // {
-          pname = "solana-idl-${programName}";
-          buildPhaseCargoCommand = "cargo test --no-run --features idl-build";
-        }
-      );
-    in
-    solanaCraneLib.mkCargoDerivation (
-      solanaWorkspaceArgs
-      // {
-        cargoArtifacts = solanaCargoArtifacts;
-        pname = programName;
-        version = "0";
-        pnameSuffix = "-idl";
-
-        ANCHOR_IDL_BUILD_PROGRAM_PATH = "./programs/${programName}";
-
-        postPatch =
-          let
-            cargoTomlContents = lib.importTOML (workspaceDir + "/programs/${programName}/Cargo.toml");
-          in
-          ''
-            if [ -n "${keypair}" ]; then
-              mkdir -p ./target/deploy
-              cp ${keypair} ./target/deploy/${cargoTomlContents.package.name}-keypair.json
-            fi
-          '';
-
-        nativeBuildInputs = [
-          inputs.solana-pkgs.packages.${system}.anchor
-        ]
-        ++ rustWorkspaceDeps.nativeBuildInputs;
-
-        buildPhaseCargoCommand = ''
-          mkdir $out
-          anchor idl build --out $out/idl.json --out-ts $out/idlType.ts
-        '';
-
-        doInstallCargoArtifacts = false;
-      }
-    );
+  solana = import ./solana.nix {
+    inherit
+      pkgs
+      inputs
+      rustWorkspaceDeps
+      craneLib
+      src
+      lib
+      ;
+  };
 in
 {
   inherit
     rustToolchain
     craneLib
-    buildSolanaIdl
     rustWorkspaceArgs
     rustWorkspaceArgsWithPython
     cargoArtifacts
@@ -630,6 +570,10 @@ in
     gitcommit
     psychePythonVenv
     psychePythonVenvWithExtension
+    ;
+  inherit (solana)
+    buildSolanaIdl
+    buildSolanaProgram
     ;
 
   mkWebsitePackage = pkgs.callPackage ../website/common.nix { };

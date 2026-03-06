@@ -21,4 +21,9 @@ in
 
   # all RPC urls for our mainnet indexer
   "secrets/mainnet/backend-old.age".publicKeys = keys.allKeys;
+
+  ## CI
+  "secrets/dockerhub-password.age".publicKeys = keys.allDevKeys ++ [
+    keys.garnixActionPushDockerSolanaClient
+  ];
 }

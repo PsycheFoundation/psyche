@@ -93,12 +93,21 @@ lib.makeScope pkgs.newScope (
       )
     );
 
+    solanaCoordinatorProgram = import ../architectures/decentralized/solana-coordinator/program.nix {
+      inherit psycheLib;
+    };
+    solanaAuthorizerProgram = import ../architectures/decentralized/solana-authorizer/program.nix {
+      inherit psycheLib;
+    };
+
     dockerPackages = import ./docker.nix {
       inherit
         pkgs
         inputs
         rustPackages
         externalRustPackages
+        solanaCoordinatorProgram
+        solanaAuthorizerProgram
         ;
     };
 
@@ -114,6 +123,8 @@ lib.makeScope pkgs.newScope (
           psyche-website-backend = self.callPackage ../website/backend { };
 
           solana-coordinator-idl = self.callPackage ../architectures/decentralized/solana-coordinator { };
+          solana-coordinator-program = solanaCoordinatorProgram;
+          solana-authorizer-program = solanaAuthorizerProgram;
           solana-mining-pool-idl = self.callPackage ../architectures/decentralized/solana-mining-pool { };
 
           psyche-book = self.callPackage ../psyche-book { inherit rustPackages; };

@@ -4,22 +4,13 @@
   rustPackages,
   inputs,
   externalRustPackages,
+  solanaCoordinatorProgram,
+  solanaAuthorizerProgram,
 }:
 let
-  # We need this because the solana validator require the compiled .so files of the Solana programs,
-  # but since nix can't copy those files using a relative path because they're not tracked by git,
-  # we have to use an absolute path and mark it impure to make this work as expected.
-  psycheHome = builtins.getEnv "PSYCHE_HOME";
-  coordinatorSrc = builtins.path {
-    path = "${psycheHome}/architectures/decentralized/solana-coordinator";
-    name = "solana-coordinator";
-  };
-  authorizerSrc = builtins.path {
-    path = "${psycheHome}/architectures/decentralized/solana-authorizer";
-    name = "solana-authorizer";
-  };
-
-  solana = inputs.solana-pkgs.packages.${pkgs.stdenv.hostPlatform.system}.default;
+  system = pkgs.stdenv.hostPlatform.system;
+  solana = inputs.solana-pkgs.packages.${system}.default;
+  anchor = inputs.solana-pkgs.packages.${system}.anchor;
 
   layeringPipeline = pkgs.writeText "reverse-popularity-layering.json" ''
     [
@@ -155,18 +146,30 @@ let
         bzip2
         gnutar
         solana
+        anchor
         gnugrep
         coreutils
 
         (pkgs.runCommand "copy-solana-programs" { } ''
           mkdir -p $out/bin
-          mkdir -p $out/local
-          chmod 755 $out/local
+
+          # Coordinator
+          mkdir -p $out/local/solana-coordinator/target/deploy
+          cp ${solanaCoordinatorProgram}/*.so $out/local/solana-coordinator/target/deploy/
+          cp ${solanaCoordinatorProgram}/*-keypair.json $out/local/solana-coordinator/target/deploy/
+
+          # Authorizer
+          mkdir -p $out/local/solana-authorizer/target/deploy
+          mkdir -p $out/local/solana-authorizer/target/idl
+          cp ${solanaAuthorizerProgram}/*.so $out/local/solana-authorizer/target/deploy/
+          cp ${solanaAuthorizerProgram}/*-keypair.json $out/local/solana-authorizer/target/deploy/
+          # Copy IDL (exclude keypair json)
+          for f in ${solanaAuthorizerProgram}/*.json; do
+            case "$f" in *-keypair.json) ;; *) cp "$f" $out/local/solana-authorizer/target/idl/ ;; esac
+          done
+
+          # Entrypoint
           cp ${../docker/test/psyche_solana_validator_entrypoint.sh} $out/bin/psyche_solana_validator_entrypoint.sh
-          cp -r ${coordinatorSrc} $out/local
-          cp -r ${authorizerSrc} $out/local
-          mv $out/local/*solana-coordinator $out/local/solana-coordinator
-          mv $out/local/*solana-authorizer $out/local/solana-authorizer
           chmod +x $out/bin/psyche_solana_validator_entrypoint.sh
         '')
       ];

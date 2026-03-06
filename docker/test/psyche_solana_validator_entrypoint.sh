@@ -11,27 +11,34 @@ solana-test-validator -r &
 
 sleep 3
 
-pushd /local/solana-authorizer
-echo -e "\n[+] Creating authorization for everyone to join the run"
+echo -e "\n[+] Deploying Solana Authorizer"
 
-# Get authorizer program ID from keypair
-AUTHORIZER_ID=$(solana address -k ./target/deploy/psyche_solana_authorizer-keypair.json)
-echo "Authorizer program ID: ${AUTHORIZER_ID}"
+# Deploy authorizer program
+solana program deploy /local/solana-authorizer/target/deploy/psyche_solana_authorizer.so \
+    --program-id /local/solana-authorizer/target/deploy/psyche_solana_authorizer-keypair.json \
+    --keypair /.config/solana/id.json \
+    --url "${RPC}" \
+    --max-len 500000
 
-anchor deploy --provider.cluster "${RPC}" --provider.wallet "/.config/solana/id.json" -- --max-len 500000
 sleep 1
+
+# IDL init (still needs anchor)
+AUTHORIZER_ID=$(solana address -k /local/solana-authorizer/target/deploy/psyche_solana_authorizer-keypair.json)
+echo "Authorizer program ID: ${AUTHORIZER_ID}"
 
 anchor idl init \
     --provider.cluster ${RPC} \
     --provider.wallet "/.config/solana/id.json" \
-    --filepath ./target/idl/psyche_solana_authorizer.json \
+    --filepath /local/solana-authorizer/target/idl/psyche_solana_authorizer.json \
     "${AUTHORIZER_ID}"
-popd
 
-pushd /local/solana-coordinator
 echo -e "\n[+] Deploying Solana Coordinator"
-anchor deploy --provider.cluster "${RPC}" -- --max-len 500000
-popd
+
+solana program deploy /local/solana-coordinator/target/deploy/psyche_solana_coordinator.so \
+    --program-id /local/solana-coordinator/target/deploy/psyche_solana_coordinator-keypair.json \
+    --keypair /.config/solana/id.json \
+    --url "${RPC}" \
+    --max-len 500000
 
 echo -e "\n[+] Verifying deployed programs:"
 
