@@ -175,9 +175,31 @@ impl App {
         }
     }
 
+    /// The selected node ID (if any row other than "all info" is selected).
+    fn selected_node_id(&self) -> Option<&str> {
+        self.selected_node_idx
+            .and_then(|i| self.timeline.all_entity_ids().get(i))
+            .map(|s| s.as_str())
+    }
+
+    /// Check if an entry matches both the category filter and the selected node.
+    fn entry_matches(&self, entry: &TimelineEntry) -> bool {
+        if !entry_matches_filter(entry, &self.waterfall_filter) {
+            return false;
+        }
+        if let Some(sel) = self.selected_node_id() {
+            match entry {
+                TimelineEntry::Node { node_id, .. } => node_id == sel,
+                TimelineEntry::Coordinator { .. } => false,
+            }
+        } else {
+            true
+        }
+    }
+
     pub fn step_forward(&mut self, n: usize) {
         let max = self.timeline.len().saturating_sub(1);
-        if self.waterfall_filter.is_empty() {
+        if self.waterfall_filter.is_empty() && self.selected_node_idx.is_none() {
             self.cursor = (self.cursor + n).min(max);
         } else {
             let entries = self.timeline.entries();
@@ -185,7 +207,7 @@ impl App {
             let mut pos = self.cursor;
             while remaining > 0 && pos < max {
                 pos += 1;
-                if entry_matches_filter(&entries[pos], &self.waterfall_filter) {
+                if self.entry_matches(&entries[pos]) {
                     remaining -= 1;
                 }
             }
@@ -194,7 +216,7 @@ impl App {
     }
 
     pub fn step_backward(&mut self, n: usize) {
-        if self.waterfall_filter.is_empty() {
+        if self.waterfall_filter.is_empty() && self.selected_node_idx.is_none() {
             self.cursor = self.cursor.saturating_sub(n);
         } else {
             let entries = self.timeline.entries();
@@ -202,7 +224,7 @@ impl App {
             let mut pos = self.cursor;
             while remaining > 0 && pos > 0 {
                 pos -= 1;
-                if entry_matches_filter(&entries[pos], &self.waterfall_filter) {
+                if self.entry_matches(&entries[pos]) {
                     remaining -= 1;
                 }
             }
