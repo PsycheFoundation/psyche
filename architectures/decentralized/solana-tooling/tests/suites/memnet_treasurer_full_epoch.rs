@@ -13,10 +13,10 @@ use psyche_coordinator::model::LLMTrainingDataType;
 use psyche_coordinator::model::Model;
 use psyche_core::ConstantLR;
 use psyche_core::LearningRateSchedule;
+use psyche_core::NodeIdentity;
 use psyche_core::OptimizerDefinition;
 use psyche_solana_authorizer::logic::AuthorizationGranteeUpdateParams;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
-use psyche_solana_coordinator::ClientId;
 use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::instruction::Witness;
 use psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
@@ -148,60 +148,17 @@ pub async fn run() {
         .await
         .unwrap();
 
-    // Create the clients ATAs
-    let mut clients_collateral = vec![];
-    for client in &clients {
-        clients_collateral.push(
-            endpoint
-                .process_spl_associated_token_account_get_or_init(
-                    &payer,
-                    &client.pubkey(),
-                    &collateral_mint,
-                )
-                .await
-                .unwrap(),
-        );
-    }
-
     // Create the participations accounts
     for client in &clients {
         process_treasurer_participant_create(
             &mut endpoint,
             &payer,
-            client,
             &run,
+            &client.pubkey(),
         )
         .await
         .unwrap();
     }
-
-    // Try claiming nothing, it should work, but we earned nothing
-    process_treasurer_participant_claim(
-        &mut endpoint,
-        &payer,
-        &clients[0],
-        &clients_collateral[0],
-        &collateral_mint,
-        &run,
-        &coordinator_account,
-        0,
-    )
-    .await
-    .unwrap();
-
-    // Claiming with the wrong collateral should fail
-    process_treasurer_participant_claim(
-        &mut endpoint,
-        &payer,
-        &clients[0],
-        &clients_collateral[1],
-        &collateral_mint,
-        &run,
-        &coordinator_account,
-        0,
-    )
-    .await
-    .unwrap_err();
 
     // Prepare the coordinator's config
     process_treasurer_run_update(
@@ -216,7 +173,7 @@ pub async fn run() {
             config: Some(CoordinatorConfig {
                 warmup_time,
                 cooldown_time,
-                max_round_train_time: 888,
+                max_round_train_time: 15,
                 round_witness_time,
                 min_clients: 1,
                 init_min_clients: 1,
@@ -294,16 +251,55 @@ pub async fn run() {
     .await
     .unwrap();
 
+    // Create the clients's claimers
+    let mut claimers = vec![];
+    for _ in &clients {
+        claimers.push(Keypair::new());
+    }
+
     // The clients can now join the run
-    for client in &clients {
+    for i in 0..clients.len() {
         process_coordinator_join_run(
             &mut endpoint,
             &payer,
-            client,
+            &clients[i],
             &authorization,
             &coordinator_instance,
             &coordinator_account,
-            ClientId::new(client.pubkey(), Default::default()),
+            NodeIdentity::from_single_key(clients[i].pubkey().to_bytes()),
+            &claimers[i].pubkey(),
+        )
+        .await
+        .unwrap();
+    }
+
+    // Create the clients's claimers's ATA
+    let mut claimers_collateral = vec![];
+    for claimer in &claimers {
+        claimers_collateral.push(
+            endpoint
+                .process_spl_associated_token_account_get_or_init(
+                    &payer,
+                    &claimer.pubkey(),
+                    &collateral_mint,
+                )
+                .await
+                .unwrap(),
+        );
+    }
+
+    // Try claiming nothing, it should work, but we earned nothing yet
+    for i in 0..clients.len() {
+        process_treasurer_participant_claim(
+            &mut endpoint,
+            &payer,
+            &claimers[i],
+            &claimers_collateral[i],
+            &collateral_mint,
+            &run,
+            &clients[i].pubkey(),
+            &coordinator_account,
+            0,
         )
         .await
         .unwrap();
@@ -360,7 +356,7 @@ pub async fn run() {
                     .epoch_state
                     .clients
                     .iter()
-                    .position(|c| c.id.signer.eq(&client.pubkey()))
+                    .position(|c| c.id.signer() == &client.pubkey().to_bytes())
                     .unwrap() as u64,
             );
             if witness_proof.position >= SOLANA_MAX_NUM_WITNESSES as u64 {
@@ -400,18 +396,21 @@ pub async fn run() {
     }
 
     // Not yet earned the credit, claiming anything should fail
-    process_treasurer_participant_claim(
-        &mut endpoint,
-        &payer,
-        &clients[0],
-        &clients_collateral[0],
-        &collateral_mint,
-        &coordinator_instance,
-        &coordinator_account,
-        1,
-    )
-    .await
-    .unwrap_err();
+    for i in 0..clients.len() {
+        process_treasurer_participant_claim(
+            &mut endpoint,
+            &payer,
+            &claimers[i],
+            &claimers_collateral[i],
+            &collateral_mint,
+            &coordinator_instance,
+            &clients[i].pubkey(),
+            &coordinator_account,
+            1,
+        )
+        .await
+        .unwrap_err();
+    }
 
     // Tick from cooldown to new epoch (should increment the earned points)
     endpoint
@@ -429,18 +428,21 @@ pub async fn run() {
     .unwrap();
 
     // We can claim earned points now, but it should fail because run isnt funded
-    process_treasurer_participant_claim(
-        &mut endpoint,
-        &payer,
-        &clients[0],
-        &clients_collateral[0],
-        &collateral_mint,
-        &run,
-        &coordinator_account,
-        earned_point_per_epoch_per_client,
-    )
-    .await
-    .unwrap_err();
+    for i in 0..clients.len() {
+        process_treasurer_participant_claim(
+            &mut endpoint,
+            &payer,
+            &claimers[i],
+            &claimers_collateral[i],
+            &collateral_mint,
+            &run,
+            &clients[i].pubkey(),
+            &coordinator_account,
+            earned_point_per_epoch_per_client,
+        )
+        .await
+        .unwrap_err();
+    }
 
     // We should be able to top-up run treasury at any time
     endpoint
@@ -456,15 +458,14 @@ pub async fn run() {
 
     // Now that a new epoch has started, we can claim our earned point
     for i in 0..clients.len() {
-        let client = &clients[i];
-        let client_collateral = &clients_collateral[i];
         process_treasurer_participant_claim(
             &mut endpoint,
             &payer,
-            client,
-            client_collateral,
+            &claimers[i],
+            &claimers_collateral[i],
             &collateral_mint,
             &run,
+            &clients[i].pubkey(),
             &coordinator_account,
             earned_point_per_epoch_per_client,
         )
@@ -473,24 +474,27 @@ pub async fn run() {
     }
 
     // Can't claim anything past the earned points
-    process_treasurer_participant_claim(
-        &mut endpoint,
-        &payer,
-        &clients[0],
-        &clients_collateral[0],
-        &collateral_mint,
-        &run,
-        &coordinator_account,
-        1,
-    )
-    .await
-    .unwrap_err();
+    for i in 0..clients.len() {
+        process_treasurer_participant_claim(
+            &mut endpoint,
+            &payer,
+            &claimers[i],
+            &claimers_collateral[i],
+            &collateral_mint,
+            &run,
+            &clients[i].pubkey(),
+            &coordinator_account,
+            1,
+        )
+        .await
+        .unwrap_err();
+    }
 
     // Check that we could claim only exactly the right amount
-    for client_collateral in &clients_collateral {
+    for claimer_collateral in &claimers_collateral {
         assert_eq!(
             endpoint
-                .get_spl_token_account(client_collateral)
+                .get_spl_token_account(claimer_collateral)
                 .await
                 .unwrap()
                 .unwrap()

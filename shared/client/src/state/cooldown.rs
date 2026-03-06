@@ -3,7 +3,6 @@ use psyche_coordinator::{
     Coordinator,
     model::{self},
 };
-use psyche_core::NodeIdentity;
 use psyche_data_provider::{GcsManifestMetadata, UploadError, upload_to_gcs, upload_to_hub};
 #[cfg(feature = "python")]
 use psyche_modeling::CausalLM;
@@ -126,10 +125,10 @@ async fn cleanup_dirs(
 }
 
 impl CooldownStepMetadata {
-    pub fn start<T: NodeIdentity>(
+    pub fn start(
         &self,
         mut trainers: Vec<Trainer>,
-        state: &Coordinator<T>,
+        state: &Coordinator,
     ) -> Result<CooldownStep, CooldownError> {
         let Some(mut trainer) = trainers.pop() else {
             return Err(CooldownError::NoTrainers);

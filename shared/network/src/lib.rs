@@ -74,7 +74,7 @@ mod util;
 #[cfg(test)]
 mod test;
 
-pub use authenticable_identity::{AuthenticatableIdentity, FromSignedBytesError, raw_p2p_verify};
+pub use authenticable_identity::raw_p2p_verify;
 pub use connection_monitor::{ConnectionData, ConnectionMonitor, PeerBandwidth};
 pub use download::{
     DownloadComplete, DownloadFailed, DownloadSchedulerHandle, DownloadType, ReadyRetry,
@@ -790,10 +790,8 @@ where
                     },
                     Some(DownloadManagerEvent::Failed(result)) => {
                         self.state.download_progesses.remove(&result.blob_ticket.hash());
-                        if result.transfer_failed {
-                            let peer_id = result.blob_ticket.addr().id;
-                            self.connection_monitor.update_peer_bandwidth(&peer_id, PeerBandwidth::Measured(0.0));
-                        }
+                        let peer_id = result.blob_ticket.addr().id;
+                        self.connection_monitor.update_peer_bandwidth(&peer_id, PeerBandwidth::Measured(0.0));
                         Ok(Some(NetworkEvent::DownloadFailed(result)))
                     }
                     None => Ok(None),
@@ -858,6 +856,7 @@ where
 
     pub fn clear_bandwidth_tracking(&mut self) {
         self.state.bandwidth_tracker.clear();
+        self.connection_monitor.clear_all_bandwidth();
     }
 
     pub fn connection_monitor(&self) -> ConnectionMonitor {
