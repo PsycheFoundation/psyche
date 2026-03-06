@@ -13,15 +13,15 @@ use crate::state::Run;
 #[instruction(params: ParticipantClaimParams)]
 pub struct ParticipantClaimAccounts<'info> {
     #[account()]
-    pub claimer: Signer<'info>,
+    pub user: Signer<'info>,
 
     #[account(
         mut,
-        constraint = claimer_collateral.mint == run.collateral_mint,
-        constraint = claimer_collateral.owner == claimer.key(),
-        constraint = claimer_collateral.delegate == None.into(),
+        constraint = user_collateral.mint == run.collateral_mint,
+        constraint = user_collateral.owner == user.key(),
+        constraint = user_collateral.delegate == None.into(),
     )]
-    pub claimer_collateral: Box<Account<'info, TokenAccount>>,
+    pub user_collateral: Box<Account<'info, TokenAccount>>,
 
     #[account(
         mut,
@@ -46,7 +46,7 @@ pub struct ParticipantClaimAccounts<'info> {
         seeds = [
             Participant::SEEDS_PREFIX,
             run.key().as_ref(),
-            params.user.as_ref()
+            user.key().as_ref()
         ],
         bump = participant.bump
     )]
@@ -58,7 +58,6 @@ pub struct ParticipantClaimAccounts<'info> {
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct ParticipantClaimParams {
-    pub user: Pubkey,
     pub claim_earned_points: u64,
 }
 
@@ -66,23 +65,21 @@ pub fn participant_claim_processor(
     context: Context<ParticipantClaimAccounts>,
     params: ParticipantClaimParams,
 ) -> Result<()> {
-    let user_bytes = params.user.as_ref();
-    let coordinator_account = context.accounts.coordinator_account.load()?;
-    let client_state = match coordinator_account
+    let mut participant_earned_points = 0;
+    for client in context
+        .accounts
+        .coordinator_account
+        .load()?
         .state
         .clients_state
         .clients
         .iter()
-        .find(|client| client.id.signer() == user_bytes)
     {
-        Some(info) => info,
-        None => return err!(ProgramError::ParticipantClientNotFound),
-    };
-
-    if context.accounts.claimer.key() != client_state.claimer {
-        return err!(ProgramError::ClaimerSignerMismatch);
+        if *client.id.signer() == context.accounts.user.key().to_bytes() {
+            participant_earned_points = client.earned;
+            break;
+        }
     }
-    let participant_earned_points = client_state.earned;
 
     let participant = &mut context.accounts.participant;
     let run = &mut context.accounts.run;
@@ -90,7 +87,7 @@ pub fn participant_claim_processor(
     let participant_unclaimed_earned_points =
         participant_earned_points - participant.claimed_earned_points;
     if params.claim_earned_points > participant_unclaimed_earned_points {
-        return err!(ProgramError::ClaimedPointsExceedEarnedPoints);
+        return err!(ProgramError::InvalidParameter);
     }
 
     // We distribute 1 collateral per point and let the coordinator decide the point reward rate
@@ -109,7 +106,7 @@ pub fn participant_claim_processor(
             context.accounts.token_program.to_account_info(),
             Transfer {
                 from: context.accounts.run_collateral.to_account_info(),
-                to: context.accounts.claimer_collateral.to_account_info(),
+                to: context.accounts.user_collateral.to_account_info(),
                 authority: context.accounts.run.to_account_info(),
             },
         )

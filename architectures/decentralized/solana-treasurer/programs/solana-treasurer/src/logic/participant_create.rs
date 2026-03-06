@@ -10,6 +10,9 @@ pub struct ParticipantCreateAccounts<'info> {
     pub payer: Signer<'info>,
 
     #[account()]
+    pub user: Signer<'info>,
+
+    #[account()]
     pub run: Box<Account<'info, Run>>,
 
     #[account(
@@ -19,7 +22,7 @@ pub struct ParticipantCreateAccounts<'info> {
         seeds = [
             Participant::SEEDS_PREFIX,
             run.key().as_ref(),
-            params.user.as_ref()
+            user.key().as_ref()
         ],
         bump
     )]
@@ -30,9 +33,7 @@ pub struct ParticipantCreateAccounts<'info> {
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
-pub struct ParticipantCreateParams {
-    pub user: Pubkey,
-}
+pub struct ParticipantCreateParams {}
 
 pub fn participant_create_processor(
     context: Context<ParticipantCreateAccounts>,

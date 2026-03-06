@@ -102,7 +102,6 @@ pub fn coordinator_join_run(
     coordinator_account: &Pubkey,
     authorization: &Pubkey,
     client_id: psyche_core::NodeIdentity,
-    claimer: &Pubkey,
 ) -> Instruction {
     anchor_instruction(
         psyche_solana_coordinator::ID,
@@ -113,10 +112,7 @@ pub fn coordinator_join_run(
             coordinator_account: *coordinator_account,
         },
         psyche_solana_coordinator::instruction::JoinRun {
-            params: psyche_solana_coordinator::logic::JoinRunParams {
-                client_id,
-                claimer: *claimer,
-            },
+            params: psyche_solana_coordinator::logic::JoinRunParams { client_id },
         },
     )
 }
@@ -318,31 +314,31 @@ pub fn treasurer_participant_create(
             payer: *payer,
             run,
             participant,
+            user: *user,
             system_program: system_program::ID,
         },
         psyche_solana_treasurer::instruction::ParticipantCreate {
-            params: psyche_solana_treasurer::logic::ParticipantCreateParams { user: *user },
+            params: psyche_solana_treasurer::logic::ParticipantCreateParams {},
         },
     )
 }
 
 pub fn treasurer_participant_claim(
     treasurer_index: u64,
-    claimer: &Pubkey,
-    claimer_collateral: &Pubkey,
     collateral_mint: &Pubkey,
     coordinator_account: &Pubkey,
     user: &Pubkey,
     claim_earned_points: u64,
 ) -> Instruction {
+    let user_collateral = associated_token::get_associated_token_address(user, collateral_mint);
     let run = psyche_solana_treasurer::find_run(treasurer_index);
     let run_collateral = associated_token::get_associated_token_address(&run, collateral_mint);
     let participant = psyche_solana_treasurer::find_participant(&run, user);
     anchor_instruction(
         psyche_solana_treasurer::ID,
         psyche_solana_treasurer::accounts::ParticipantClaimAccounts {
-            claimer: *claimer,
-            claimer_collateral: *claimer_collateral,
+            user: *user,
+            user_collateral,
             run,
             run_collateral,
             participant,
@@ -351,7 +347,6 @@ pub fn treasurer_participant_claim(
         },
         psyche_solana_treasurer::instruction::ParticipantClaim {
             params: psyche_solana_treasurer::logic::ParticipantClaimParams {
-                user: *user,
                 claim_earned_points,
             },
         },
