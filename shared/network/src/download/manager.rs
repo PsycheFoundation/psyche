@@ -110,6 +110,9 @@ pub struct DownloadFailed {
     pub tag: Tag,
     pub error: anyhow::Error,
     pub download_type: DownloadType,
+    /// True when the network transfer itself failed (peer should be penalized).
+    /// False when the transfer succeeded but post-processing (e.g. deserialization) failed.
+    pub transfer_failed: bool,
 }
 
 impl<D: Networkable> Debug for DownloadComplete<D> {
@@ -350,6 +353,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                         error: anyhow!("Download error"),
                         tag,
                         download_type: download.download_type.clone(),
+                        transfer_failed: true,
                     }))
                 }
                 DownloadProgressItem::Error(e) => {
@@ -358,6 +362,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                         error: e.into(),
                         tag,
                         download_type: download.download_type.clone(),
+                        transfer_failed: true,
                     }))
                 }
                 DownloadProgressItem::ProviderFailed {
@@ -378,6 +383,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                 error: err,
                 tag,
                 download_type: download.download_type.clone(),
+                transfer_failed: true,
             })),
         };
         match &event {
@@ -422,6 +428,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                     tag: downloader.tag,
                     error: err.into(),
                     download_type: downloader.download_type.clone(),
+                    transfer_failed: false,
                 })),
             },
             Err(e) => Some(DownloadManagerEvent::Failed(DownloadFailed {
@@ -429,6 +436,7 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                 tag: downloader.tag,
                 error: e,
                 download_type: downloader.download_type.clone(),
+                transfer_failed: true,
             })),
         }
     }

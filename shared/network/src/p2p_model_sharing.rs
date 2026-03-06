@@ -357,7 +357,7 @@ pub struct TransmittableModelParameter {
 }
 
 impl TransmittableModelParameter {
-    fn new(param_name_bytes: Vec<u8>, param_value_bytes: Vec<u8>) -> Self {
+    pub fn new(param_name_bytes: Vec<u8>, param_value_bytes: Vec<u8>) -> Self {
         Self {
             param_name_bytes,
             param_value_bytes,

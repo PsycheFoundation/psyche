@@ -86,6 +86,7 @@ use iroh_relay::{RelayMap, RelayQuicConfig};
 pub use latency_sorted::LatencySorted;
 pub use p2p_model_sharing::{
     ALPN, ModelRequestType, SharableModel, SharableModelError, TransmittableModelConfig,
+    TransmittableModelParameter,
 };
 pub use serde::Networkable;
 pub use serialized_distro::{
@@ -244,6 +245,7 @@ where
             metrics,
             cancel,
             None,
+            None,
         )
         .await
     }
@@ -277,6 +279,41 @@ where
             metrics,
             cancel,
             Some(additional_protocol),
+            None,
+        )
+        .await
+    }
+
+    /// Initialize with a custom external blob store (e.g. FakeStore for testing).
+    /// The external store will be used for BlobsProtocol (serving blobs) while a
+    /// MemStore is still created internally for downloads and tag management.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn init_with_blobs_store<A: Allowlist + 'static + Send + std::marker::Sync>(
+        run_id: &str,
+        port: Option<u16>,
+        interface: Option<String>,
+        discovery_mode: DiscoveryMode,
+        relay_kind: RelayKind,
+        bootstrap_peers: Vec<EndpointAddr>,
+        secret_key: Option<SecretKey>,
+        allowlist: A,
+        metrics: Arc<ClientMetrics>,
+        cancel: Option<CancellationToken>,
+        external_blobs_store: iroh_blobs::api::Store,
+    ) -> Result<Self> {
+        Self::init_internal::<A, iroh_gossip::net::Gossip>(
+            run_id,
+            port,
+            interface,
+            discovery_mode,
+            relay_kind,
+            bootstrap_peers,
+            secret_key,
+            allowlist,
+            metrics,
+            cancel,
+            None,
+            Some(external_blobs_store),
         )
         .await
     }
@@ -297,6 +334,7 @@ where
         metrics: Arc<ClientMetrics>,
         cancel: Option<CancellationToken>,
         additional_protocol: Option<(&'static [u8], P)>,
+        external_blobs_store: Option<iroh_blobs::api::Store>,
     ) -> Result<Self> {
         let secret_key = match secret_key {
             None => SecretKey::generate(&mut rand::rng()),
@@ -465,7 +503,10 @@ where
         trace!("model parameter sharing created!");
 
         trace!("creating router...");
-        let blobs_protocol = BlobsProtocol::new(&store.clone(), None);
+        let blobs_protocol = match &external_blobs_store {
+            Some(ext_store) => BlobsProtocol::new(ext_store, None),
+            None => BlobsProtocol::new(&store.clone(), None),
+        };
         let router = spawn_router(
             endpoint.clone(),
             SupportedProtocols::new(gossip.clone(), blobs_protocol, model_parameter_sharing),
@@ -686,6 +727,12 @@ where
             "Untagged {} blobs",
             model_tags_deleted + distro_results_deleted
         );
+        Ok(())
+    }
+
+    pub async fn delete_tag(&self, tag_name: &str) -> anyhow::Result<()> {
+        let store = self.blobs_store.as_ref().clone();
+        store.tags().delete(tag_name).await?;
         Ok(())
     }
 

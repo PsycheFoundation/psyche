@@ -4527,6 +4527,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "iroh-fake-store"
+version = "0.1.1"
+source = "git+https://github.com/IAvecilla/iroh-fake-store?branch=fake-store-update#73ca4293e23dd048890a9d269f6f1baf4ab5db21"
+dependencies = [
+ "anyhow",
+ "bao-tree",
+ "bytes",
+ "iroh-blobs",
+ "irpc",
+ "range-collections",
+ "ref-cast",
+ "tokio",
+]
+
+[[package]]
 name = "iroh-gossip"
 version = "0.96.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7416,6 +7431,7 @@ dependencies = [
  "get_if_addrs",
  "iroh",
  "iroh-blobs",
+ "iroh-fake-store",
  "iroh-gossip",
  "iroh-n0des",
  "iroh-relay",
