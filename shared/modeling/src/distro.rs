@@ -34,7 +34,14 @@ impl TransformDCT {
 
                 // Pregenerate DCT basis matrices
                 if let std::collections::hash_map::Entry::Vacant(e) = f_dict.entry(sc) {
-                    let i = Tensor::eye(sc, (Kind::Float, variable.device()));
+                    // Metal does not support FFT/complex operations; compute on CPU
+                    // In this case since it's an Identity matrix it shouldn't matter too much.
+                    let dct_device = if variable.device() == Device::Mps {
+                        Device::Cpu
+                    } else {
+                        variable.device()
+                    };
+                    let i = Tensor::eye(sc, (Kind::Float, dct_device));
                     e.insert(
                         Self::dct(&i, true)
                             .to_kind(variable.kind())
@@ -402,10 +409,20 @@ impl CompressDCT {
         kind: Kind,
         device: Device,
     ) -> Tensor {
-        let idx_concat = Tensor::cat(idx, -1).to_device(device);
-        let val_concat = Tensor::cat(val, -1).to_device(device);
+        let idx_concat = crate::mps_compat::cat_owned(idx, -1).to_device(device);
+        let val_concat = crate::mps_compat::cat_owned(val, -1).to_device(device);
         // Call the decompress method
         Self::decompress(&idx_concat, &val_concat, xshape, totalk, kind, device)
+    }
+}
+
+/// For MPS devices we need to move to CPU for processing
+/// For Linux/CUDA devices this doesn't change anything and performs a shallow clone
+fn move_to_cpu_if_mps(tensor: &Tensor) -> Tensor {
+    if tensor.device() == Device::Mps {
+        tensor.to(Device::Cpu)
+    } else {
+        tensor.shallow_clone()
     }
 }
 
@@ -413,25 +430,35 @@ fn compress_idx(max_value: i64, idx: &Tensor) -> Tensor {
     if max_value <= 256 {
         idx.to_kind(Kind::Uint8)
     } else if max_value <= 65536 {
-        idx.to_kind(Kind::UInt16).view_dtype(Kind::Uint8)
+        move_to_cpu_if_mps(idx)
+            .to_kind(Kind::UInt16)
+            .view_dtype(Kind::Uint8)
+            .to(idx.device())
     } else if max_value <= 4294967296 {
-        idx.to_kind(Kind::UInt32).view_dtype(Kind::Uint8)
+        move_to_cpu_if_mps(idx)
+            .to_kind(Kind::UInt32)
+            .view_dtype(Kind::Uint8)
+            .to(idx.device())
     } else {
         idx.shallow_clone()
     }
 }
 
 fn decompress_idx(max_value: i64, idx: &Tensor) -> Tensor {
-    if max_value <= 256 {
+    let viewed = if max_value <= 256 {
         idx.view_dtype(Kind::Uint8)
     } else if max_value <= 65536 {
-        idx.view_dtype(Kind::UInt16)
+        move_to_cpu_if_mps(idx)
+            .view_dtype(Kind::UInt16)
+            .to(idx.device())
     } else if max_value <= 4294967296 {
-        idx.view_dtype(Kind::UInt32)
+        move_to_cpu_if_mps(idx)
+            .view_dtype(Kind::UInt32)
+            .to(idx.device())
     } else {
         idx.shallow_clone()
-    }
-    .to_kind(Kind::Int64)
+    };
+    viewed.to_kind(Kind::Int64)
 }
 
 struct State {
@@ -584,6 +611,14 @@ impl Distro {
             let full_delta = delta_var.gather_full_tensor();
             let (sparse_idx, sparse_val, xshape, totalk) =
                 CompressDCT::compress(&self.transform.encode(&full_delta), self.compression_topk);
+
+            // Since MPS does not support BFloat16, we ensure to cast again to BFloat16 for compability
+            // since the receiving end will expect that.
+            let sparse_val = if sparse_val.device() == Device::Mps {
+                sparse_val.to_kind(Kind::BFloat16)
+            } else {
+                sparse_val
+            };
 
             let delta_energy: Option<f64> = match stats {
                 true => Some(
