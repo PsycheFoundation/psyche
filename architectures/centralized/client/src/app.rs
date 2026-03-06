@@ -1,16 +1,13 @@
 use anyhow::{Error, Result};
 use bytemuck::Zeroable;
 use google_cloud_storage::client::Storage;
-use hf_hub::Repo;
 use psyche_centralized_shared::{ClientToServerMessage, ServerToClientMessage};
-use psyche_client::HubUploadInfo;
-use psyche_client::UploadInfo;
 use psyche_client::{
     Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, UploadCredentials,
     read_identity_secret_key,
 };
 use psyche_coordinator::model::Checkpoint;
-use psyche_coordinator::{Coordinator, HealthChecks, model};
+use psyche_coordinator::{Coordinator, HealthChecks};
 use psyche_core::NodeIdentity;
 use psyche_metrics::ClientMetrics;
 use psyche_network::{EndpointId, NetworkTUIState, NetworkTui, SecretKey, TcpClient, allowlist};
