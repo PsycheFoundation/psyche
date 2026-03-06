@@ -12,6 +12,7 @@ use psyche_data_provider::{
     download_model_from_gcs_async, download_model_repo_async,
     http::{FileURLs, HttpDataProvider},
 };
+use psyche_event_sourcing::event;
 use psyche_metrics::ClientMetrics;
 use psyche_modeling::{
     AttentionImplementation, AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId,
@@ -339,7 +340,8 @@ impl RunInitConfigAndIO {
                                         "Downloading {}, revision: {:?} (if needed)",
                                         hub_repo.repo_id, revision
                                     );
-                                    download_model_repo_async(
+                                    event!(warmup::CheckpointDownloadStarted { size_bytes: 0 });
+                                    match download_model_repo_async(
                                         &repo_id,
                                         revision,
                                         None,
@@ -347,7 +349,19 @@ impl RunInitConfigAndIO {
                                         Some(init_config.hub_max_concurrent_downloads),
                                         false,
                                     )
-                                    .await?
+                                    .await
+                                    {
+                                        Ok(downloaded) => {
+                                            event!(warmup::CheckpointDownloadComplete(Ok(())));
+                                            downloaded
+                                        }
+                                        Err(e) => {
+                                            event!(warmup::CheckpointDownloadComplete(Err(
+                                                e.to_string()
+                                            )));
+                                            return Err(e.into());
+                                        }
+                                    }
                                 };
                                 let repo_files = model_is_local;
                                 let checkpoint_extra_files = repo_files
@@ -439,9 +453,22 @@ impl RunInitConfigAndIO {
                                     prefix.as_deref().unwrap_or("")
                                 );
 
+                                event!(warmup::CheckpointDownloadStarted { size_bytes: 0 });
                                 let repo_files =
-                                    download_model_from_gcs_async(&bucket, prefix.as_deref())
-                                        .await?;
+                                    match download_model_from_gcs_async(&bucket, prefix.as_deref())
+                                        .await
+                                    {
+                                        Ok(files) => {
+                                            event!(warmup::CheckpointDownloadComplete(Ok(())));
+                                            files
+                                        }
+                                        Err(e) => {
+                                            event!(warmup::CheckpointDownloadComplete(Err(
+                                                e.to_string()
+                                            )));
+                                            return Err(e.into());
+                                        }
+                                    };
 
                                 let checkpoint_extra_files = repo_files
                                     .iter()
@@ -466,6 +493,7 @@ impl RunInitConfigAndIO {
                         };
 
                         info!("Loading model...");
+                        event!(warmup::ModelLoadStarted);
 
                         let model_task_runner = ModelTaskRunner::new(
                             init_config.eval_tasks,
@@ -637,6 +665,7 @@ impl RunInitConfigAndIO {
                             .send((serialized_config.clone(), serialized_tokenizer))
                             .unwrap();
 
+                        event!(warmup::ModelLoadComplete);
                         info!(
                             integration_test_log_marker = %IntegrationTestLogMarker::LoadedModel,
                             checkpoint = %llm.checkpoint,

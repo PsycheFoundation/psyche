@@ -4,6 +4,7 @@ use iroh::protocol::AcceptError;
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
 use iroh_blobs::api::Tag;
 use iroh_blobs::ticket::BlobTicket;
+use psyche_event_sourcing::event;
 use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
 use std::io::{Cursor, Write};
 use std::time::Duration;
@@ -485,6 +486,10 @@ impl SharableModel {
                         .add_downloadable(transmittable_download, tag)
                         .await
                         .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
+                    event!(p2p::BlobAddedToStore {
+                        blob: blob_ticket.hash(),
+                        model_parameter: param_name.to_string(),
+                    });
                     loaded_parameters.insert(param_name.to_string(), blob_ticket.clone());
                     info!("Finished adding parameter downloadable {param_name}");
                     Ok(blob_ticket)
@@ -532,6 +537,10 @@ impl SharableModel {
                     .add_downloadable(transmittable_download, Tag::from(tag))
                     .await
                     .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
+                event!(p2p::BlobAddedToStore {
+                    blob: ticket.hash(),
+                    model_parameter: "model config and tokenizer".to_string(),
+                });
                 self.config_and_tokenizer_ticket = Some(ticket.clone());
                 Ok(ticket)
             }

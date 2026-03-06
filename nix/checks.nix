@@ -62,7 +62,7 @@
 
                 for f in $dir/*; do
                   if [ -f $f/data.toml ]; then
-                  echo "ccecking $(realpath -s --relative-to $dir $f/data.toml) and $(realpath -s --relative-to $dir $f/state.toml)"
+                  echo "checking $(realpath -s --relative-to $dir $f/data.toml) and $(realpath -s --relative-to $dir $f/state.toml)"
                     psyche-centralized-server validate-config --state $f/state.toml --data-config $f/data.toml || exit 1
                     echo "ok!"
                   elif [ -f $f/state.toml ]; then

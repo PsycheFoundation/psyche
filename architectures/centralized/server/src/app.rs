@@ -20,13 +20,14 @@ use psyche_watcher::{CoordinatorTui, OpportunisticData};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::hash::{DefaultHasher, Hasher};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::Notify;
-use tokio::sync::mpsc::{Receiver, Sender, channel};
+use tokio::sync::mpsc::{Receiver, Sender, UnboundedSender, channel};
 use tokio::time::{MissedTickBehavior, interval};
 use tokio::{select, time::Interval};
 use tokio_util::sync::CancellationToken;
@@ -97,6 +98,8 @@ pub struct App {
     backend: Backend,
     training_data_server: Option<(Sender<Coordinator>, DataServer)>,
     save_state_dir: Option<PathBuf>,
+    coordinator_writer: Option<UnboundedSender<Coordinator>>,
+    last_coordinator_hash: u64,
     original_warmup_time: u64,
     withdraw_on_disconnect: bool,
     pause: Option<Arc<Notify>>,
@@ -163,13 +166,10 @@ impl App {
         data_server_config: Option<DataServerInfo>,
         coordinator_server_port: Option<u16>,
         save_state_dir: Option<PathBuf>,
+        events_dir: Option<PathBuf>,
         init_warmup_time: Option<u64>,
         withdraw_on_disconnect: bool,
     ) -> Result<Self> {
-        if !coordinator.config.check() {
-            bail!("Coordinator sanity check failed");
-        }
-
         async {
             Self::reset_ephemeral(&mut coordinator);
 
@@ -276,6 +276,55 @@ impl App {
                 coordinator.config.warmup_time = init_warmup_time;
             }
 
+            let coordinator_writer = if let Some(ref dir) = events_dir {
+                let coordinator_dir = dir.join("coordinator");
+                std::fs::create_dir_all(&coordinator_dir)?;
+                let file_path = coordinator_dir.join("state.bin");
+                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Coordinator>();
+                let record_size = std::mem::size_of::<i64>() + std::mem::size_of::<Coordinator>();
+                tokio::spawn(async move {
+                    use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+                    let mut file = tokio::fs::OpenOptions::new()
+                        .create(true)
+                        .truncate(false)
+                        .write(true)
+                        .open(&file_path)
+                        .await
+                        .expect("failed to open coordinator state file");
+                    // Truncate any partial record left by a previous crash so
+                    // subsequent appends stay aligned to record boundaries.
+                    let len = file
+                        .metadata()
+                        .await
+                        .map(|m| m.len())
+                        .unwrap_or(0);
+                    let aligned = len - (len % record_size as u64);
+                    if aligned != len {
+                        tracing::warn!(
+                            "coordinator state.bin has {len} bytes, truncating to {aligned} to discard partial record"
+                        );
+                        file.set_len(aligned).await.ok();
+                    }
+                    file.seek(std::io::SeekFrom::End(0)).await.ok();
+                    while let Some(coord) = rx.recv().await {
+                        let timestamp = chrono::Utc::now().timestamp_millis();
+                        let mut buf = Vec::with_capacity(
+                            std::mem::size_of::<i64>()
+                                + std::mem::size_of::<Coordinator>(),
+                        );
+                        buf.extend_from_slice(&timestamp.to_le_bytes());
+                        buf.extend_from_slice(bytemuck::bytes_of(&coord));
+                        if let Err(e) = file.write_all(&buf).await {
+                            tracing::warn!("Failed to write coordinator record: {e}");
+                        }
+                        let _ = file.flush().await;
+                    }
+                });
+                Some(tx)
+            } else {
+                None
+            };
+
             Ok(Self {
                 cancel,
                 training_data_server,
@@ -288,6 +337,8 @@ impl App {
                     pending_clients: HashSet::new(),
                 },
                 save_state_dir,
+                coordinator_writer,
+                last_coordinator_hash: 0,
                 original_warmup_time,
                 withdraw_on_disconnect,
                 pause,
@@ -513,6 +564,15 @@ impl App {
             }
             if let Some((ref sender, _)) = self.training_data_server {
                 sender.send(self.coordinator).await.unwrap();
+            }
+        }
+        if let Some(ref writer) = self.coordinator_writer {
+            let mut hasher = DefaultHasher::new();
+            hasher.write(bytemuck::bytes_of(&self.coordinator));
+            let hash = hasher.finish();
+            if hash != self.last_coordinator_hash {
+                self.last_coordinator_hash = hash;
+                let _ = writer.send(self.coordinator);
             }
         }
     }
