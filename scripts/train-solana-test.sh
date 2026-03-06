@@ -22,7 +22,7 @@ fi
 
 RPC=${RPC:-"https://api.devnet.solana.com"}
 WS_RPC=${WS_RPC:-"wss://api.devnet.solana.com"}
-RUN_ID="my-run"
+RUN_ID="llam2-20m"
 AUTHORIZER=${AUTHORIZER:-"11111111111111111111111111111111"}
 
 # presets for a DGX or an HGX
@@ -46,7 +46,7 @@ if [[ "$OTLP_METRICS_URL" == "" ]]; then
         --data-parallelism ${DP} \
         --tensor-parallelism ${TP} \
         --micro-batch-size ${BATCH_SIZE} \
-        --gcs-bucket "my-run" \
+        --gcs-bucket "llama2-20m" \
         --checkpoint-dir "/tmp/checkpoint-test" \
         --authorizer ${AUTHORIZER} \
         --logs "console" \
