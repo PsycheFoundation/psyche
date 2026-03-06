@@ -28,6 +28,7 @@ use psyche_solana_tooling::process_coordinator_instructions::process_coordinator
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_set_paused;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_tick;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_witness;
+use psyche_solana_tooling::process_coordinator_instructions::process_data_locations_update;
 use psyche_solana_tooling::process_coordinator_instructions::process_update;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
@@ -112,7 +113,6 @@ pub async fn run() {
             checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
             max_seq_len: 4096,
             data_type: LLMTrainingDataType::Pretraining,
-            data_location: LLMTrainingDataLocation::default(),
             lr_schedule: LearningRateSchedule::Constant(ConstantLR::default()),
             optimizer: OptimizerDefinition::Distro {
                 clip_grad_norm: None,
@@ -125,6 +125,17 @@ pub async fn run() {
             cold_start_warmup_steps: 0,
         })),
         None, // no explicit progress
+    )
+    .await
+    .unwrap();
+
+    process_data_locations_update(
+        &mut endpoint,
+        &payer,
+        &main_authority,
+        &coordinator_instance,
+        &coordinator_account,
+        Some(LLMTrainingDataLocation::default()),
     )
     .await
     .unwrap();

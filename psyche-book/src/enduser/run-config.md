@@ -69,6 +69,10 @@ total_steps = 25000
 architecture = "HfLlama"
 data_type = "Pretraining"
 max_seq_len = 2048
+# You may define more than one data location, to use as backup
+data_locations = [
+    { Http = { location = { Gcp = { bucket_name = "nous-pretraining-public-us", filter_directory = "fineweb-edu-tokenized-llama2" } }, token_size_in_bytes = "TwoBytes", shuffle = "DontShuffle" } }
+]
 
 [model.LLM.checkpoint.Hub]
 # Repo where the model is located in HugggingFace, will be used to download the model at the beginning of training.
