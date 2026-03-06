@@ -43,11 +43,11 @@ struct CliArgs {
     max_concurrent_downloads: usize,
 
     /// Discovery mode: "local" or "n0"
-    #[clap(long, default_value = "n0")]
+    #[clap(long, default_value = "local")]
     discovery_mode: String,
 
     /// Relay kind: "disabled", "psyche", or "n0"
-    #[clap(long, default_value = "n0")]
+    #[clap(long, default_value = "psyche")]
     relay_kind: String,
 
     /// Number of sharers that should be slow (throttled). These will be the last N sharers.
@@ -268,6 +268,7 @@ async fn run_downloader(
     sharer_ids: Vec<EndpointId>,
     expected_param_count: usize,
     max_concurrent: usize,
+    param_size_bytes: usize,
     cancel: CancellationToken,
 ) -> Result<DownloaderReport> {
     let endpoint_id = network.endpoint_id();
@@ -446,37 +447,69 @@ async fn run_downloader(
                 }
             }
             event = network.poll_next() => {
-                // Extract hash and tag from either success or failure
-                let (hash, tag_str) = match &event {
-                    Ok(Some(NetworkEvent::DownloadComplete(r))) => (Some(r.hash), None),
-                    // FakeStore blobs are raw zeros, so deserialization fails after
-                    // a successful transfer. Bandwidth is still tracked correctly.
-                    Ok(Some(NetworkEvent::DownloadFailed(f))) => {
-                        (Some(f.blob_ticket.hash()), Some(f.tag.to_string()))
-                    }
-                    _ => (None, None),
-                };
-
-                if let Some(hash) = hash {
-                    if let Some(flight) = in_flight.get_mut(&hash).and_then(|v| v.pop()) {
-                        let tag_to_delete = record_completion(
-                            flight, endpoint_id,
-                            &mut completed, &mut param_reports,
-                        );
-                        let tag = tag_str.unwrap_or(tag_to_delete);
-                        if let Err(e) = network.delete_tag(&tag).await {
-                            warn!("Failed to delete tag {tag}: {e}");
-                        }
-
-                        if completed % 10 == 0 || completed == expected_param_count {
-                            print_peer_status(
-                                &connection_monitor,
-                                &format!("Downloader {endpoint_id} {completed}/{expected_param_count}"),
+                match &event {
+                    Ok(Some(NetworkEvent::DownloadComplete(r))) => {
+                        let hash = r.hash;
+                        if let Some(flight) = in_flight.get_mut(&hash).and_then(|v| v.pop()) {
+                            let tag_to_delete = record_completion(
+                                flight, endpoint_id,
+                                &mut completed, &mut param_reports,
                             );
+                            if let Err(e) = network.delete_tag(&tag_to_delete).await {
+                                warn!("Failed to delete tag {tag_to_delete}: {e}");
+                            }
                         }
                     }
-                } else if let Err(e) = event {
-                    error!("Downloader {endpoint_id}: network error: {e:#}");
+                    Ok(Some(NetworkEvent::DownloadFailed(f))) => {
+                        let hash = f.blob_ticket.hash();
+                        let tag = f.tag.to_string();
+                        if let Some(flight) = in_flight.get_mut(&hash).and_then(|v| v.pop()) {
+                            if f.transfer_failed {
+                                // Real failure (timeout, network error) — re-queue for retry
+                                warn!(
+                                    "Downloader {endpoint_id}: transfer failed for '{}' from {}, re-queuing",
+                                    flight.name, flight.peer_id.fmt_short(),
+                                );
+                                // Push to work queue BEFORE signaling done to avoid race where
+                                // the worker wakes up, sees empty queue, and exits.
+                                work_queue.lock().await.push(flight.name);
+                                let _ = flight.done_tx.send(true);
+                            } else {
+                                // Deserialization error — transfer succeeded (FakeStore data can't deserialize).
+                                // Restore bandwidth since the core sets it to 0 on any DownloadFailed.
+                                let peer_id = f.blob_ticket.addr().id;
+                                let elapsed = flight.start_time.elapsed().as_secs_f64();
+                                if elapsed > 0.0 {
+                                    let bw = param_size_bytes as f64 / elapsed;
+                                    network.connection_monitor().update_peer_bandwidth(
+                                        &peer_id,
+                                        PeerBandwidth::Measured(bw),
+                                    );
+                                }
+                                record_completion(
+                                    flight, endpoint_id,
+                                    &mut completed, &mut param_reports,
+                                );
+                            }
+                            if let Err(e) = network.delete_tag(&tag).await {
+                                warn!("Failed to delete tag {tag}: {e}");
+                            }
+                        }
+                    }
+                    Ok(Some(_)) => {}
+                    Ok(None) => {}
+                    Err(e) => {
+                        error!("Downloader {endpoint_id}: network error: {e:#}");
+                    }
+                }
+
+                if completed % 10 == 0 || completed == expected_param_count {
+                    if completed > 0 {
+                        print_peer_status(
+                            &connection_monitor,
+                            &format!("Downloader {endpoint_id} {completed}/{expected_param_count}"),
+                        );
+                    }
                 }
             }
         }
@@ -603,49 +636,39 @@ async fn main() -> Result<()> {
 
     let cancel = CancellationToken::new();
     let num_fast = args.num_sharers.saturating_sub(args.slow_sharers);
-    let num_slow = args.slow_sharers.min(args.num_sharers);
-
-    let fast_store = FakeStore::builder()
-        .with_unique_blobs(args.num_parameters, param_size_bytes as u64)
-        .build();
-
-    let slow_store = if num_slow > 0 {
-        Some(
-            FakeStore::builder()
-                .with_unique_blobs(args.num_parameters, param_size_bytes as u64)
-                .with_throttle(
-                    std::num::NonZeroU64::new(args.slow_sharer_rate_kb * 1024)
-                        .expect("slow_sharer_rate_kb must be > 0"),
-                )
-                .build(),
-        )
-    } else {
-        None
-    };
 
     let mut sharer_handles = Vec::new();
     let mut sharer_ids = Vec::new();
 
     for i in 0..args.num_sharers {
         let is_slow = i >= num_fast;
+        // Each sharer gets its own FakeStore to avoid shared-state issues
+        // (e.g. config blob contaminating hash listings for other sharers).
         let store = if is_slow {
-            slow_store.as_ref().unwrap()
+            FakeStore::builder()
+                .with_unique_blobs(args.num_parameters, param_size_bytes as u64)
+                .with_throttle(
+                    std::num::NonZeroU64::new(args.slow_sharer_rate_kb * 1024)
+                        .expect("slow_sharer_rate_kb must be > 0"),
+                )
+                .build()
         } else {
-            &fast_store
+            FakeStore::builder()
+                .with_unique_blobs(args.num_parameters, param_size_bytes as u64)
+                .build()
         };
         let label = if is_slow {
             format!("Sharer-{i}-SLOW")
         } else {
             format!("Sharer-{i}")
         };
-        let network = create_peer(&label, discovery_mode, relay_kind, Some(store)).await?;
+        let network = create_peer(&label, discovery_mode, relay_kind, Some(&store)).await?;
         sharer_ids.push(network.endpoint_id());
 
         let param_names = param_names.clone();
         let cancel = cancel.clone();
-        let fs = store.clone();
         sharer_handles.push(tokio::spawn(async move {
-            run_sharer(network, fs, param_names, param_size_bytes, cancel).await
+            run_sharer(network, store, param_names, param_size_bytes, cancel).await
         }));
     }
 
@@ -660,7 +683,15 @@ async fn main() -> Result<()> {
         let expected = args.num_parameters;
         let max_concurrent = args.max_concurrent_downloads;
         downloader_handles.push(tokio::spawn(async move {
-            run_downloader(network, sharer_ids, expected, max_concurrent, cancel).await
+            run_downloader(
+                network,
+                sharer_ids,
+                expected,
+                max_concurrent,
+                param_size_bytes,
+                cancel,
+            )
+            .await
         }));
     }
 
