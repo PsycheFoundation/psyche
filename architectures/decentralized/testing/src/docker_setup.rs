@@ -75,6 +75,7 @@ pub async fn e2e_testing_setup_with_datasource(
         init_num_clients,
         data_source,
         None,
+        None,
     )
     .await
 }
@@ -88,6 +89,7 @@ pub async fn e2e_testing_setup_with_min(
     min_clients: usize,
     data_source: Option<Vec<LLMTrainingDataLocation>>,
     owner_keypair_path: Option<&Path>,
+    waiting_for_members_extra_time: Option<u32>,
 ) -> DockerTestCleanup {
     remove_old_client_containers(docker_client).await;
 
@@ -96,6 +98,7 @@ pub async fn e2e_testing_setup_with_min(
         data_source,
         min_clients,
         owner_keypair_path,
+        waiting_for_members_extra_time,
     )
     .unwrap();
 
@@ -298,7 +301,7 @@ pub fn spawn_psyche_network(
     init_num_clients: usize,
     data_source: Option<Vec<LLMTrainingDataLocation>>,
 ) -> Result<(), DockerWatcherError> {
-    spawn_psyche_network_with_min(init_num_clients, data_source, init_num_clients, None)
+    spawn_psyche_network_with_min(init_num_clients, data_source, init_num_clients, None, None)
 }
 
 /// Spawn the psyche network with explicit min_clients and optional owner keypair.
@@ -307,22 +310,26 @@ pub fn spawn_psyche_network_with_min(
     data_source: Option<Vec<LLMTrainingDataLocation>>,
     min_clients: usize,
     owner_keypair_path: Option<&Path>,
+    waiting_for_members_extra_time: Option<u32>,
 ) -> Result<(), DockerWatcherError> {
     #[cfg(not(feature = "python"))]
-    let config_file_path = ConfigBuilder::new()
+    let mut builder = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
         .with_data_source(data_source)
-        .with_min_clients(min_clients)
-        .build();
-
+        .with_min_clients(min_clients);
     #[cfg(feature = "python")]
-    let config_file_path = ConfigBuilder::new()
+    let mut builder = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
         .with_data_source(data_source)
         .with_min_clients(min_clients)
         .with_architecture("HfAuto")
-        .with_batch_size(8 * std::cmp::max(init_num_clients, 1) as u32)
-        .build();
+        .with_batch_size(8 * std::cmp::max(init_num_clients, 1) as u32);
+
+    if let Some(time) = waiting_for_members_extra_time {
+        builder = builder.with_waiting_for_members_extra_time(time);
+    }
+
+    let config_file_path = builder.build();
 
     println!("[+] Config file written to: {}", config_file_path.display());
 

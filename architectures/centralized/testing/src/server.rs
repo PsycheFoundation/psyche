@@ -2,14 +2,13 @@ use crate::{COOLDOWN_TIME, test_utils::sample_rand_run_id};
 use crate::{MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME, WARMUP_TIME};
 use bytemuck::Zeroable;
 use psyche_centralized_server::app::App as ServerApp;
-use psyche_centralized_shared::ClientId;
 use psyche_coordinator::model::LLMDataLocations;
 use psyche_coordinator::{Client, Round};
 use psyche_coordinator::{
     Coordinator, CoordinatorConfig, CoordinatorEpochState, RunState, SOLANA_MAX_NUM_CLIENTS,
     model::{Checkpoint, LLM, Model},
 };
-use psyche_core::FixedVec;
+use psyche_core::{FixedVec, NodeIdentity};
 use std::{collections::HashSet, mem::Discriminant, ops::ControlFlow};
 use tokio::{
     select,
@@ -22,13 +21,13 @@ use tracing::debug;
 
 enum TestingQueryMsg {
     Clients {
-        respond_to: oneshot::Sender<FixedVec<Client<ClientId>, SOLANA_MAX_NUM_CLIENTS>>,
+        respond_to: oneshot::Sender<FixedVec<Client, SOLANA_MAX_NUM_CLIENTS>>,
     },
     ClientsLen {
         respond_to: oneshot::Sender<usize>,
     },
     PendingClients {
-        respond_to: oneshot::Sender<HashSet<ClientId>>,
+        respond_to: oneshot::Sender<HashSet<NodeIdentity>>,
     },
     PendingClientsLen {
         respond_to: oneshot::Sender<usize>,
@@ -49,7 +48,7 @@ enum TestingQueryMsg {
         respond_to: oneshot::Sender<Checkpoint>,
     },
     Coordinator {
-        respond_to: oneshot::Sender<Coordinator<ClientId>>,
+        respond_to: oneshot::Sender<Coordinator>,
     },
 }
 
@@ -86,17 +85,17 @@ impl CoordinatorServer {
 
         let epoch_state = CoordinatorEpochState {
             first_round: true.into(),
-            ..CoordinatorEpochState::<ClientId>::zeroed()
+            ..CoordinatorEpochState::zeroed()
         };
 
         let run_id = sample_rand_run_id();
-        let coordinator: Coordinator<ClientId> = Coordinator {
+        let coordinator: Coordinator = Coordinator {
             run_id: run_id.as_str().try_into().unwrap(),
             model: Model::LLM(LLM::dummy()),
             config: coordinator_config,
             epoch_state,
             data_locations: LLMDataLocations::dummy(),
-            ..Coordinator::<ClientId>::zeroed()
+            ..Coordinator::zeroed()
         };
 
         debug!("ServerApp::new() waiting...");
@@ -229,7 +228,7 @@ impl CoordinatorServerHandle {
         }
     }
 
-    pub async fn get_clients(&self) -> FixedVec<Client<ClientId>, SOLANA_MAX_NUM_CLIENTS> {
+    pub async fn get_clients(&self) -> FixedVec<Client, SOLANA_MAX_NUM_CLIENTS> {
         let (send, recv) = oneshot::channel();
         let msg = TestingQueryMsg::Clients { respond_to: send };
         let _ = self.query_chan_sender.send(msg).await;
@@ -243,7 +242,7 @@ impl CoordinatorServerHandle {
         recv.await.expect("Coordinator actor task has been killed")
     }
 
-    pub async fn get_pending_clients(&self) -> HashSet<ClientId> {
+    pub async fn get_pending_clients(&self) -> HashSet<NodeIdentity> {
         let (send, recv) = oneshot::channel();
         let msg = TestingQueryMsg::PendingClients { respond_to: send };
         let _ = self.query_chan_sender.send(msg).await;
@@ -294,8 +293,8 @@ impl CoordinatorServerHandle {
         std::mem::discriminant(&checkpoint)
     }
 
-    pub async fn get_coordinator(&self) -> Coordinator<ClientId> {
-        let (send, recv) = oneshot::channel::<Coordinator<ClientId>>();
+    pub async fn get_coordinator(&self) -> Coordinator {
+        let (send, recv) = oneshot::channel::<Coordinator>();
         let msg = TestingQueryMsg::Coordinator { respond_to: send };
         let _ = self.query_chan_sender.send(msg).await;
         recv.await.expect("Coordinator actor task has been killed")

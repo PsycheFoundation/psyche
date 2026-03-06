@@ -12,7 +12,7 @@ use psyche_coordinator::{
     model::{Checkpoint, LLMTrainingDataLocation, Model},
 };
 use psyche_core::FixedVec;
-use psyche_solana_coordinator::{ClientId, SOLANA_MAX_NUM_PENDING_CLIENTS};
+use psyche_solana_coordinator::SOLANA_MAX_NUM_PENDING_CLIENTS;
 use std::env;
 use std::path::PathBuf;
 
@@ -96,7 +96,7 @@ impl SolanaTestClient {
 
     pub async fn get_current_epoch_clients(
         &self,
-    ) -> FixedVec<psyche_coordinator::Client<ClientId>, SOLANA_MAX_NUM_PENDING_CLIENTS> {
+    ) -> FixedVec<psyche_coordinator::Client, { psyche_coordinator::SOLANA_MAX_NUM_CLIENTS }> {
         let coordinator = self.get_coordinator_account().await;
         coordinator.state.coordinator.epoch_state.clients
     }
@@ -160,6 +160,7 @@ pub struct ConfigBuilder {
     batch_size: u32,
     architecture: String,
     data_source: Option<Vec<LLMTrainingDataLocation>>,
+    waiting_for_members_extra_time: Option<u32>,
 }
 
 impl Default for ConfigBuilder {
@@ -189,6 +190,7 @@ impl ConfigBuilder {
             batch_size: 4,
             architecture: String::from("HfLlama"),
             data_source: None,
+            waiting_for_members_extra_time: None,
         }
     }
 
@@ -218,6 +220,11 @@ impl ConfigBuilder {
         self
     }
 
+    pub fn with_waiting_for_members_extra_time(mut self, time: u32) -> Self {
+        self.waiting_for_members_extra_time = Some(time);
+        self
+    }
+
     pub fn build(mut self) -> PathBuf {
         // Use min_clients if set, otherwise default to num_clients
         let min_clients = self.min_clients.unwrap_or(self.num_clients);
@@ -241,6 +248,10 @@ impl ConfigBuilder {
         }
         #[cfg(feature = "python")]
         self.set_value("config.warmup_time", 100);
+
+        if let Some(time) = self.waiting_for_members_extra_time {
+            self.set_value("config.waiting_for_members_extra_time", time);
+        }
 
         let config_content = toml::to_string(&self.base_config).unwrap();
         let config_file_path = PathBuf::from("../../../config/solana-test/test-config.toml");

@@ -3,10 +3,8 @@ use psyche_coordinator::{Coordinator, get_batch_ids_for_node};
 use psyche_core::{BatchId, NodeIdentity};
 use psyche_data_provider::{DataProvider, TokenizedDataProvider};
 use psyche_modeling::{Batch, BatchData, BatchDataCPU};
-use psyche_network::AuthenticatableIdentity;
 use std::{
     collections::{BTreeMap, HashSet},
-    marker::PhantomData,
     sync::Arc,
     time::Duration,
 };
@@ -25,16 +23,15 @@ pub type BatchIdSet = HashSet<BatchId>;
 const MAX_RETRIES: u32 = 4;
 const BASE_DELAY_MS: u64 = 500;
 
-pub struct DataFetcher<T: NodeIdentity, A: AuthenticatableIdentity> {
-    data_providers: Vec<Arc<Mutex<DataProvider<A>>>>,
+pub struct DataFetcher {
+    data_providers: Vec<Arc<Mutex<DataProvider>>>,
     active_fetch_task: Option<(BatchStep, JoinHandle<()>)>,
     buffer_size: usize,
-    last_successful_provider_idx: Arc<Mutex<usize>>, // Store the index of the last successful provider
-    _phantom: PhantomData<T>,
+    last_successful_provider_idx: Arc<Mutex<usize>>,
 }
 
-impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
-    pub fn new(data_providers: Vec<DataProvider<A>>, buffer_size: usize) -> Result<Self> {
+impl DataFetcher {
+    pub fn new(data_providers: Vec<DataProvider>, buffer_size: usize) -> Result<Self> {
         if data_providers.is_empty() {
             bail!("Must provide at least one data provider");
         }
@@ -45,16 +42,15 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
                 .collect(),
             active_fetch_task: None,
             buffer_size,
-            last_successful_provider_idx: Arc::new(Mutex::new(0)), // Start with the first provider
-            _phantom: Default::default(),
+            last_successful_provider_idx: Arc::new(Mutex::new(0)),
         })
     }
 
     pub fn fetch_data(
         &mut self,
-        state: &Coordinator<T>,
-        data_assignments: &BTreeMap<BatchId, T>,
-        identity: &T,
+        state: &Coordinator,
+        data_assignments: &BTreeMap<BatchId, NodeIdentity>,
+        identity: &NodeIdentity,
     ) -> TrainingDataForStep {
         let step = state.progress.step;
 
