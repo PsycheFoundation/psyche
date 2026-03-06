@@ -20,7 +20,6 @@ pub trait LearningRateScheduler: Send + Sync {
     Debug,
     Zeroable,
     Copy,
-    PartialEq,
     TS,
 )]
 #[repr(C)]
@@ -70,7 +69,6 @@ impl LearningRateScheduler for ConstantLR {
     Debug,
     Zeroable,
     Copy,
-    PartialEq,
     TS,
 )]
 #[repr(C)]
@@ -197,7 +195,6 @@ impl LearningRateScheduler for CosineLR {
     Debug,
     Zeroable,
     Copy,
-    PartialEq,
     TS,
 )]
 #[repr(C)]
@@ -286,7 +283,6 @@ impl LearningRateScheduler for WarmupStableDecayLR {
     Debug,
     Zeroable,
     Copy,
-    PartialEq,
     TS,
 )]
 #[repr(C)]
@@ -354,7 +350,6 @@ impl From<ConstantLR> for LearningRateSchedule {
     Debug,
     Zeroable,
     Copy,
-    PartialEq,
     TS,
 )]
 #[repr(C)]

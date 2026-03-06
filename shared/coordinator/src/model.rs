@@ -10,16 +10,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 #[derive(
-    Clone,
-    Debug,
-    Copy,
-    Zeroable,
-    AnchorDeserialize,
-    AnchorSerialize,
-    Serialize,
-    Deserialize,
-    PartialEq,
-    TS,
+    Clone, Debug, Copy, Zeroable, AnchorDeserialize, AnchorSerialize, Serialize, Deserialize, TS,
 )]
 #[repr(C)]
 pub enum Model {
@@ -89,7 +80,6 @@ pub enum LLMTrainingDataType {
     Debug,
     Zeroable,
     Copy,
-    PartialEq,
     TS,
 )]
 #[repr(C)]
@@ -116,7 +106,6 @@ pub enum LLMTrainingDataLocation {
     Debug,
     Zeroable,
     Copy,
-    PartialEq,
     TS,
 )]
 #[repr(C)]
@@ -171,7 +160,6 @@ impl LLMTrainingDataLocationAndWeight {
     Debug,
     Zeroable,
     Copy,
-    PartialEq,
     TS,
 )]
 #[repr(C)]
@@ -193,16 +181,7 @@ pub enum HttpTrainingDataLocation {
 }
 
 #[derive(
-    AnchorSerialize,
-    AnchorDeserialize,
-    Serialize,
-    Deserialize,
-    Clone,
-    Debug,
-    Zeroable,
-    Copy,
-    PartialEq,
-    TS,
+    AnchorSerialize, AnchorDeserialize, Serialize, Deserialize, Clone, Debug, Zeroable, Copy, TS,
 )]
 #[repr(C)]
 pub struct LLM {
@@ -283,7 +262,6 @@ impl GcsRepo {
     Debug,
     Zeroable,
     Copy,
-    PartialEq,
     TS,
 )]
 #[repr(C)]
