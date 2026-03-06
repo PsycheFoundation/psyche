@@ -143,7 +143,6 @@ pub async fn upload_to_gcs_signed(
 }
 
 /// Download parallelism_data.json from GCS via signed URLs.
-/// Returns the JSON content as a string.
 pub async fn download_parallelism_data_from_gcs_signed(
     run_down: &RunDownClient,
 ) -> Result<String, DownloadError> {

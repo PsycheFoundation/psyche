@@ -122,19 +122,29 @@ though you might need to.
 
 **`NVIDIA_DRIVER_CAPABILITIES`** - An environment variable that the NVIDIA Container Toolkit uses to determine which compute capabilities should be provided to your container. It is recommended to set it to 'all', e.g. `NVIDIA_DRIVER_CAPABILITIES=all`.
 
+**`PARALLELISM_AUTO`** - Set to `true` to automatically detect optimal parallelism settings based on your GPU hardware.
+
+- When enabled, the client fetches a `parallelism_data.json` lookup table from the model's GCS bucket and picks the best `DATA_PARALLELISM`, `TENSOR_PARALLELISM`, and `MICRO_BATCH_SIZE` for your GPU type and count
+- Your GPU type and count must be present in the lookup table
+- This is the recommended option for most users
+- If set, manual parallelism settings below will be ignored
+
 **`DATA_PARALLELISM`** - Number of GPUs to distribute training data across.
 
 - If you have multiple GPUs, you can set this to 2, 4, etc. to speed up training
 - If you have 1 GPU, set this to `1`
+- Ignored if `PARALLELISM_AUTO=true`
 
 **`TENSOR_PARALLELISM`** - Number of GPUs to distribute the model across, this lets you train a model you can't fit on one single GPU.
 
 - If you have 1 GPU, set this to `1`
 - If your have `n` GPUs you can distribute the model across all of them by setting it to `n`.
+- Ignored if `PARALLELISM_AUTO=true`
 
 **`MICRO_BATCH_SIZE`** - Number of samples processed per GPU per training step
 
 - Set as high as your GPU memory allows
+- Ignored if `PARALLELISM_AUTO=true`
 
 **`AUTHORIZER`** - The Solana address that authorized your wallet to join this run
 

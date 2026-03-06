@@ -223,13 +223,19 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                 );
             }
 
-            let config = parallelism_lookup::lookup(
-                &llm.checkpoint,
-                init_config.checkpoint_config.run_down_client.as_ref(),
-                init_config.hub_read_token.as_deref(),
-            )
-            .await
-            .map_err(InitRunError::ParallelismLookupFailed)?;
+            let run_down_client = init_config
+                .checkpoint_config
+                .run_down_client
+                .as_ref()
+                .ok_or_else(|| {
+                    InitRunError::ParallelismLookupFailed(anyhow::anyhow!(
+                        "--parallelism-auto requires a GCS checkpoint type with run-down service"
+                    ))
+                })?;
+
+            let config = parallelism_lookup::lookup(run_down_client)
+                .await
+                .map_err(InitRunError::ParallelismLookupFailed)?;
 
             info!(
                 "Parallelism auto-detected: dp={}, tp={}, micro_batch_size={}",

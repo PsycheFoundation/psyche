@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 use nvml_wrapper::Nvml;
-use psyche_coordinator::model;
-use psyche_data_provider::{download_parallelism_data_from_gcs_signed, RunDownClient};
+use psyche_data_provider::{RunDownClient, download_parallelism_data_from_gcs_signed};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -14,17 +13,9 @@ pub struct ParallelismConfig {
     pub micro_batch_size: usize,
 }
 
-// Table format: gpu_type -> num_gpus -> config
 type Table = HashMap<String, HashMap<String, ParallelismConfig>>;
 
-/// Auto-detect parallelism settings by downloading parallelism_data.json
-/// from GCS (via signed URLs) or HuggingFace, then looking up the config
-/// for the detected GPU type and count.
-pub async fn lookup(
-    checkpoint: &model::Checkpoint,
-    run_down_client: Option<&Arc<RunDownClient>>,
-    hub_read_token: Option<&str>,
-) -> Result<ParallelismConfig> {
+pub async fn lookup(run_down_client: &Arc<RunDownClient>) -> Result<ParallelismConfig> {
     let device_count = tch::Cuda::device_count() as usize;
     if device_count == 0 {
         anyhow::bail!("No GPUs found for parallelism auto-detection");
@@ -33,7 +24,14 @@ pub async fn lookup(
     let gpu_type = normalize_gpu_name(&get_gpu_type_from_nvml()?);
     info!("Detected {} x {} GPU(s)", device_count, gpu_type);
 
-    let json = download_parallelism_data(checkpoint, run_down_client, hub_read_token).await?;
+    info!(
+        "Fetching parallelism_data.json from GCS via run-down signed URLs for run {}",
+        run_down_client.run_id()
+    );
+    let json = download_parallelism_data_from_gcs_signed(run_down_client)
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
     let table: Table =
         serde_json::from_str(&json).context("Failed to parse parallelism_data.json")?;
 
@@ -54,66 +52,9 @@ fn normalize_gpu_name(raw_name: &str) -> String {
         "H200".to_string()
     } else if upper.contains("H100") {
         "H100".to_string()
-    } else if upper.contains("A100") {
-        "A100".to_string()
-    } else if upper.contains("L40S") {
-        "L40S".to_string()
-    } else if upper.contains("L40") {
-        "L40".to_string()
-    } else if upper.contains("4090") {
-        "RTX4090".to_string()
-    } else if upper.contains("3090") {
-        "RTX3090".to_string()
     } else {
         raw_name.to_string()
     }
-}
-
-async fn download_parallelism_data(
-    checkpoint: &model::Checkpoint,
-    run_down_client: Option<&Arc<RunDownClient>>,
-    hub_read_token: Option<&str>,
-) -> Result<String> {
-    match checkpoint {
-        model::Checkpoint::Gcs(_) | model::Checkpoint::P2PGcs(_) => {
-            let client = run_down_client
-                .ok_or_else(|| anyhow::anyhow!("RunDownClient required for GCS parallelism lookup"))?;
-            info!(
-                "Fetching parallelism_data.json from GCS via run-down signed URLs for run {}",
-                client.run_id()
-            );
-            download_parallelism_data_from_gcs_signed(client)
-                .await
-                .map_err(|e| anyhow::anyhow!("{}", e))
-        }
-        model::Checkpoint::Hub(hub_repo) | model::Checkpoint::P2P(hub_repo) => {
-            let repo_id: String = (&hub_repo.repo_id).into();
-            info!(
-                "Fetching parallelism_data.json from HuggingFace repo '{}'",
-                repo_id
-            );
-            download_from_hub(&repo_id, hub_read_token).await
-        }
-        _ => anyhow::bail!("Parallelism auto-detection requires Hub or GCS checkpoint type"),
-    }
-}
-
-async fn download_from_hub(repo_id: &str, token: Option<&str>) -> Result<String> {
-    let mut builder = hf_hub::api::tokio::ApiBuilder::new();
-    if let Some(token) = token {
-        builder = builder.with_token(Some(token.to_string()));
-    }
-    let api = builder.build()?;
-    let repo = api.model(repo_id.to_string());
-    let path = repo.get("parallelism_data.json").await.with_context(|| {
-        format!(
-            "parallelism_data.json not found in HuggingFace repo '{}'",
-            repo_id
-        )
-    })?;
-    tokio::fs::read_to_string(path)
-        .await
-        .context("Failed to read parallelism_data.json")
 }
 
 fn lookup_in_table(table: &Table, gpu_type: &str, num_gpus: usize) -> Result<ParallelismConfig> {
