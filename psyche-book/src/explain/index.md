@@ -8,7 +8,7 @@ The core system is composed of three main actors:
 
 - **[Data Provider](./data-provider.md)**: Each run requires training data. This data could be served by the Psyche Data Provider server, over HTTP, or loaded from local copies of a dataset.
 
-Psyche provides two different implementations of the network, one for [decentralized](./general-workflow.md#decentralized-backend) runs that use the Solana Blockchain with the coordinator running in it and another for [centralized](./general-workflow.md#centralized-backend) runs that use the Coordinator as a regular TCP server and mostly is mostly used to test local runs and as a dev oriented tool.
+Psyche provides two different implementations of the network, one for [decentralized](./general-workflow.md#decentralized-backend) runs that use the Solana Blockchain with the coordinator running in it and another for [centralized](./general-workflow.md#centralized-backend) runs that use the Coordinator as a regular TCP server and is mostly used to test local runs and as a dev oriented tool.
 
 ## Sample topologies
 
