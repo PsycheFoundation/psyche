@@ -15,8 +15,7 @@ To install Nix, simply run the `./setup-nix.sh` script. This will install Nix an
 
 ##### Binary cache
 
-If you already have Nix installed, or are installing it manually,
-To speed up your builds & your local dev shell, we recommend enabling the binary cache from `garnix`, our CI provider.
+To speed up your builds and your local dev shell, we recommend enabling the binary cache from `garnix`, our CI provider.
 
 In order to use the cache that garnix provides, change your `nix.conf`, adding `https://cache.garnix.io` to substituters, and `cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g=` to `trusted-public-keys`.
 
