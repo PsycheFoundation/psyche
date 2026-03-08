@@ -35,31 +35,20 @@
             name = "solana-test-${testName}";
             runtimeInputs = with pkgs; [
               docker
-              rootlesskit
-              slirp4netns
               just
               inputs.solana-pkgs.packages.${system}.solana
               self'.packages.run-manager
               testBinary
               coreutils
               gnugrep
-              iproute2
-              iptables
             ];
             text = ''
-              echo "starting rootless docker"
-
-              XDG_RUNTIME_DIR="$(mktemp -d)"
-              export XDG_RUNTIME_DIR
-              dockerd-rootless \
-                --host "unix://$XDG_RUNTIME_DIR/docker.sock" &
-              ROOTLESSKIT_PID=$!
-
-              export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
+              echo "starting docker daemon"
+              dockerd &
+              DOCKERD_PID=$!
 
               cleanup() {
-                kill "$ROOTLESSKIT_PID" 2>/dev/null || true
-                rm -rf "$XDG_RUNTIME_DIR" 2>/dev/null || true
+                kill "$DOCKERD_PID" 2>/dev/null || true
               }
               trap cleanup EXIT
 
