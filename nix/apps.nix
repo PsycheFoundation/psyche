@@ -71,6 +71,8 @@
               echo "running test from repo root"
               cd architectures/decentralized/testing
               test-psyche-decentralized-testing-integration_tests --nocapture "${testName}"
+              echo "DEBUG: test exited with $?"
+              exit 1
             '';
           };
         in
