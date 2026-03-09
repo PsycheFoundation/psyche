@@ -17,7 +17,7 @@ use iroh_gossip::{
     net::Gossip,
     proto::{HyparviewConfig, PlumtreeConfig},
 };
-use iroh_services::{ApiSecret, caps::NetDiagnosticsCap};
+use iroh_services::{API_SECRET_ENV_VAR_NAME, ApiSecret, caps::NetDiagnosticsCap};
 use n0_future::task::AbortOnDropHandle;
 pub use p2p_model_sharing::{
     MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
@@ -102,8 +102,6 @@ use crate::p2p_model_sharing::ModelSharing;
 
 const USE_RELAY_HOSTNAME: &str = "use1-1.relay.nousresearch.psyche.iroh.link";
 const USW_RELAY_HOSTNAME: &str = "usw1-1.relay.nousresearch.psyche.iroh.link";
-
-const API_SECRET_ENV_VAR_NAME: &str = "N0DES_API_SECRET";
 
 /// How should this node discover other nodes?
 ///
