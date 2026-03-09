@@ -24,6 +24,39 @@
         "test_solana_rpc_fallback"
       ];
 
+      # Common podman setup for garnix actions:
+      # - creates containers policy.json
+      # - starts podman API service (for docker-compose / Bollard)
+      # - creates docker->podman symlink
+      # - sets DOCKER_HOST
+      podmanSetup = ''
+        mkdir -p /etc/containers
+        echo '{"default":[{"type":"insecureAcceptAnything"}]}' > /etc/containers/policy.json
+
+        export DOCKER_HOST="unix:///run/podman/podman.sock"
+
+        mkdir -p /run/podman
+        podman system service --time=0 "$DOCKER_HOST" &
+        PODMAN_PID=$!
+        trap 'kill "$PODMAN_PID" 2>/dev/null || true' EXIT
+        for i in $(seq 1 10); do
+          if [ -S /run/podman/podman.sock ]; then
+            break
+          fi
+          sleep 1
+        done
+
+        mkdir -p /tmp/docker-compat/bin
+        ln -sf "$(command -v podman)" /tmp/docker-compat/bin/docker
+        export PATH="/tmp/docker-compat/bin:$PATH"
+      '';
+
+      podmanRuntimeInputs = with pkgs; [
+        podman
+        docker-compose
+        coreutils
+      ];
+
       mkTestApp =
         testName:
         let
@@ -33,43 +66,16 @@
 
           script = pkgs.writeShellApplication {
             name = "solana-test-${testName}";
-            runtimeInputs = with pkgs; [
-              podman
-              docker-compose
-              inputs.solana-pkgs.packages.${system}.solana
-              self'.packages.run-manager
-              testBinary
-              coreutils
-              gnugrep
-            ];
+            runtimeInputs =
+              podmanRuntimeInputs
+              ++ (with pkgs; [
+                inputs.solana-pkgs.packages.${system}.solana
+                self'.packages.run-manager
+                testBinary
+                gnugrep
+              ]);
             text = ''
-              # Podman needs a containers policy to accept images
-              mkdir -p /etc/containers
-              echo '{"default":[{"type":"insecureAcceptAnything"}]}' > /etc/containers/policy.json
-
-              # Podman needs a containers policy to accept images
-              mkdir -p /etc/containers
-              echo '{"default":[{"type":"insecureAcceptAnything"}]}' > /etc/containers/policy.json
-
-              # Point Bollard (Docker client) at podman's socket
-              export DOCKER_HOST="unix:///run/podman/podman.sock"
-
-              # Start podman API service for docker-compose and Bollard
-              mkdir -p /run/podman
-              podman system service --time=0 "$DOCKER_HOST" &
-              PODMAN_PID=$!
-              trap 'kill "$PODMAN_PID" 2>/dev/null || true' EXIT
-              for i in $(seq 1 10); do
-                if [ -S /run/podman/podman.sock ]; then
-                  break
-                fi
-                sleep 1
-              done
-
-              # Make podman available as "docker" for docker-compose and scripts
-              mkdir -p /tmp/docker-compat/bin
-              ln -sf "$(command -v podman)" /tmp/docker-compat/bin/docker
-              export PATH="/tmp/docker-compat/bin:$PATH"
+              ${podmanSetup}
 
               echo "loading images"
               ${validatorImage} | podman load
@@ -86,43 +92,16 @@
           program = lib.getExe script;
         };
 
-      # Debug/probe action to understand the garnix VM environment
+      # Debug/probe action to test podman + compose on garnix
       probeApp =
         let
           script = pkgs.writeShellApplication {
             name = "probe-garnix-env";
-            runtimeInputs = with pkgs; [
-              coreutils
-              podman
-              docker-compose
-            ];
+            runtimeInputs = podmanRuntimeInputs;
             text = ''
-              mkdir -p /etc/containers
-              echo '{"default":[{"type":"insecureAcceptAnything"}]}' > /etc/containers/policy.json
-
-              export DOCKER_HOST="unix:///run/podman/podman.sock"
-
-              mkdir -p /tmp/docker-compat/bin
-              ln -sf "$(command -v podman)" /tmp/docker-compat/bin/docker
-              export PATH="/tmp/docker-compat/bin:$PATH"
+              ${podmanSetup}
 
               echo "=== PODMAN + COMPOSE TEST ==="
-
-              echo "--- starting podman API service ---"
-              mkdir -p /run/podman
-              podman system service --time=0 "unix:///run/podman/podman.sock" &
-              PODMAN_PID=$!
-              trap 'kill "$PODMAN_PID" 2>/dev/null || true' EXIT
-              for i in $(seq 1 10); do
-                if [ -S /run/podman/podman.sock ]; then
-                  echo "podman socket ready"
-                  break
-                fi
-                echo "waiting for podman socket... ($i)"
-                sleep 1
-              done
-              ls -la /run/podman/ 2>&1 || true
-              docker info 2>&1 | head -5 || true
 
               echo "--- loading validator image ---"
               ${self'.packages.docker-psyche-solana-test-validator} | podman load
