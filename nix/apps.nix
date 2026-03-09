@@ -39,7 +39,7 @@
         podman system service --time=0 "$DOCKER_HOST" &
         PODMAN_PID=$!
         trap 'kill "$PODMAN_PID" 2>/dev/null || true' EXIT
-        for i in $(seq 1 10); do
+        for _i in $(seq 1 10); do
           if [ -S /run/podman/podman.sock ]; then
             break
           fi
