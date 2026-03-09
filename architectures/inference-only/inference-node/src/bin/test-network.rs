@@ -8,7 +8,6 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use iroh::EndpointAddr;
 use psyche_inference::InferenceGossipMessage;
 use psyche_metrics::ClientMetrics;
 use psyche_network::{DiscoveryMode, NetworkConnection, NetworkEvent, RelayKind, allowlist};
@@ -60,24 +59,10 @@ async fn main() -> Result<()> {
 
     let cancel = CancellationToken::new();
 
-    // Read bootstrap peer if provided
-    let bootstrap_peers = if let Some(ref peer_file) = args.bootstrap_peer_file {
-        if peer_file.exists() {
-            info!("Reading bootstrap peer from {:?}", peer_file);
-            let content =
-                fs::read_to_string(peer_file).context("Failed to read bootstrap peer file")?;
-            let endpoint_addr: EndpointAddr = serde_json::from_str(&content)
-                .context("Failed to parse bootstrap peer endpoint")?;
-            info!("Bootstrap peer: {}", endpoint_addr.id.fmt_short());
-            vec![endpoint_addr]
-        } else {
-            info!("Bootstrap peer file not found yet, starting without peers");
-            vec![]
-        }
-    } else {
-        info!("No bootstrap peer file specified");
-        vec![]
-    };
+    let bootstrap_peers = psyche_inference_node::load_bootstrap_peers(
+        args.bootstrap_peer_file.as_ref(),
+        "No bootstrap peer file specified",
+    )?;
 
     info!("Initializing P2P network...");
 
@@ -104,7 +89,7 @@ async fn main() -> Result<()> {
     info!("P2P network initialized");
     info!("  Endpoint ID: {}", network.endpoint_id());
 
-    // Write endpoint to file if requested
+    // write endpoint to file if requested
     if let Some(ref endpoint_file) = args.write_endpoint_file {
         let endpoint_addr = network.router().endpoint().addr();
         let content = serde_json::to_string(&endpoint_addr)
@@ -118,9 +103,13 @@ async fn main() -> Result<()> {
     sleep(Duration::from_secs(3)).await;
 
     let availability_msg = InferenceGossipMessage::NodeAvailable {
-        model_name: format!("test-model-{}", args.node_id),
+        model_name: Some(format!("test-model-{}", args.node_id)),
         checkpoint_id: None,
         capabilities: vec!["test".to_string()],
+        timestamp_ms: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64,
     };
 
     network
@@ -158,17 +147,21 @@ async fn main() -> Result<()> {
                 match event {
                     Ok(Some(NetworkEvent::MessageReceived((peer_id, msg)))) => {
                         match msg {
-                            InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities } => {
+                            InferenceGossipMessage::NodeAvailable { model_name, checkpoint_id, capabilities, timestamp_ms: _ } => {
                                 peer_count += 1;
                                 info!("PEER DISCOVERED!");
                                 info!("  Peer ID: {}", peer_id.fmt_short());
-                                info!("  Model: {}", model_name);
+                                info!("  Model: {}", model_name.as_deref().unwrap_or("<idle>"));
                                 info!("  Checkpoint: {:?}", checkpoint_id);
                                 info!("  Capabilities: {:?}", capabilities);
                                 info!("  Total peers seen: {}", peer_count);
                             }
                             InferenceGossipMessage::NodeUnavailable => {
                                 info!("Peer {} left the network", peer_id.fmt_short());
+                            }
+                            InferenceGossipMessage::LoadModel { model_name, model_source } => {
+                                info!("LoadModel request from {}: {} ({:?})",
+                                      peer_id.fmt_short(), model_name, model_source);
                             }
                             InferenceGossipMessage::ReloadCheckpoint { checkpoint_id, checkpoint_source } => {
                                 info!("Checkpoint reload request from {}: {} ({})",

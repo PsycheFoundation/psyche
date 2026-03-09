@@ -382,6 +382,22 @@ async function main() {
 		}
 	})
 
+	fastify.get<{
+		Querystring: { bucket: string; prefix?: string }
+	}>('/check-gcs-bucket', async (request) => {
+		const { bucket, prefix } = request.query
+		const path = prefix ? `${prefix}/` : ''
+		const url = `https://storage.googleapis.com/${bucket}/${path}manifest.json`
+		try {
+			const response = await fetch(url, { method: 'HEAD' })
+			return { isValid: response.ok, description: response.statusText }
+		} catch (error) {
+			const errorMessage =
+				error instanceof Error ? error.message : 'Unknown error'
+			return { isValid: false, description: errorMessage }
+		}
+	})
+
 	fastify.get('/status', async (_, res) => {
 		const data = {
 			commit: process.env.GITCOMMIT ?? '???',

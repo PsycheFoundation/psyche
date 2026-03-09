@@ -38,10 +38,10 @@ pub async fn run() {
     let run_update_params = RunUpdateParams {
         metadata: None,
         config: Some(CoordinatorConfig {
-            warmup_time: 99,
+            warmup_time: 10,
             cooldown_time: 88,
-            max_round_train_time: 888,
-            round_witness_time: 77,
+            max_round_train_time: 15,
+            round_witness_time: 10,
             min_clients: 1,
             init_min_clients: 1,
             global_batch_size_start: 1,

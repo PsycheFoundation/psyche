@@ -29,6 +29,7 @@ pub enum Response {
     SolanaSubscription(String, String),
     WitnessElected(String),
     Error(ObservedErrorKind, String),
+    RpcFallback(String, String),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -310,6 +311,22 @@ impl DockerWatcher {
                             println!("Probably the test ended so we drop the log sender");
                         }
                     }
+                    IntegrationTestLogMarker::RpcFallback => {
+                        let failed_rpc_index = parsed_log
+                            .get("failed_rpc_index")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0)
+                            .to_string();
+                        let error = parsed_log
+                            .get("error")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let response = Response::RpcFallback(failed_rpc_index, error);
+                        if log_sender.send(response).await.is_err() {
+                            println!("Probably the test ended so we drop the log sender");
+                        }
+                    }
                 }
             }
             Ok(())
@@ -346,10 +363,42 @@ impl DockerWatcher {
         let state = container.state.unwrap();
         match state.status {
             Some(bollard::secret::ContainerStateStatusEnum::DEAD)
-            | Some(bollard::secret::ContainerStateStatusEnum::EXITED) => Err(
-                DockerWatcherError::ClientCrashedError(container_name.to_string()),
-            ),
+            | Some(bollard::secret::ContainerStateStatusEnum::EXITED) => {
+                let logs = self.fetch_container_logs(container_name, 150).await;
+                eprintln!(
+                    "\n========== Last 150 lines from {} ==========",
+                    container_name
+                );
+                eprintln!("{}", logs);
+                eprintln!("========== End of logs ==========\n");
+
+                Err(DockerWatcherError::ClientCrashedError(
+                    container_name.to_string(),
+                ))
+            }
             _ => Ok(()),
         }
+    }
+
+    /// Fetch the last N lines of logs from a container
+    async fn fetch_container_logs(&self, container_name: &str, tail: usize) -> String {
+        let log_options = Some(LogsOptions::<String> {
+            stderr: true,
+            stdout: true,
+            follow: false,
+            tail: tail.to_string(),
+            ..Default::default()
+        });
+
+        let mut logs = self.client.logs(container_name, log_options);
+        let mut log_lines = Vec::new();
+
+        while let Some(log) = logs.next().await {
+            if let Ok(log) = log {
+                log_lines.push(log.to_string());
+            }
+        }
+
+        log_lines.join("\n")
     }
 }

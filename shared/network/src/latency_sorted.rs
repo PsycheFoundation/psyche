@@ -41,7 +41,8 @@ impl ContentDiscovery for LatencySorted {
             .map(|&node| {
                 let latency = self
                     .connection_monitor
-                    .get_latency(&node)
+                    .get_connection(&node)
+                    .and_then(|conn| conn.latency())
                     .unwrap_or(Duration::MAX); // Unknown nodes get max latency
 
                 debug!(

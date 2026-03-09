@@ -40,6 +40,9 @@
             packages =
               with pkgs;
               [
+                # to fix weird escapes
+                bashInteractive
+
                 # for local-testnet
                 tmux
                 nvtopPackages.full
@@ -62,8 +65,9 @@
                 pnpm
                 wasm-pack
 
-                # cargo stuff
+                # cargo devtools
                 cargo-watch
+                cargo-expand
                 cargo-nextest
 
                 self'.packages.solana-toolbox-cli
@@ -82,6 +86,7 @@
               ++ rustWorkspaceArgs.nativeBuildInputs;
 
             shellHook = ''
+              export SHELL=${pkgs.bashInteractive}/bin/bash
               source ${lib.getExe config.agenix-shell.installationScript}
               ${config.pre-commit.installationScript}
             ''

@@ -1,7 +1,6 @@
 mod iroh;
 
 use std::{
-    collections::HashMap,
     fmt::Display,
     sync::{Arc, Mutex, OnceLock},
     time::{Duration, Instant},
@@ -126,30 +125,27 @@ impl Drop for ClientMetrics {
     }
 }
 
-#[derive(Debug, Serialize, Clone, Copy, PartialEq)]
-pub enum ConnectionType {
-    None,
-    Direct,
-    Mixed,
-    Relay,
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub struct SelectedPath {
+    pub addr: String,
+    pub rtt: Duration,
 }
 
-impl Display for ConnectionType {
+impl Display for SelectedPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            ConnectionType::None => "none",
-            ConnectionType::Direct => "direct",
-            ConnectionType::Mixed => "mixed",
-            ConnectionType::Relay => "relay",
-        })
+        write!(f, "{} (rtt: {:?})", self.addr, self.rtt)
     }
 }
-
 #[derive(Debug, Serialize, Clone)]
 pub struct PeerConnection {
     pub endpoint_id: String,
-    pub connection_type: ConnectionType,
-    pub latency: f32,
+    pub selected_path: Option<SelectedPath>,
+}
+
+impl PeerConnection {
+    pub fn latency(&self) -> Option<f32> {
+        self.selected_path.as_ref().map(|p| p.rtt.as_secs_f32())
+    }
 }
 
 #[derive(Debug, Serialize, Clone, Copy, Default)]
@@ -493,37 +489,29 @@ impl ClientMetrics {
     }
 
     pub fn update_peer_connections(&self, connections: &[PeerConnection]) {
-        let mut connection_counts = HashMap::new();
+        let mut selected_count = 0u64;
 
-        for PeerConnection {
-            connection_type,
-            latency,
-            ..
-        } in connections
-        {
-            if matches!(connection_type, ConnectionType::None) {
+        for peer_conn in connections {
+            if peer_conn.selected_path.is_none() {
                 continue;
             }
-            *connection_counts
-                .entry(match connection_type {
-                    ConnectionType::None => unreachable!(),
-                    ConnectionType::Direct => "direct",
-                    ConnectionType::Mixed => "mixed",
-                    ConnectionType::Relay => "relay",
-                })
-                .or_insert(0u64) += 1;
 
-            self.connection_latency.record((*latency).into(), &[]);
+            selected_count += 1;
+
+            // record latency if available
+            if let Some(latency) = peer_conn.latency() {
+                self.connection_latency.record(latency.into(), &[]);
+            }
         }
 
         // Update shared state
         self.tcp_metrics.lock().unwrap().connected_peers = connections.to_vec();
 
-        // record connection counts by type
-        for (conn_type, count) in connection_counts {
-            self.peer_connections
-                .record(count, &[KeyValue::new("connection_type", conn_type)]);
-        }
+        // record connection count
+        self.peer_connections.record(
+            selected_count,
+            &[KeyValue::new("connection_type", "selected")],
+        );
     }
 
     pub fn update_p2p_gossip_neighbors(&self, neighbors: &[impl Display]) {
