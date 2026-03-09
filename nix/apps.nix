@@ -118,6 +118,8 @@
             name = "probe-garnix-env";
             excludeShellChecks = [
               "SC2310"
+              "SC2320"
+              "SC2016"
             ];
             runtimeInputs = with pkgs; [
               coreutils
