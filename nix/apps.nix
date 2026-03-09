@@ -116,51 +116,69 @@
         let
           script = pkgs.writeShellApplication {
             name = "probe-garnix-env";
+            excludeShellChecks = [
+              "SC2310"
+            ];
             runtimeInputs = with pkgs; [
               coreutils
               docker
               shadow
+              su
+              util-linux
             ];
             text = ''
-              echo "=== GARNIX VM ENVIRONMENT PROBE ==="
-              echo "--- identity ---"
-              id
-              whoami
-              echo "--- kernel ---"
-              uname -a
-              echo "--- capabilities ---"
-              cat /proc/self/status | grep -i cap || true
-              echo "--- namespaces ---"
-              cat /proc/sys/user/max_user_namespaces 2>/dev/null || echo "no max_user_namespaces"
-              cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || echo "no unprivileged_userns_clone"
-              ls -la /proc/self/ns/ || true
-              echo "--- filesystem ---"
-              df -h
-              mount | head -20
-              echo "--- /etc/subuid and /etc/subgid ---"
-              cat /etc/subuid 2>/dev/null || echo "no /etc/subuid"
-              cat /etc/subgid 2>/dev/null || echo "no /etc/subgid"
-              echo "--- can we write /etc? ---"
-              touch /etc/test-write && rm /etc/test-write && echo "yes, /etc is writable" || echo "no, /etc is not writable"
-              echo "--- can we useradd? ---"
-              useradd -m testuser 2>&1 && echo "useradd succeeded" || echo "useradd failed"
-              echo "--- can we create /usr/local/bin? ---"
-              mkdir -p /usr/local/bin 2>&1 && echo "yes" || echo "no"
-              echo "--- newuidmap/newgidmap ---"
-              which newuidmap 2>/dev/null || echo "no newuidmap in PATH"
-              which newgidmap 2>/dev/null || echo "no newgidmap in PATH"
-              echo "--- can we setuid? ---"
-              cp "$(which newuidmap)" /usr/local/bin/newuidmap 2>&1 && chmod u+s /usr/local/bin/newuidmap 2>&1 && echo "setuid succeeded" || echo "setuid failed"
-              echo "--- can we unshare? ---"
-              unshare --user --map-root-user echo "unshare user ns works" 2>&1 || echo "unshare user ns failed"
-              echo "--- cgroups ---"
-              find /sys/fs/cgroup/ -maxdepth 1 2>/dev/null | head -10 || echo "no cgroups"
-              cat /proc/self/cgroup 2>/dev/null || echo "no cgroup info"
-              echo "--- /var/lib writable? ---"
-              mkdir -p /var/lib/docker 2>&1 && echo "yes" || echo "no"
-              echo "--- PATH ---"
-              echo "$PATH"
-              echo "=== END PROBE ==="
+              set +e
+              echo "=== ROOTLESS DOCKER SETUP TEST ==="
+
+              echo "--- 1. create user ---"
+              useradd -m testuser 2>&1; echo "exit: $?"
+
+              echo "--- 2. subuid/subgid ---"
+              echo "testuser:100000:65536" > /etc/subuid 2>&1; echo "subuid exit: $?"
+              echo "testuser:100000:65536" > /etc/subgid 2>&1; echo "subgid exit: $?"
+              cat /etc/subuid /etc/subgid
+
+              echo "--- 3. suid newuidmap/newgidmap ---"
+              mkdir -p /usr/local/bin
+              cp ${pkgs.shadow}/bin/newuidmap /usr/local/bin/newuidmap 2>&1; echo "cp newuidmap: $?"
+              cp ${pkgs.shadow}/bin/newgidmap /usr/local/bin/newgidmap 2>&1; echo "cp newgidmap: $?"
+              chmod u+s /usr/local/bin/newuidmap /usr/local/bin/newgidmap 2>&1; echo "chmod suid: $?"
+              ls -la /usr/local/bin/new*idmap
+
+              echo "--- 4. unshare test ---"
+              unshare --user --map-root-user echo "unshare user ns works" 2>&1; echo "exit: $?"
+
+              echo "--- 5. unshare as testuser ---"
+              su testuser -s /bin/sh -c 'id; unshare --user echo "user unshare works"' 2>&1; echo "exit: $?"
+
+              echo "--- 6. rootlesskit test ---"
+              su testuser -s /bin/sh -c 'export XDG_RUNTIME_DIR=$(mktemp -d); export HOME=$(mktemp -d); export PATH=/usr/local/bin:$PATH:${pkgs.docker}/bin; rootlesskit echo "rootlesskit works"' 2>&1; echo "exit: $?"
+
+              echo "--- 7. cgroups ---"
+              cat /proc/self/cgroup 2>&1 || echo "no cgroup"
+              find /sys/fs/cgroup/ -maxdepth 1 2>/dev/null || echo "no cgroups dir"
+
+              echo "--- 8. attempt dockerd-rootless ---"
+              su testuser -s /bin/sh -c '
+                export XDG_RUNTIME_DIR=$(mktemp -d)
+                export HOME=$(mktemp -d)
+                export PATH=/usr/local/bin:$PATH:${pkgs.docker}/bin
+                timeout 15 dockerd-rootless 2>&1 &
+                PID=$!
+                export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
+                for i in $(seq 1 10); do
+                  if docker info >/dev/null 2>&1; then
+                    echo "DOCKER IS RUNNING"
+                    docker info 2>&1
+                    break
+                  fi
+                  sleep 1
+                done
+                kill $PID 2>/dev/null || true
+                wait $PID 2>/dev/null || true
+              ' 2>&1; echo "exit: $?"
+
+              echo "=== END ==="
             '';
           };
         in
