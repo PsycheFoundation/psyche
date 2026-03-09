@@ -51,3 +51,4 @@ builds:
 actions:
   - on: push
     run: probe-garnix-env
+    withRepoContents: true
