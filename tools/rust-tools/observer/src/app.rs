@@ -21,6 +21,7 @@ pub enum DetailPanel {
     Batches,
     Node,
     Loss,
+    Logs,
 }
 
 pub struct App {
@@ -205,13 +206,15 @@ impl App {
             let entries = self.timeline.entries();
             let mut remaining = n;
             let mut pos = self.cursor;
+            let mut last_match = self.cursor;
             while remaining > 0 && pos < max {
                 pos += 1;
                 if self.entry_matches(&entries[pos]) {
                     remaining -= 1;
+                    last_match = pos;
                 }
             }
-            self.cursor = pos;
+            self.cursor = last_match;
         }
     }
 
@@ -222,13 +225,15 @@ impl App {
             let entries = self.timeline.entries();
             let mut remaining = n;
             let mut pos = self.cursor;
+            let mut last_match = self.cursor;
             while remaining > 0 && pos > 0 {
                 pos -= 1;
                 if self.entry_matches(&entries[pos]) {
                     remaining -= 1;
+                    last_match = pos;
                 }
             }
-            self.cursor = pos;
+            self.cursor = last_match;
         }
     }
 

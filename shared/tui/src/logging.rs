@@ -31,6 +31,8 @@ use tui_logger::{TuiLoggerLevelOutput, TuiLoggerWidget, TuiWidgetEvent, TuiWidge
 #[derive(Clone, Debug, Copy, ValueEnum, PartialEq)]
 pub enum LogOutput {
     TUI,
+    /// TUI logger widget + console output to stdout (visible behind the alternate screen).
+    TUIAndConsole,
     Console,
     Json,
     None,
@@ -575,6 +577,19 @@ fn init_logging_core(
                 .with_filter(output_logs_filter)
                 .boxed(),
         ),
+        LogOutput::TUIAndConsole => {
+            layers.push(
+                tui_logger::tracing_subscriber_layer()
+                    .with_filter(output_logs_filter.clone())
+                    .boxed(),
+            );
+            layers.push(
+                fmt::layer()
+                    .with_writer(std::io::stdout)
+                    .with_filter(output_logs_filter)
+                    .boxed(),
+            );
+        }
         LogOutput::Console => layers.push(
             fmt::layer()
                 .with_writer(std::io::stdout)

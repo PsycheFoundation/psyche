@@ -6163,14 +6163,17 @@ dependencies = [
 name = "observer"
 version = "0.2.0"
 dependencies = [
+ "anyhow",
  "chrono",
  "clap",
  "crossterm",
  "indexmap 2.13.0",
  "psyche-core",
  "psyche-event-sourcing",
+ "psyche-tui",
  "ratatui",
  "strum 0.28.0",
+ "tracing",
 ]
 
 [[package]]
