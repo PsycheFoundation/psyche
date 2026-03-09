@@ -237,19 +237,22 @@ fn run_data_parallel(
                 {
                     psyche_python_extension_impl::init_embedded_python()?;
 
-                    Box::new(psyche_modeling::PythonDistributedCausalLM::new(
-                        python_arch,
-                        psyche_modeling::PretrainedSource::RepoFiles(repo),
-                        device,
-                        psyche_modeling::AttentionImplementation::default(),
-                        psyche_modeling::ParallelismConfig {
-                            dp: data_parallelism,
-                            tp: 1,
-                        },
-                        None,
-                        None,
-                        None,
-                    )?) as Box<dyn CausalLM>
+                    Box::new(
+                        psyche_modeling::PythonDistributedCausalLM::new_with_options(
+                            python_arch,
+                            psyche_modeling::PretrainedSource::RepoFiles(repo),
+                            device,
+                            psyche_modeling::AttentionImplementation::default(),
+                            psyche_modeling::ParallelismConfig {
+                                dp: data_parallelism,
+                                tp: 1,
+                            },
+                            None,
+                            None,
+                            None,
+                            false, // disable torch.compile for eval — avoids recompilation on every different sequence length
+                        )?,
+                    ) as Box<dyn CausalLM>
                 }
 
                 #[cfg(not(feature = "python"))]

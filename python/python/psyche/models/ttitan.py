@@ -282,6 +282,7 @@ class TorchtitanAuto(CausalLM):
         param_dtype: torch.dtype = torch.bfloat16,
         reduce_dtype: torch.dtype = torch.float32,
         fsdp_modules: Optional[Iterable[str]] = None,
+        compile: bool = True,
     ):
         config_json = None
         if isinstance(source, PretrainedSourceStateDict):
@@ -302,7 +303,7 @@ class TorchtitanAuto(CausalLM):
 
         job_config = JobConfig()
         job_config.training.seq_len = config_tt.max_seq_len
-        job_config.compile.enable = True
+        job_config.compile.enable = compile
         job_config.compile.components = ["model", "loss"]
         job_config.compile.fullgraph = False
         job_config.activation_checkpoint.mode = "full"
@@ -429,13 +430,7 @@ class TorchtitanAuto(CausalLM):
                         position_ids = position_ids.narrow(0, start_row, shard_size)
         try:
             with self.amp, torch.cuda.device(input_ids.device.index):
-                # During eval we bypass torch.compile as a speed optimization (we know we're in eval because labels=None)
-                # There's no need to precompile kernels for different sequence lengths since every input has a different one
-                # _orig_mod stores the original model so calling it directly bypasses the compilation stage.
-                model = self.model
-                if labels is None and hasattr(self.model, "_orig_mod"):
-                    model = self.model._orig_mod
-                pred = model(
+                pred = self.model(
                     tokens=input_ids.contiguous(),
                     position_ids=(
                         position_ids.contiguous() if position_ids is not None else None

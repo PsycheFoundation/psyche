@@ -229,6 +229,30 @@ impl PythonDistributedCausalLM {
         port: Option<u16>,
         num_local_ranks: Option<i64>,
     ) -> Result<Self, PythonDistributedCausalLMError> {
+        Self::new_with_options(
+            architecture,
+            source,
+            device,
+            attn_implementation,
+            parallelism,
+            override_max_position_embeddings,
+            port,
+            num_local_ranks,
+            true,
+        )
+    }
+
+    pub fn new_with_options(
+        architecture: String,
+        source: PretrainedSource<PythonModelConfig>,
+        device: Device,
+        attn_implementation: AttentionImplementation,
+        parallelism: ParallelismConfig,
+        override_max_position_embeddings: Option<usize>,
+        port: Option<u16>,
+        num_local_ranks: Option<i64>,
+        compile: bool,
+    ) -> Result<Self, PythonDistributedCausalLMError> {
         if !tch::Cuda::is_available() {
             return Err(PythonDistributedCausalLMError::CUDANotAvailable);
         }
@@ -323,13 +347,14 @@ impl PythonDistributedCausalLM {
                 }
                 comm.set("dp", &format!("{}", parallelism.dp))?;
                 comm.set("tp", &format!("{}", parallelism.tp))?;
-                let local = PythonCausalLM::new(
+                let local = PythonCausalLM::new_with_options(
                     &architecture,
                     &source,
                     device,
                     attn_implementation,
                     Some(parallelism),
                     override_max_position_embeddings,
+                    compile,
                 )?;
                 Ok((comm, local))
             })

@@ -15,6 +15,7 @@ def make_causal_lm(
     param_dtype: torch.dtype = torch.bfloat16,
     reduce_dtype: torch.dtype = torch.float32,
     fsdp_modules: Optional[Iterable[str]] = None,
+    compile: bool = True,
 ) -> CausalLM:
     if not isinstance(device, torch.device):
         device = torch.device(device if isinstance(device, str) else f"cuda:{device}")
@@ -45,5 +46,6 @@ def make_causal_lm(
             param_dtype=param_dtype,
             reduce_dtype=reduce_dtype,
             fsdp_modules=fsdp_modules,
+            compile=compile,
         )
     raise ValueError(f"Unknown architecture {architecture}")
