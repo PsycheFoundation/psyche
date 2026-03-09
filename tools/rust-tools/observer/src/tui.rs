@@ -1,14 +1,8 @@
-use std::io;
 use std::time::{Duration, Instant};
 
-use crossterm::{
-    event::{self, Event, KeyCode, KeyModifiers},
-    execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
-};
+use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use psyche_tui::{CustomWidget, LoggerWidget, init_terminal};
 use ratatui::{
-    Terminal,
-    backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Style, Stylize},
     symbols,
@@ -39,12 +33,9 @@ struct RenderCtx<'a> {
     waterfall_filter: &'a std::collections::HashSet<EventCategory>,
 }
 
-pub fn run(mut app: App) -> io::Result<()> {
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+pub fn run(mut app: App) -> anyhow::Result<()> {
+    let mut terminal = init_terminal()?;
+    let mut logger_widget = LoggerWidget::new();
 
     let tick_rate = Duration::from_millis(200);
     let mut last_tick = Instant::now();
@@ -76,7 +67,7 @@ pub fn run(mut app: App) -> io::Result<()> {
                 waterfall_filter: &app.waterfall_filter,
             };
 
-            terminal.draw(|f| {
+            terminal.0.draw(|f| {
                 let area = f.area();
 
                 // Compute timeline height: at most 1/3 of total area, min 4 rows.
@@ -190,6 +181,9 @@ pub fn run(mut app: App) -> io::Result<()> {
                         },
                         inner,
                     ),
+                    DetailPanel::Logs => {
+                        logger_widget.render(inner, f.buffer_mut(), &());
+                    }
                 }
 
                 // Tabs overlay on detail panel top border
@@ -222,57 +216,64 @@ pub fn run(mut app: App) -> io::Result<()> {
             .checked_sub(last_tick.elapsed())
             .unwrap_or(Duration::ZERO);
 
-        if event::poll(timeout)?
-            && let Event::Key(key) = event::read()?
-        {
-            // Category filter keys — match dynamically from the enum.
-            let cat = EventCategory::iter()
-                .filter(|c| c.filterable())
-                .find(|c| KeyCode::Char(c.key()) == key.code);
-            if let Some(cat) = cat {
-                app.toggle_category_filter(cat);
-                continue;
+        if event::poll(timeout)? {
+            let ev = event::read()?;
+
+            // Forward UI events to the logger widget when Logs panel is active.
+            if app.detail_panel == DetailPanel::Logs {
+                logger_widget.on_ui_event(&ev);
             }
 
-            match (key.code, key.modifiers) {
-                (KeyCode::Char('q'), _) => break,
-
-                // ── Playback speed (Shift+1/2/3) ─────────────────────────────
-                (KeyCode::Char('!'), _) => app.set_speed(1),
-                (KeyCode::Char('@'), _) => app.set_speed(5),
-                (KeyCode::Char('#'), _) => app.set_speed(20),
-
-                // ── Scrub ────────────────────────────────────────────────────
-                (KeyCode::Char('g') | KeyCode::Home, KeyModifiers::NONE) => app.go_first(),
-                (KeyCode::Char('G') | KeyCode::End, _)
-                | (KeyCode::Char('g'), KeyModifiers::SHIFT) => app.go_last(),
-                (KeyCode::Left, KeyModifiers::SHIFT) => app.step_backward(50),
-                (KeyCode::Right, KeyModifiers::SHIFT) => app.step_forward(50),
-                (KeyCode::Left, _) => app.step_backward(1),
-                (KeyCode::Right, _) => app.step_forward(1),
-
-                // ── ↑/↓ always navigate nodes ────────────────────────────────
-                (KeyCode::Up, _) => app.prev_node(),
-                (KeyCode::Down, _) => app.next_node(),
-
-                // ── Tab still cycles panels ───────────────────────────────────
-                (KeyCode::Tab, _) => app.cycle_detail_panel(),
-
-                // ── Playback / zoom ───────────────────────────────────────────
-                (KeyCode::Char(' '), _) => app.toggle_play(),
-                (KeyCode::Char('['), _) => app.zoom_in(),
-                (KeyCode::Char(']'), _) => app.zoom_out(),
-
-                // ── Box focus (numbers) ──────────────────────────────────────
-                (KeyCode::Char(number), KeyModifiers::NONE) => {
-                    if let Some(digit) = number.to_digit(10)
-                        && let Some(panel) = DetailPanel::iter().nth(digit as usize - 1)
-                    {
-                        app.switch_panel(panel);
-                    }
+            if let Event::Key(key) = ev {
+                // Category filter keys — match dynamically from the enum.
+                let cat = EventCategory::iter()
+                    .filter(|c| c.filterable())
+                    .find(|c| KeyCode::Char(c.key()) == key.code);
+                if let Some(cat) = cat {
+                    app.toggle_category_filter(cat);
+                    continue;
                 }
 
-                _ => {}
+                match (key.code, key.modifiers) {
+                    (KeyCode::Char('q'), _) => break,
+
+                    // ── Playback speed (Shift+1/2/3) ─────────────────────────
+                    (KeyCode::Char('!'), _) => app.set_speed(1),
+                    (KeyCode::Char('@'), _) => app.set_speed(5),
+                    (KeyCode::Char('#'), _) => app.set_speed(20),
+
+                    // ── Scrub ────────────────────────────────────────────────
+                    (KeyCode::Char('g') | KeyCode::Home, KeyModifiers::NONE) => app.go_first(),
+                    (KeyCode::Char('G') | KeyCode::End, _)
+                    | (KeyCode::Char('g'), KeyModifiers::SHIFT) => app.go_last(),
+                    (KeyCode::Left, KeyModifiers::SHIFT) => app.step_backward(50),
+                    (KeyCode::Right, KeyModifiers::SHIFT) => app.step_forward(50),
+                    (KeyCode::Left, _) => app.step_backward(1),
+                    (KeyCode::Right, _) => app.step_forward(1),
+
+                    // ── ↑/↓ always navigate nodes ────────────────────────────
+                    (KeyCode::Up, _) => app.prev_node(),
+                    (KeyCode::Down, _) => app.next_node(),
+
+                    // ── Tab still cycles panels ─────────────────────────────
+                    (KeyCode::Tab, _) => app.cycle_detail_panel(),
+
+                    // ── Playback / zoom ─────────────────────────────────────
+                    (KeyCode::Char(' '), _) => app.toggle_play(),
+                    (KeyCode::Char('['), _) => app.zoom_in(),
+                    (KeyCode::Char(']'), _) => app.zoom_out(),
+
+                    // ── Box focus (numbers) ─────────────────────────────────
+                    (KeyCode::Char(number), KeyModifiers::NONE) => {
+                        if let Some(digit) = number.to_digit(10)
+                            && let Some(panel) = DetailPanel::iter().nth(digit as usize - 1)
+                        {
+                            app.switch_panel(panel);
+                        }
+                    }
+
+                    _ => {}
+                }
             }
         }
 
@@ -282,8 +283,6 @@ pub fn run(mut app: App) -> io::Result<()> {
         }
     }
 
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
+    // Terminal cleanup is handled by TerminalWrapper's Drop impl.
     Ok(())
 }

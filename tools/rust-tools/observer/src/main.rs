@@ -9,6 +9,7 @@ use std::process;
 
 use clap::Parser;
 use psyche_event_sourcing::timeline::{ClusterTimeline, LoadProgress};
+use psyche_tui::{LogOutput, logging};
 
 use crate::utils::fmt_bytes;
 
@@ -51,6 +52,11 @@ fn print_progress(p: &LoadProgress) {
 }
 
 fn main() {
+    let _logger = logging()
+        .with_output(LogOutput::TUIAndConsole)
+        .init()
+        .expect("failed to init logging");
+
     let cli = Cli::parse();
 
     if !cli.events_dir.exists() {
