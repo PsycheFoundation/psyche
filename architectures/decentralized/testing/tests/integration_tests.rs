@@ -844,6 +844,7 @@ async fn test_run_with_python(#[case] architecture: &str) {
         batch_size: 8 * (init_num_clients as u32 + n_new_clients as u32),
         use_proxies: false,
         owner_keypair_path: None,
+        waiting_for_members_extra_time: None,
     };
     let _cleanup = e2e_testing_setup_with_config(docker.clone(), config).await;
 
