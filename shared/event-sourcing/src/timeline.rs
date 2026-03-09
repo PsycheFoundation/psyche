@@ -79,7 +79,7 @@ fn coordinator_to_snapshot(
             })
             .unwrap_or_default()
     } else {
-        tracing::warn!(
+        tracing::debug!(
             round_clients_len,
             epoch_clients_len = coord.epoch_state.clients.len(),
             run_state = ?coord.run_state,
