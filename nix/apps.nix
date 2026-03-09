@@ -123,57 +123,29 @@
             ];
             runtimeInputs = with pkgs; [
               coreutils
-              docker
-              shadow
-              su
-              util-linux
+              podman
+              docker-compose
             ];
             text = ''
               set +e
-              echo "=== ROOTLESS DOCKER VIA UNSHARE ==="
+              echo "=== PODMAN PROBE ==="
 
-              echo "--- 1. create /etc/passwd and /etc/group ---"
-              echo "root:x:0:0:root:/root:/bin/sh" > /etc/passwd
-              echo "testuser:x:1000:1000:testuser:/home/testuser:/bin/sh" >> /etc/passwd
-              echo "root:x:0:" > /etc/group
-              echo "testuser:x:1000:" >> /etc/group
-              mkdir -p /home/testuser
-              cat /etc/passwd
+              echo "--- 1. podman info ---"
+              podman info 2>&1
 
-              echo "--- 2. setup subuid/subgid ---"
-              echo "testuser:100000:65536" > /etc/subuid
-              echo "testuser:100000:65536" > /etc/subgid
+              echo "--- 2. podman load test ---"
+              echo "loading a small test: podman images"
+              podman images 2>&1
 
-              echo "--- 3. suid newuidmap/newgidmap ---"
-              mkdir -p /usr/local/bin
-              cp ${pkgs.shadow}/bin/newuidmap /usr/local/bin/newuidmap
-              cp ${pkgs.shadow}/bin/newgidmap /usr/local/bin/newgidmap
-              chmod u+s /usr/local/bin/newuidmap /usr/local/bin/newgidmap
+              echo "--- 3. podman network ---"
+              podman network ls 2>&1
 
-              echo "--- 4. dockerd-rootless via unshare ---"
-              unshare --user --map-user=1000 --map-group=1000 sh -c '
-                export XDG_RUNTIME_DIR=$(mktemp -d)
-                export HOME=/home/testuser
-                export PATH="/usr/local/bin:'"$PATH"'"
-                id
-                echo "starting dockerd-rootless..."
-                dockerd-rootless 2>&1 &
-                PID=$!
-                export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
-                for i in $(seq 1 20); do
-                  if docker info >/dev/null 2>&1; then
-                    echo "=== DOCKER IS RUNNING ==="
-                    docker info 2>&1
-                    break
-                  fi
-                  if [ "$i" = "20" ]; then
-                    echo "Docker failed to start after 20s"
-                  fi
-                  sleep 1
-                done
-                kill $PID 2>/dev/null || true
-                wait $PID 2>/dev/null || true
-              ' 2>&1; echo "exit: $?"
+              echo "--- 4. podman run hello ---"
+              podman run --rm alpine echo "hello from podman" 2>&1 || echo "podman run failed: $?"
+
+              echo "--- 5. podman compose available? ---"
+              podman compose version 2>&1 || echo "no podman compose"
+              docker compose version 2>&1 || echo "no docker compose"
 
               echo "=== END ==="
             '';
