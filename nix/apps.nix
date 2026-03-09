@@ -43,6 +43,10 @@
               gnugrep
             ];
             text = ''
+              # Podman needs a containers policy to accept images
+              mkdir -p /etc/containers
+              echo '{"default":[{"type":"insecureAcceptAnything"}]}' > /etc/containers/policy.json
+
               # Point Bollard (Docker client) at podman's socket
               export DOCKER_HOST="unix:///run/podman/podman.sock"
 
@@ -78,6 +82,9 @@
               docker-compose
             ];
             text = ''
+              mkdir -p /etc/containers
+              echo '{"default":[{"type":"insecureAcceptAnything"}]}' > /etc/containers/policy.json
+
               export DOCKER_HOST="unix:///run/podman/podman.sock"
 
               mkdir -p /tmp/docker-compat/bin
