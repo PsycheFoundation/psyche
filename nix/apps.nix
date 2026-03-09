@@ -132,46 +132,42 @@
               set +e
               echo "=== ROOTLESS DOCKER VIA UNSHARE ==="
 
-              echo "--- 1. setup subuid/subgid for root ---"
-              echo "root:100000:65536" > /etc/subuid 2>&1
-              echo "root:100000:65536" > /etc/subgid 2>&1
-              cat /etc/subuid /etc/subgid
+              echo "--- 1. create /etc/passwd and /etc/group ---"
+              echo "root:x:0:0:root:/root:/bin/sh" > /etc/passwd
+              echo "testuser:x:1000:1000:testuser:/home/testuser:/bin/sh" >> /etc/passwd
+              echo "root:x:0:" > /etc/group
+              echo "testuser:x:1000:" >> /etc/group
+              mkdir -p /home/testuser
+              cat /etc/passwd
 
-              echo "--- 2. suid newuidmap/newgidmap ---"
+              echo "--- 2. setup subuid/subgid ---"
+              echo "testuser:100000:65536" > /etc/subuid
+              echo "testuser:100000:65536" > /etc/subgid
+
+              echo "--- 3. suid newuidmap/newgidmap ---"
               mkdir -p /usr/local/bin
               cp ${pkgs.shadow}/bin/newuidmap /usr/local/bin/newuidmap
               cp ${pkgs.shadow}/bin/newgidmap /usr/local/bin/newgidmap
               chmod u+s /usr/local/bin/newuidmap /usr/local/bin/newgidmap
-              export PATH="/usr/local/bin:$PATH"
 
-              echo "--- 3. rootlesskit as root (should fail) ---"
-              XDG_RUNTIME_DIR=$(mktemp -d)
-              export XDG_RUNTIME_DIR
-              HOME=$(mktemp -d)
-              export HOME
-              rootlesskit echo "rootlesskit as root works" 2>&1; echo "exit: $?"
-
-              echo "--- 4. rootlesskit via unshare --map-user=1000 ---"
-              unshare --user --map-user=1000 --map-group=1000 rootlesskit echo "rootlesskit in user ns works" 2>&1; echo "exit: $?"
-
-              echo "--- 5. dockerd-rootless via unshare ---"
+              echo "--- 4. dockerd-rootless via unshare ---"
               unshare --user --map-user=1000 --map-group=1000 sh -c '
                 export XDG_RUNTIME_DIR=$(mktemp -d)
-                export HOME=$(mktemp -d)
+                export HOME=/home/testuser
                 export PATH="/usr/local/bin:'"$PATH"'"
                 id
                 echo "starting dockerd-rootless..."
-                timeout 20 dockerd-rootless 2>&1 &
+                dockerd-rootless 2>&1 &
                 PID=$!
                 export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
-                for i in $(seq 1 15); do
+                for i in $(seq 1 20); do
                   if docker info >/dev/null 2>&1; then
-                    echo "DOCKER IS RUNNING"
+                    echo "=== DOCKER IS RUNNING ==="
                     docker info 2>&1
                     break
                   fi
-                  if [ "$i" = "15" ]; then
-                    echo "Docker failed to start"
+                  if [ "$i" = "20" ]; then
+                    echo "Docker failed to start after 20s"
                   fi
                   sleep 1
                 done
