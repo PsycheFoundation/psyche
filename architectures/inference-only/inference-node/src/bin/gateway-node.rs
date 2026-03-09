@@ -14,7 +14,7 @@ use axum::{
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::post,
+    routing::{get, post},
 };
 use clap::Parser;
 use psyche_inference::{
@@ -68,6 +68,7 @@ struct GatewayState {
     pending_requests: RwLock<HashMap<String, mpsc::Sender<InferenceResponse>>>,
     network_tx: mpsc::Sender<(EndpointId, InferenceMessage)>,
     gossip_tx: mpsc::Sender<InferenceGossipMessage>,
+    network: Arc<NetworkConnection<InferenceGossipMessage, ()>>,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
@@ -134,6 +135,13 @@ struct ChatCompletionResponse {
     model: String,
     choices: Vec<ChatCompletionChoice>,
     // we're omitting usage stats for now
+}
+
+#[derive(serde::Serialize)]
+struct BootstrapInfo {
+    node_id: String,
+    relay_url: Option<String>,
+    direct_addresses: Vec<String>,
 }
 
 #[axum::debug_handler]
@@ -269,6 +277,39 @@ async fn handle_load_model(
         "LoadModel broadcast sent for model: {}",
         req.model_name
     ))
+}
+
+#[axum::debug_handler]
+async fn handle_bootstrap(
+    State(state): State<Arc<GatewayState>>,
+) -> Result<Json<BootstrapInfo>, AppError> {
+    let endpoint_addr = state.network.router().endpoint().node_addr();
+
+    info!("Bootstrap request received, returning gateway node address");
+
+    // Extract node_id
+    let node_id = endpoint_addr.node_id.to_string();
+
+    // Extract relay URL (if present)
+    let relay_url = endpoint_addr.info.relay_url().map(|url| url.to_string());
+
+    // Extract direct addresses
+    let direct_addresses: Vec<String> = endpoint_addr
+        .info
+        .direct_addresses()
+        .iter()
+        .map(|addr| addr.to_string())
+        .collect();
+
+    let bootstrap_info = BootstrapInfo {
+        node_id,
+        relay_url,
+        direct_addresses,
+    };
+
+    info!("Returning bootstrap info: {:?}", bootstrap_info);
+
+    Ok(Json(bootstrap_info))
 }
 
 #[derive(Debug)]
@@ -435,11 +476,15 @@ async fn run_gateway() -> Result<()> {
 
     let (network_tx, mut network_rx) = mpsc::channel::<(EndpointId, InferenceMessage)>(100);
     let (gossip_tx, mut gossip_rx) = mpsc::channel::<InferenceGossipMessage>(100);
+
+    let network_arc = Arc::new(network);
+
     let state = Arc::new(GatewayState {
         available_nodes: RwLock::new(HashMap::new()),
         pending_requests: RwLock::new(HashMap::new()),
         network_tx,
         gossip_tx,
+        network: network_arc.clone(),
     });
 
     info!("Gateway ready! Listening on http://{}", args.listen_addr);
@@ -447,6 +492,7 @@ async fn run_gateway() -> Result<()> {
 
     let network_handle = {
         let state = state.clone();
+        let network = network_arc.clone();
         let cancel = cancel.clone();
         tokio::spawn(async move {
             let mut task_set = tokio::task::JoinSet::new();
@@ -594,6 +640,7 @@ async fn run_gateway() -> Result<()> {
     let app = Router::new()
         .route("/v1/chat/completions", post(handle_inference))
         .route("/admin/load-model", post(handle_load_model))
+        .route("/bootstrap", get(handle_bootstrap))
         .with_state(state.clone());
 
     let listener = tokio::net::TcpListener::bind(&args.listen_addr)
