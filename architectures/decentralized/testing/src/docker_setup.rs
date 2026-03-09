@@ -78,6 +78,7 @@ pub struct PsycheNetworkConfig {
     pub batch_size: u32,
     pub use_proxies: bool,
     pub owner_keypair_path: Option<std::path::PathBuf>,
+    pub waiting_for_members_extra_time: Option<u32>,
 }
 
 impl Default for PsycheNetworkConfig {
@@ -92,6 +93,7 @@ impl Default for PsycheNetworkConfig {
                 batch_size: 4,
                 use_proxies: false,
                 owner_keypair_path: None,
+                waiting_for_members_extra_time: None,
             }
         }
         #[cfg(feature = "python")]
@@ -104,6 +106,7 @@ impl Default for PsycheNetworkConfig {
                 batch_size: 8,
                 use_proxies: false,
                 owner_keypair_path: None,
+                waiting_for_members_extra_time: None,
             }
         }
     }
@@ -129,19 +132,29 @@ impl PsycheNetworkConfig {
         self.owner_keypair_path = Some(path.to_path_buf());
         self
     }
+
+    pub fn with_waiting_for_members_extra_time(mut self, time: u32) -> Self {
+        self.waiting_for_members_extra_time = Some(time);
+        self
+    }
 }
 
 /// Spawn psyche network with configuration
 fn spawn_psyche_network(config: &PsycheNetworkConfig) -> Result<(), DockerWatcherError> {
     let min_clients = config.min_clients.unwrap_or(config.num_clients);
 
-    ConfigBuilder::new()
+    let mut builder = ConfigBuilder::new()
         .with_num_clients(config.num_clients)
         .with_min_clients(min_clients)
         .with_architecture(&config.architecture)
         .with_model(&config.model)
-        .with_batch_size(config.batch_size)
-        .build();
+        .with_batch_size(config.batch_size);
+
+    if let Some(time) = config.waiting_for_members_extra_time {
+        builder = builder.with_waiting_for_members_extra_time(time);
+    }
+
+    builder.build();
 
     let just_command = if config.use_proxies {
         "run_test_infra_with_rpc_fallback_proxies"
@@ -206,12 +219,16 @@ pub async fn e2e_testing_setup_with_min(
     init_num_clients: usize,
     min_clients: usize,
     owner_keypair_path: Option<&Path>,
+    waiting_for_members_extra_time: Option<u32>,
 ) -> DockerTestCleanup {
     let mut config = PsycheNetworkConfig::default()
         .with_num_clients(init_num_clients)
         .with_min_clients(min_clients);
     if let Some(path) = owner_keypair_path {
         config = config.with_owner_keypair_path(path);
+    }
+    if let Some(time) = waiting_for_members_extra_time {
+        config = config.with_waiting_for_members_extra_time(time);
     }
     e2e_testing_setup_with_config(docker_client, config).await
 }

@@ -487,13 +487,13 @@ async fn disconnect_client() {
 #[serial]
 async fn drop_a_client_waitingformembers_then_reconnect() {
     let n_clients = 2;
-    let num_of_epochs_to_run = 3;
-    let mut current_epoch = -1;
     let run_id = "test".to_string();
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
-    let _cleanup = e2e_testing_setup(docker.clone(), 2).await;
+    // Use extra WFM time so we have a window to kill a client during WaitingForMembers
+    let _cleanup =
+        e2e_testing_setup_with_min(docker.clone(), n_clients, n_clients, None, Some(30)).await;
 
     let solana_client = SolanaTestClient::new(run_id, None).await;
     // Monitor clients
@@ -502,54 +502,47 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
             .monitor_container(
                 &format!("{CLIENT_CONTAINER_PREFIX}-{i}"),
                 vec![
-                    IntegrationTestLogMarker::Loss,
                     IntegrationTestLogMarker::StateChange,
-                    IntegrationTestLogMarker::LoadedModel,
                     IntegrationTestLogMarker::Error,
                 ],
             )
             .unwrap();
     }
 
-    let mut train_reached = false;
+    // Wait for both clients to reach WaitingForMembers, then kill client-2
+    let mut killed_client = false;
+    let mut clients_in_wfm: Vec<String> = Vec::new();
     while let Some(response) = watcher.log_rx.recv().await {
         match response {
             Response::StateChange(_timestamp, client, old_state, new_state, _epoch, _step) => {
                 let coordinator_state = solana_client.get_run_state().await;
                 println!("state change client {client} - {old_state}=>{new_state}");
 
-                // Once warmup starts, kill client 2's container
-                if new_state == RunState::RoundTrain.to_string() && !train_reached {
-                    println!(
-                        "Train started, killing container {}...",
-                        &format!("{CLIENT_CONTAINER_PREFIX}-2")
-                    );
-
-                    let options = Some(KillContainerOptions { signal: "SIGKILL" });
-                    docker
-                        .kill_container(&format!("{CLIENT_CONTAINER_PREFIX}-2"), options)
-                        .await
-                        .unwrap();
-
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-                    train_reached = true;
-                }
-
-                // After killing client, verify we get stuck in WaitingForMembers
-                if train_reached && coordinator_state == RunState::WaitingForMembers {
-                    println!("WaitingForMembers seen");
-                    break;
-                }
-            }
-            Response::Loss(client, epoch, step, loss) => {
-                println!("client: {client:?}, epoch: {epoch}, step: {step}, Loss: {loss:?}");
-
-                if epoch as i64 > current_epoch {
-                    current_epoch = epoch as i64;
-                    if epoch == num_of_epochs_to_run {
-                        println!("Epoch {epoch} reached. Stopping");
-                        break;
+                // Track clients reaching WaitingForMembers and kill client-2 once both are in WFM
+                if new_state == RunState::WaitingForMembers.to_string()
+                    && !clients_in_wfm.contains(&client)
+                    && !killed_client
+                {
+                    clients_in_wfm.push(client.clone());
+                    if clients_in_wfm.len() >= n_clients {
+                        println!(
+                            "Both clients in WaitingForMembers. Killing container {CLIENT_CONTAINER_PREFIX}-2..."
+                        );
+                        let options = Some(KillContainerOptions { signal: "SIGKILL" });
+                        docker
+                            .kill_container(&format!("{CLIENT_CONTAINER_PREFIX}-2"), options)
+                            .await
+                            .unwrap();
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        killed_client = true;
                     }
+                }
+
+                // After killing client, wait for coordinator to return to WaitingForMembers
+                // (it may first advance to Warmup, detect dead client, then revert)
+                if killed_client && coordinator_state == RunState::WaitingForMembers {
+                    println!("WaitingForMembers seen after kill");
+                    break;
                 }
             }
             _ => {}
@@ -568,7 +561,7 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
 
     // Wait for state to change back to Warmup
     assert!(
-        solana_client.wait_for_run_state(RunState::Warmup, 30).await,
+        solana_client.wait_for_run_state(RunState::Warmup, 60).await,
         "System should have returned to Warmup state after client reconnection"
     );
     println!("Successfully returned to Warmup state after client reconnection");
@@ -961,7 +954,7 @@ async fn test_pause_and_resume_run() {
     // Setup with min_clients=1 but init_num_clients=0 (we spawn manually)
     // Pass owner keypair to setup script
     let _cleanup =
-        e2e_testing_setup_with_min(docker.clone(), 0, 1, Some(owner_path.as_path())).await;
+        e2e_testing_setup_with_min(docker.clone(), 0, 1, Some(owner_path.as_path()), None).await;
 
     // Create SolanaTestClient with owner keypair for set_paused
     let solana_client = SolanaTestClient::new(run_id.clone(), Some(owner_keypair.clone())).await;

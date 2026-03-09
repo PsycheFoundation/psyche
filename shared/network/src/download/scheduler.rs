@@ -392,7 +392,7 @@ mod tests {
     fn dummy_ticket(seed: u8) -> BlobTicket {
         let key = SecretKey::from_bytes(&[seed; 32]);
         let addr = EndpointAddr::from(key.public());
-        let hash = Hash::new(&[seed]);
+        let hash = Hash::new([seed]);
         BlobTicket::new(addr, hash, BlobFormat::Raw)
     }
 

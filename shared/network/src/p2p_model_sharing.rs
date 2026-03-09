@@ -18,7 +18,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, trace, warn};
 
-use crate::connection_monitor::ConnectionMonitor;
+use crate::connection_monitor::{ConnectionMonitor, PeerBandwidth};
 use crate::{NetworkConnection, Networkable, TransmittableDownload};
 #[derive(Debug)]
 /// Manager for the list of peers to ask for the model parameters and config
@@ -129,6 +129,33 @@ impl PeerManagerActor {
         }
     }
 
+    /// Assigns a priority tier to a peer based on its bandwidth measurement.
+    fn bandwidth_tier(bw: &PeerBandwidth) -> u8 {
+        match bw {
+            PeerBandwidth::Measured(v) if *v > 0.0 => 0,
+            PeerBandwidth::NotMeasured => 1,
+            PeerBandwidth::Measured(_) => 2,
+        }
+    }
+
+    fn compare_bandwidth(a: &PeerBandwidth, b: &PeerBandwidth) -> std::cmp::Ordering {
+        match (a, b) {
+            (PeerBandwidth::Measured(a_bw), PeerBandwidth::Measured(b_bw)) => {
+                b_bw.partial_cmp(a_bw).unwrap_or(std::cmp::Ordering::Equal)
+            }
+            _ => std::cmp::Ordering::Equal,
+        }
+    }
+
+    fn sort_peers_by_quality(peers: &mut [(EndpointId, PeerBandwidth, Duration)]) {
+        peers.sort_by(|a, b| {
+            Self::bandwidth_tier(&a.1)
+                .cmp(&Self::bandwidth_tier(&b.1))
+                .then_with(|| Self::compare_bandwidth(&a.1, &b.1))
+                .then_with(|| a.2.cmp(&b.2))
+        });
+    }
+
     fn handle_message(&mut self, message: PeerCommand, cancellation_token: CancellationToken) {
         match message {
             PeerCommand::SetPeers { peers } => {
@@ -142,36 +169,42 @@ impl PeerManagerActor {
                 info!("Updated peer list ({} peers)", self.available_peers.len(),);
             }
             PeerCommand::GetPeer { reply } => {
-                // Sort available peers by bandwidth (highest first), falling back to latency
-                self.available_peers.make_contiguous().sort_by(|a, b| {
-                    let bw_a = self.connection_monitor.get_bandwidth(a).unwrap_or(0.0);
-                    let bw_b = self.connection_monitor.get_bandwidth(b).unwrap_or(0.0);
-                    let lat_a = self
-                        .connection_monitor
-                        .get_latency(a)
-                        .unwrap_or(Duration::MAX);
-                    let lat_b = self
-                        .connection_monitor
-                        .get_latency(b)
-                        .unwrap_or(Duration::MAX);
-                    bw_b.partial_cmp(&bw_a)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                        .then_with(|| {
-                            lat_a
-                                .partial_cmp(&lat_b)
-                                .unwrap_or(std::cmp::Ordering::Equal)
-                        })
-                });
+                // Sort available peers by quality (bandwidth tier, then bandwidth value, then latency)
+                let mut peers_with_priority: Vec<(EndpointId, PeerBandwidth, Duration)> = self
+                    .available_peers
+                    .drain(..)
+                    .map(|peer| {
+                        let bandwidth = self
+                            .connection_monitor
+                            .get_bandwidth(&peer)
+                            .unwrap_or(PeerBandwidth::NotMeasured);
+                        let latency = self
+                            .connection_monitor
+                            .get_latency(&peer)
+                            .unwrap_or(Duration::MAX);
+                        (peer, bandwidth, latency)
+                    })
+                    .collect();
+
+                Self::sort_peers_by_quality(&mut peers_with_priority);
+
+                self.available_peers = peers_with_priority.into_iter().map(|(p, _, _)| p).collect();
 
                 // Return the best peer without removing it — the download scheduler
                 // controls concurrency globally, so a single peer can serve multiple
                 // concurrent downloads.
                 let peer = if let Some(&peer) = self.available_peers.front() {
-                    let bandwidth = self.connection_monitor.get_bandwidth(&peer).unwrap_or(0.0);
+                    let bandwidth = self
+                        .connection_monitor
+                        .get_bandwidth(&peer)
+                        .unwrap_or(PeerBandwidth::NotMeasured);
+                    let bw_display = match bandwidth {
+                        PeerBandwidth::NotMeasured => "unmeasured".to_string(),
+                        PeerBandwidth::Measured(bw) => format!("{:.1} KB/s", bw / 1024.0),
+                    };
                     info!(
-                        "Selected peer {} (bandwidth: {:.1} KB/s) for model parameters",
-                        peer,
-                        bandwidth / 1024.0,
+                        "Selected peer {} (bandwidth: {}) for model parameters",
+                        peer, bw_display,
                     );
                     Some(peer)
                 } else {
