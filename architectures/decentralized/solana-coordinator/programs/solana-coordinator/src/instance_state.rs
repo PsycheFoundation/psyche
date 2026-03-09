@@ -13,13 +13,13 @@ use psyche_coordinator::Witness;
 use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::model::Model;
 use psyche_core::FixedString;
+use psyche_core::NodeIdentity;
 use psyche_core::SmallBoolean;
 use psyche_core::sha256v;
 use serde::Deserialize;
 use serde::Serialize;
 use ts_rs::TS;
 
-use crate::ClientId;
 use crate::ProgramError;
 use crate::client::Client;
 use crate::clients_state::ClientsState;
@@ -63,7 +63,7 @@ impl RunMetadata {}
 #[repr(C)]
 pub struct CoordinatorInstanceState {
     pub metadata: RunMetadata,
-    pub coordinator: Coordinator<ClientId>,
+    pub coordinator: Coordinator,
     pub clients_state: ClientsState,
     pub is_warmup_first_tick: SmallBoolean,
     pub is_training_first_tick: SmallBoolean,
@@ -85,28 +85,29 @@ impl CoordinatorInstanceState {
     }
 
     pub fn tick(&mut self) -> Result<()> {
-        let active_clients_ids = match self.coordinator.run_state {
-            RunState::WaitingForMembers => {
-                // Reset state flags
-                self.is_warmup_first_tick = SmallBoolean::from(true);
-                self.is_training_first_tick = SmallBoolean::from(true);
+        let active_clients_ids: Option<Vec<NodeIdentity>> =
+            match self.coordinator.run_state {
+                RunState::WaitingForMembers => {
+                    // Reset state flags
+                    self.is_warmup_first_tick = SmallBoolean::from(true);
+                    self.is_training_first_tick = SmallBoolean::from(true);
 
-                let active_clients_ids =
-                    self.clients_state.get_active_clients_ids();
-                msg!(
-                    "Pending active clients ids: {}",
-                    active_clients_ids.len()
-                );
-                Some(active_clients_ids)
-            },
-            _ => None,
-        };
+                    let active_clients_ids =
+                        self.clients_state.get_active_clients_ids();
+                    msg!(
+                        "Pending active clients ids: {}",
+                        active_clients_ids.len()
+                    );
+                    Some(active_clients_ids.collect())
+                },
+                _ => None,
+            };
 
         msg!("Pre-tick run state: {}", self.coordinator.run_state);
 
         let clock: Clock = Clock::get()?;
         match self.coordinator.tick(
-            active_clients_ids,
+            active_clients_ids.as_ref().map(|v| v.iter()),
             clock.unix_timestamp as u64,
             Self::get_random_seed(&clock),
         ) {
@@ -138,8 +139,8 @@ impl CoordinatorInstanceState {
 
                 for client in self.clients_state.clients.iter_mut() {
                     if finished_client_index < finished_clients.len()
-                        && client.id.signer
-                            == finished_clients[finished_client_index].id.signer
+                        && client.id
+                            == finished_clients[finished_client_index].id
                     {
                         if finished_clients[finished_client_index].state
                             == ClientState::Healthy
@@ -153,8 +154,7 @@ impl CoordinatorInstanceState {
                         finished_client_index += 1;
                     }
                     if exited_client_index < exited_clients.len()
-                        && client.id.signer
-                            == exited_clients[exited_client_index].id.signer
+                        && client.id == exited_clients[exited_client_index].id
                     {
                         if exited_clients[exited_client_index].state
                             == ClientState::Ejected
@@ -190,6 +190,9 @@ impl CoordinatorInstanceState {
                 }
                 if !self.coordinator.model.check() {
                     return err!(ProgramError::ModelSanityCheckFailed);
+                }
+                if !self.coordinator.check_cold_start_warmup_steps() {
+                    return err!(ProgramError::ConfigSanityCheckFailed);
                 }
 
                 if self.coordinator.run_state == RunState::Uninitialized {
@@ -227,7 +230,7 @@ impl CoordinatorInstanceState {
 
         let clock: Clock = Clock::get()?;
         self.coordinator
-            .witness(id, witness, clock.unix_timestamp as u64)
+            .witness(&id, witness, clock.unix_timestamp as u64)
             .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
 
         self.tick()
@@ -243,7 +246,7 @@ impl CoordinatorInstanceState {
         let clock: Clock = Clock::get()?;
         self.coordinator
             .warmup_witness(
-                id,
+                &id,
                 witness,
                 clock.unix_timestamp as u64,
                 Self::get_random_seed(&clock),
@@ -312,6 +315,12 @@ impl CoordinatorInstanceState {
             let _ = std::mem::replace(&mut self.coordinator.model, model);
         }
 
+        if (config.is_some() || model.is_some())
+            && !self.coordinator.check_cold_start_warmup_steps()
+        {
+            return err!(ProgramError::ConfigSanityCheckFailed);
+        }
+
         if let Some(progress) = progress {
             if !progress.check() {
                 return err!(ProgramError::ModelSanityCheckFailed);
@@ -323,24 +332,20 @@ impl CoordinatorInstanceState {
         Ok(())
     }
 
-    pub fn join_run(&mut self, id: ClientId) -> Result<()> {
-        let existing = match self
-            .clients_state
-            .clients
-            .iter_mut()
-            .find(|x| x.id.signer == id.signer)
-        {
-            Some(client) => {
-                if client.id != id {
-                    return err!(ProgramError::ClientIdMismatch);
-                }
-                client.id = id; // IMPORTANT. Equality is on wallet key but includes ephemeral p2p key
-                client.active = self.clients_state.next_active;
-                msg!("Existing client {} re-joined", id.signer);
-                true
-            },
-            None => false,
-        };
+    pub fn join_run(&mut self, id: NodeIdentity) -> Result<()> {
+        let existing =
+            match self.clients_state.clients.iter_mut().find(|x| x.id == id) {
+                Some(client) => {
+                    // IMPORTANT
+                    // NodeIdentity equality is on wallet key but includes the p2p key, so
+                    // we must re-set this to ensure that the p2p key is up to date.
+                    client.id = id;
+                    client.active = self.clients_state.next_active;
+                    msg!("Existing client {} re-joined", id);
+                    true
+                },
+                None => false,
+            };
 
         if !existing {
             let total_num_clients = self.clients_state.clients.len() as u16;
@@ -363,7 +368,7 @@ impl CoordinatorInstanceState {
             }
             msg!(
                 "New client {} joined, {} total clients",
-                id.signer,
+                id,
                 self.clients_state.clients.len()
             );
         }
@@ -378,13 +383,13 @@ impl CoordinatorInstanceState {
     pub fn health_check(
         &mut self,
         payer: &Pubkey,
-        checks: HealthChecks<ClientId>,
+        checks: HealthChecks,
     ) -> Result<()> {
         // O(n) on clients, reconsider
         let id = self.clients_state.find_signer(payer)?;
 
         self.coordinator
-            .health_check(id, checks)
+            .health_check(&id, checks)
             .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
         self.tick()
     }
@@ -401,11 +406,11 @@ impl CoordinatorInstanceState {
             .epoch_state
             .clients
             .iter()
-            .position(|x| x.id == *id)
+            .position(|x| x.id == id)
             .ok_or(ProgramError::SignerNotAClient)?;
 
         self.coordinator
-            .checkpoint(id, index as u64, repo)
+            .checkpoint(&id, index as u64, repo)
             .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
 
         // Only tick if not halted (Paused/Uninitialized/Finished)

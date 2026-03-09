@@ -1282,6 +1282,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "built"
+version = "0.7.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56ed6191a7e78c36abdb16ab65341eefd73d64d303fffccdbb00d51e4205967b"
+dependencies = [
+ "cargo-lock",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1378,6 +1387,18 @@ dependencies = [
  "indexmap 2.13.0",
  "serde",
  "serde_yaml_ng",
+]
+
+[[package]]
+name = "cargo-lock"
+version = "10.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c06acb4f71407ba205a07cb453211e0e6a67b21904e47f6ba1f9589e38f2e454"
+dependencies = [
+ "semver",
+ "serde",
+ "toml 0.8.23",
+ "url",
 ]
 
 [[package]]
@@ -4622,50 +4643,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "iroh-n0des"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c953c0ecee4e35043433855a06f7358430c6bd9bf0adb088b8198d14c2606095"
-dependencies = [
- "anyhow",
- "bytes",
- "derive_more",
- "ed25519-dalek 3.0.0-pre.1",
- "futures-buffered",
- "getrandom 0.3.4",
- "iroh",
- "iroh-metrics 0.38.2",
- "iroh-n0des-macro",
- "iroh-tickets",
- "irpc",
- "irpc-iroh",
- "n0-error",
- "n0-future",
- "postcard",
- "rand 0.9.2",
- "rcan",
- "serde",
- "serde_json",
- "strum 0.27.2",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
-name = "iroh-n0des-macro"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e15d38b6ae3d9480e49883bea72880f80d595276e34090f5096d844e6f7f5e40"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "iroh-quinn"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4771,6 +4748,40 @@ dependencies = [
  "webpki-roots 1.0.6",
  "ws_stream_wasm",
  "z32",
+]
+
+[[package]]
+name = "iroh-services"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80e90cec7e16813b8b29eba1d955cccc2505e29c34ceed76722d3857bf2c9072"
+dependencies = [
+ "anyhow",
+ "built",
+ "bytes",
+ "derive_more",
+ "ed25519-dalek 3.0.0-pre.1",
+ "futures-buffered",
+ "getrandom 0.3.4",
+ "iroh",
+ "iroh-metrics 0.38.2",
+ "iroh-tickets",
+ "irpc",
+ "irpc-iroh",
+ "n0-error",
+ "n0-future",
+ "portmapper",
+ "postcard",
+ "rand 0.9.2",
+ "rcan",
+ "serde",
+ "serde_json",
+ "strum 0.27.2",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -7034,6 +7045,7 @@ dependencies = [
  "psyche-centralized-shared",
  "psyche-client",
  "psyche-coordinator",
+ "psyche-core",
  "psyche-eval",
  "psyche-metrics",
  "psyche-modeling",
@@ -7145,7 +7157,6 @@ dependencies = [
  "futures",
  "hex",
  "hf-hub",
- "iroh",
  "iroh-blobs",
  "lazy_static",
  "postcard",
@@ -7416,8 +7427,8 @@ dependencies = [
  "iroh",
  "iroh-blobs",
  "iroh-gossip",
- "iroh-n0des",
  "iroh-relay",
+ "iroh-services",
  "n0-future",
  "postcard",
  "psyche-core",
@@ -7513,8 +7524,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tikv-jemallocator",
- "solana-account-decoder-client-types",
- "solana-transaction-status-client-types",
  "time",
  "tokio",
  "tokio-util 0.7.18",
@@ -7532,6 +7541,14 @@ dependencies = [
  "psyche-solana-authorizer",
  "serde",
  "ts-rs",
+]
+
+[[package]]
+name = "psyche-solana-distributor"
+version = "0.1.1"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
 ]
 
 [[package]]
@@ -7576,6 +7593,7 @@ dependencies = [
  "psyche-core",
  "psyche-solana-authorizer",
  "psyche-solana-coordinator",
+ "psyche-solana-distributor",
  "psyche-solana-mining-pool",
  "psyche-solana-treasurer",
  "solana-sdk",
@@ -7700,7 +7718,7 @@ dependencies = [
 [[package]]
 name = "pyo3-tch"
 version = "0.22.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?rev=dda507e05a776547a112b6854d1e611684f8c729#dda507e05a776547a112b6854d1e611684f8c729"
+source = "git+https://github.com/NousResearch/tch-rs.git?rev=dda507e05a776547a112b6854d1e611684f8c729#dda507e05a776547a112b6854d1e611684f8c729"
 dependencies = [
  "pyo3",
  "tch",
@@ -8372,6 +8390,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serial_test",
+ "solana-account-decoder-client-types",
  "solana-client",
  "time",
  "tokio",
@@ -8717,6 +8736,10 @@ name = "semver"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d767eb0aabc880b29956c35734170f26ed551a859dbd361d140cdbeca61ab1e2"
+dependencies = [
+ "serde",
+ "serde_core",
+]
 
 [[package]]
 name = "send_wrapper"
@@ -12051,7 +12074,7 @@ dependencies = [
 [[package]]
 name = "tch"
 version = "0.22.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?rev=dda507e05a776547a112b6854d1e611684f8c729#dda507e05a776547a112b6854d1e611684f8c729"
+source = "git+https://github.com/NousResearch/tch-rs.git?rev=dda507e05a776547a112b6854d1e611684f8c729#dda507e05a776547a112b6854d1e611684f8c729"
 dependencies = [
  "half",
  "lazy_static",
@@ -12549,7 +12572,7 @@ dependencies = [
 [[package]]
 name = "torch-sys"
 version = "0.22.0"
-source = "git+https://github.com/jquesnelle/tch-rs.git?rev=dda507e05a776547a112b6854d1e611684f8c729#dda507e05a776547a112b6854d1e611684f8c729"
+source = "git+https://github.com/NousResearch/tch-rs.git?rev=dda507e05a776547a112b6854d1e611684f8c729#dda507e05a776547a112b6854d1e611684f8c729"
 dependencies = [
  "anyhow",
  "cc",
@@ -12746,7 +12769,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 [[package]]
 name = "ts-rs"
 version = "10.1.0"
-source = "git+https://github.com/arilotter/ts-rs.git?rev=92ce1752227fec9bb868ad8f25b26f110a795099#92ce1752227fec9bb868ad8f25b26f110a795099"
+source = "git+https://github.com/arilotter/ts-rs.git?rev=20c5bef07f3aa8ca3aa1b5cdad11ecdd60c64d34#20c5bef07f3aa8ca3aa1b5cdad11ecdd60c64d34"
 dependencies = [
  "anchor-lang",
  "bytemuck",
@@ -12759,7 +12782,7 @@ dependencies = [
 [[package]]
 name = "ts-rs-macros"
 version = "10.1.0"
-source = "git+https://github.com/arilotter/ts-rs.git?rev=92ce1752227fec9bb868ad8f25b26f110a795099#92ce1752227fec9bb868ad8f25b26f110a795099"
+source = "git+https://github.com/arilotter/ts-rs.git?rev=20c5bef07f3aa8ca3aa1b5cdad11ecdd60c64d34#20c5bef07f3aa8ca3aa1b5cdad11ecdd60c64d34"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -1,15 +1,19 @@
+use anchor_client::solana_sdk::bs58;
 use anchor_client::solana_sdk::pubkey::Pubkey;
+use anchor_client::solana_sdk::signature::{EncodableKey, Keypair, Signer};
 use anyhow::{Context, Result, anyhow, bail};
-use std::fs;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Cursor};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tokio::signal;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
+use crate::docker::RunInfo;
 use crate::docker::coordinator_client::CoordinatorClient;
 use crate::get_env_var;
 use crate::load_and_apply_env_file;
+use crate::load_wallet_key;
+use psyche_coordinator::RunState;
 
 const RETRY_DELAY_SECS: u64 = 5;
 const VERSION_MISMATCH_EXIT_CODE: i32 = 10;
@@ -21,6 +25,7 @@ pub struct RunManager {
     local_docker: bool,
     coordinator_client: CoordinatorClient,
     scratch_dir: Option<String>,
+    client_authorizer: Pubkey,
 }
 
 #[derive(Debug)]
@@ -34,6 +39,7 @@ impl RunManager {
         coordinator_program_id: String,
         env_file: PathBuf,
         local_docker: bool,
+        authorizer: Option<Pubkey>,
     ) -> Result<Self> {
         // Verify docker is available
         Command::new("docker")
@@ -43,20 +49,9 @@ impl RunManager {
 
         load_and_apply_env_file(&env_file)?;
 
-        let wallet_key =
-            if let Ok(raw_wallet_private_key) = std::env::var("RAW_WALLET_PRIVATE_KEY") {
-                info!("Using RAW_WALLET_PRIVATE_KEY from command line");
-                raw_wallet_private_key
-            } else if let Ok(wallet_path) = std::env::var("WALLET_PRIVATE_KEY_PATH") {
-                info!("Using WALLET_PRIVATE_KEY_PATH: {wallet_path}");
-                fs::read_to_string(wallet_path)?
-            } else {
-                bail!(
-                    "No wallet private key! Must set RAW_WALLET_PRIVATE_KEY or WALLET_PRIVATE_KEY_PATH"
-                )
-            }
-            .trim()
-            .to_string();
+        let wallet_key = load_wallet_key()?;
+        let user_pubkey = parse_wallet_pubkey(&wallet_key)?;
+        info!("User pubkey: {}", user_pubkey);
 
         let coordinator_program_id = coordinator_program_id
             .parse::<Pubkey>()
@@ -64,12 +59,49 @@ impl RunManager {
 
         info!("Using coordinator program ID: {}", coordinator_program_id);
 
-        let run_id = get_env_var("RUN_ID")?;
         let rpc = get_env_var("RPC")?;
-
         let scratch_dir = std::env::var("SCRATCH_DIR").ok();
 
         let coordinator_client = CoordinatorClient::new(rpc, coordinator_program_id);
+
+        // Read delegate key from AUTHORIZER env var (separate from --authorizer flag)
+        let delegate_authorizer = parse_delegate_authorizer_from_env()?;
+
+        // Try to get RUN_ID from env, or discover available runs
+        if let Ok(run_id) = std::env::var("RUN_ID") {
+            if !run_id.is_empty() {
+                info!("Using RUN_ID from environment: {}", run_id);
+                let client_authorizer = resolve_client_authorizer(
+                    &coordinator_client,
+                    &run_id,
+                    &user_pubkey,
+                    delegate_authorizer.as_ref(),
+                )?;
+                return Ok(Self {
+                    wallet_key,
+                    run_id,
+                    coordinator_client,
+                    env_file,
+                    local_docker,
+                    scratch_dir,
+                    client_authorizer,
+                });
+            }
+        }
+
+        info!("RUN_ID not set, discovering available runs...");
+        let runs = coordinator_client.get_all_runs()?;
+        if runs.is_empty() {
+            bail!("No runs found on coordinator program");
+        }
+
+        let (run_id, client_authorizer) = select_best_run(
+            &runs,
+            &user_pubkey,
+            &coordinator_client,
+            authorizer.as_ref(),
+            delegate_authorizer.as_ref(),
+        )?;
 
         Ok(Self {
             wallet_key,
@@ -78,6 +110,7 @@ impl RunManager {
             env_file,
             local_docker,
             scratch_dir,
+            client_authorizer,
         })
     }
 
@@ -160,6 +193,10 @@ impl RunManager {
             .arg(format!("RAW_WALLET_PRIVATE_KEY={}", &self.wallet_key))
             .arg("--env")
             .arg(format!("CLIENT_VERSION={}", client_version))
+            .arg("--env")
+            .arg(format!("RUN_ID={}", &self.run_id))
+            .arg("--env")
+            .arg(format!("AUTHORIZER={}", &self.client_authorizer))
             .arg("--env-file")
             .arg(&self.env_file);
 
@@ -320,4 +357,173 @@ impl RunManager {
             }
         }
     }
+}
+
+/// Parse wallet key string to extract the user's pubkey.
+pub fn parse_wallet_pubkey(wallet_key: &str) -> Result<Pubkey> {
+    let keypair = if wallet_key.starts_with('[') {
+        // Assume Keypair::read format (JSON array of bytes)
+        Keypair::read(&mut Cursor::new(wallet_key))
+            .map_err(|e| anyhow!("Failed to parse wallet key: {}", e))?
+    } else {
+        // from_base58_string has an internal unwrap() so we use these functions to handle
+        // errors more gracefuly
+        let decoded = bs58::decode(wallet_key)
+            .into_vec()
+            .map_err(|e| anyhow!("Failed to decode base58 wallet key: {}", e))?;
+
+        Keypair::from_bytes(&decoded)
+            .map_err(|e| anyhow!("Failed to create keypair from decoded bytes: {}", e))?
+    };
+    Ok(keypair.pubkey())
+}
+
+/// Read the AUTHORIZER env var as a delegate key pubkey, if set.
+pub fn parse_delegate_authorizer_from_env() -> Result<Option<Pubkey>> {
+    match std::env::var("AUTHORIZER") {
+        Ok(val) if !val.is_empty() => {
+            let pubkey = val.parse::<Pubkey>().with_context(|| {
+                format!("Failed to parse AUTHORIZER env var as pubkey: {}", val)
+            })?;
+            info!(
+                "Using delegate authorizer from AUTHORIZER env var: {}",
+                pubkey
+            );
+            Ok(Some(pubkey))
+        }
+        _ => {
+            info!("AUTHORIZER env var not set, skipping delegate key authorization");
+            Ok(None)
+        }
+    }
+}
+
+/// Determine the correct AUTHORIZER value for the client container by checking
+/// which authorization type (permissionless, user-specific, or delegate) is valid for this run.
+fn resolve_client_authorizer(
+    coordinator_client: &CoordinatorClient,
+    run_id: &str,
+    user_pubkey: &Pubkey,
+    delegate_authorizer: Option<&Pubkey>,
+) -> Result<Pubkey> {
+    let Some(grantee) =
+        coordinator_client.can_user_join_run(run_id, user_pubkey, delegate_authorizer)?
+    else {
+        bail!(
+            "User {} is not authorized to join run {}",
+            user_pubkey,
+            run_id
+        );
+    };
+
+    info!("Resolved AUTHORIZER={} for run {}", grantee, run_id);
+    Ok(grantee)
+}
+
+/// Filter runs to only those that are joinable and authorized for the given user.
+/// Returns (run_info, grantee_pubkey) pairs sorted by priority (WaitingForMembers first).
+///
+/// - `join_authority_filter`: if set, only consider runs whose join_authority matches this pubkey
+/// - `delegate_authorizer`: if set, also try delegate-key authorization via this pubkey
+pub fn find_joinable_runs(
+    runs: &[RunInfo],
+    user_pubkey: &Pubkey,
+    coordinator_client: &CoordinatorClient,
+    join_authority_filter: Option<&Pubkey>,
+    delegate_authorizer: Option<&Pubkey>,
+) -> Result<Vec<(RunInfo, Pubkey)>> {
+    // Filter out unjoinable run states
+    let mut candidates: Vec<_> = runs
+        .iter()
+        .filter(|run| {
+            !matches!(
+                run.run_state,
+                RunState::Uninitialized | RunState::Finished | RunState::Paused
+            )
+        })
+        .cloned()
+        .collect();
+
+    if candidates.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Filter by join_authority if specified
+    if let Some(auth) = join_authority_filter {
+        info!("Filtering runs by join_authority: {}", auth);
+        candidates.retain(
+            |run| match coordinator_client.fetch_coordinator_data(&run.run_id) {
+                Ok(data) => data.join_authority == *auth,
+                Err(e) => {
+                    debug!("Skipping run {} - failed to fetch data: {}", run.run_id, e);
+                    false
+                }
+            },
+        );
+    }
+
+    // Filter to runs the user is authorized to join, capturing the matched grantee
+    let mut authorized_candidates: Vec<(RunInfo, Pubkey)> = Vec::new();
+    for run in candidates {
+        match coordinator_client.can_user_join_run(&run.run_id, user_pubkey, delegate_authorizer) {
+            Ok(Some(grantee)) => authorized_candidates.push((run, grantee)),
+            Ok(None) => {}
+            Err(e) => {
+                debug!(
+                    "Skipping run {} - authorization check failed: {}",
+                    run.run_id, e
+                );
+            }
+        }
+    }
+
+    // Prioritize runs waiting for members
+    authorized_candidates.sort_by_key(|(run, _)| match run.run_state {
+        RunState::WaitingForMembers => 0,
+        _ => 1,
+    });
+
+    Ok(authorized_candidates)
+}
+
+/// Returns (run_id, client_authorizer) where client_authorizer is the grantee
+/// to pass to the container as AUTHORIZER.
+fn select_best_run(
+    runs: &[RunInfo],
+    user_pubkey: &Pubkey,
+    coordinator_client: &CoordinatorClient,
+    join_authority_filter: Option<&Pubkey>,
+    delegate_authorizer: Option<&Pubkey>,
+) -> Result<(String, Pubkey)> {
+    let authorized_candidates = find_joinable_runs(
+        runs,
+        user_pubkey,
+        coordinator_client,
+        join_authority_filter,
+        delegate_authorizer,
+    )?;
+
+    if authorized_candidates.is_empty() {
+        bail!("No joinable runs found for user {}", user_pubkey);
+    }
+
+    println!("Found {} available run(s):", authorized_candidates.len());
+    let candidate_runs: Vec<_> = authorized_candidates.iter().map(|(r, _)| r).collect();
+    for line in RunInfo::format_table(&candidate_runs) {
+        println!("{}", line);
+    }
+
+    let (selected_run, grantee) = &authorized_candidates[0];
+    println!(
+        "Selected run: {} ({}, {})",
+        selected_run.run_id,
+        selected_run.run_state,
+        selected_run.clients_display()
+    );
+    info!(
+        "Resolved AUTHORIZER={} for run {}",
+        grantee, selected_run.run_id
+    );
+
+    Ok((selected_run.run_id.clone(), *grantee))
 }

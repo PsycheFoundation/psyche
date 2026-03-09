@@ -23,6 +23,7 @@ jobs:
     # If we use ubuntu-latest it will link against a newer version of glibc making
     # the binary non-portable to our 22.04 servers, so use this for compatibility.
     runs-on: ubuntu-22.04
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository

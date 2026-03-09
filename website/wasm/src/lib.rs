@@ -1,5 +1,6 @@
 use psyche_core::LearningRateSchedule;
-use psyche_solana_coordinator::{ClientId, CoordinatorAccount, coordinator_account_from_bytes};
+use psyche_core::NodeIdentity;
+use psyche_solana_coordinator::{CoordinatorAccount, coordinator_account_from_bytes};
 use serde::ser::Serialize;
 use ts_rs::TS;
 use wasm_bindgen::prelude::*;
@@ -7,7 +8,7 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen(typescript_custom_section)]
 const TS_COORDINATOR_DEF: &str = r#"
 import { CoordinatorInstanceState } from "./CoordinatorInstanceState.js";
-import { ClientId } from "./ClientId.js";
+import { NodeIdentity } from "./NodeIdentity.js";
 import { LearningRateSchedule } from "./LearningRateSchedule.js";
 
 export type PsycheCoordinator = CoordinatorInstanceState;
@@ -37,4 +38,4 @@ pub struct DummyCoordinatorAccount(CoordinatorAccount);
 #[allow(dead_code)]
 #[derive(TS)]
 #[ts(export)]
-pub struct DummyClientId(ClientId);
+pub struct DummyNodeIdentity(NodeIdentity);

@@ -18,7 +18,8 @@ use iroh_gossip::{
     net::Gossip,
     proto::{HyparviewConfig, PlumtreeConfig},
 };
-use iroh_n0des::ApiSecret;
+use iroh_services::{API_SECRET_ENV_VAR_NAME, ApiSecret, caps::NetDiagnosticsCap};
+use n0_future::task::AbortOnDropHandle;
 pub use p2p_model_sharing::{
     MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
     PeerManagerHandle,
@@ -38,12 +39,10 @@ use std::{
 use tokio::{
     io::AsyncReadExt,
     select,
+    sync::mpsc,
     sync::{mpsc::UnboundedReceiver, oneshot},
     task::JoinError,
     time::timeout,
-};
-use tokio::{
-    sync::mpsc,
     time::{Interval, interval},
 };
 use tokio_util::sync::CancellationToken;
@@ -75,8 +74,8 @@ mod util;
 #[cfg(test)]
 mod test;
 
-pub use authenticable_identity::{AuthenticatableIdentity, FromSignedBytesError, raw_p2p_verify};
-pub use connection_monitor::{ConnectionData, ConnectionMonitor};
+pub use authenticable_identity::raw_p2p_verify;
+pub use connection_monitor::{ConnectionData, ConnectionMonitor, PeerBandwidth};
 pub use download::{
     DownloadComplete, DownloadFailed, DownloadSchedulerHandle, DownloadType, ReadyRetry,
     RetryConfig, RetryQueueResult, TransmittableDownload,
@@ -194,7 +193,8 @@ where
     metrics: Arc<ClientMetrics>,
     endpoint: Endpoint,
     connection_monitor: ConnectionMonitor,
-    _iroh_metrics: Option<iroh_n0des::Client>,
+    _iroh_services_client: Option<iroh_services::Client>,
+    _iroh_diagnostics_task: Option<AbortOnDropHandle<()>>,
 }
 
 impl<B, D> Debug for NetworkConnection<B, D>
@@ -396,25 +396,34 @@ where
 
         info!("Our endpoint ID: {}", endpoint_addr.id);
 
-        let iroh_metrics = {
-            let builder = iroh_n0des::Client::builder(&endpoint);
+        let iroh_services_client = {
+            let builder = iroh_services::Client::builder(&endpoint);
             let allowlist = allowlist.clone();
-            (async move {
-                let client = builder.api_secret_from_env()?.build().await?;
-                const API_SECRET_ENV_VAR_NAME: &str = "N0DES_API_SECRET";
 
-                match std::env::var(API_SECRET_ENV_VAR_NAME) {
-                    Ok(ticket_string) => {
-                        let ticket = ApiSecret::from_str(&ticket_string)
-                            .context(format!("invalid {API_SECRET_ENV_VAR_NAME}"))?;
-                        let endpoint_id = ticket.remote.id;
-                        allowlist.force_allow(endpoint_id);
-                    }
-                    Err(e) => unreachable!("{e:?}"),
-                }
+            (async move {
+                let secret = ApiSecret::from_env_var(API_SECRET_ENV_VAR_NAME)
+                    .context("failed to get API secret")?;
+
+                let remote_id = secret.addr().id;
+                allowlist.force_allow(remote_id);
+
+                let client = builder
+                    .api_secret(secret)?
+                    .build()
+                    .await
+                    .context("failed to build metrics client")?;
+
+                timeout(
+                    Duration::from_secs(10),
+                    client.grant_capability(remote_id, vec![NetDiagnosticsCap::GetAny]),
+                )
+                .await
+                .context("timed out while granting capability")?
+                .context("failed to grant capability")?;
+
                 Ok(client)
             })
-            .await as anyhow::Result<iroh_n0des::Client>
+            .await as anyhow::Result<iroh_services::Client>
         }
         .map_or_else(
             |e| {
@@ -477,8 +486,15 @@ where
             endpoint.clone(),
             SupportedProtocols::new(gossip.clone(), blobs_protocol, model_parameter_sharing),
             additional_protocol,
+            iroh_services_client
+                .as_ref()
+                .map(|_| iroh_services::ClientHost::new(&endpoint)),
         )?;
         trace!("router created!");
+
+        let iroh_diagnostics_task = iroh_services_client
+            .as_ref()
+            .map(|client| spawn_network_diagnostics_loop(client.clone()));
 
         let (gossip_tx, gossip_rx) = gossip
             .subscribe(gossip_topic(run_id), bootstrap_endpoint_ids)
@@ -507,7 +523,8 @@ where
             _download: Default::default(),
             endpoint,
             connection_monitor,
-            _iroh_metrics: iroh_metrics,
+            _iroh_services_client: iroh_services_client,
+            _iroh_diagnostics_task: iroh_diagnostics_task,
         })
     }
 
@@ -591,10 +608,21 @@ where
 
             match progress {
                 Ok(mut progress) => {
-                    while let Some(val) = progress.next().await {
-                        if let Err(err) = tx.send(Ok(val)) {
-                            panic!("Failed to send download progress: {err:?} {:?}", err.0);
+                    let result = tokio::time::timeout(Duration::from_secs(300), async {
+                        while let Some(val) = progress.next().await {
+                            if let Err(err) = tx.send(Ok(val)) {
+                                panic!("Failed to send download progress: {err:?} {:?}", err.0);
+                            }
                         }
+                    })
+                    .await;
+
+                    if result.is_err() {
+                        warn!(
+                            "Download of blob {} timed out after 5 minutes",
+                            ticket_hash.fmt_short()
+                        );
+                        let _ = tx.send(Err(anyhow!("Download timed out after 5 minutes")));
                     }
                 }
                 Err(e) => panic!("Failed to start download: {e}"),
@@ -704,10 +732,14 @@ where
                 .latency()
                 .map(|d| d.as_secs_f64())
                 .unwrap_or(f64::MAX);
+            let bandwidth = match conn_data.bandwidth {
+                PeerBandwidth::NotMeasured => 0.0,
+                PeerBandwidth::Measured(bw) => bw,
+            };
             infos.push(P2PEndpointInfo {
                 id: conn_data.endpoint_id,
                 selected_path: conn_data.selected_path,
-                bandwidth: conn_data.bandwidth,
+                bandwidth,
                 latency,
             });
         }
@@ -735,6 +767,8 @@ where
                     },
                     Some(DownloadManagerEvent::Failed(result)) => {
                         self.state.download_progesses.remove(&result.blob_ticket.hash());
+                        let peer_id = result.blob_ticket.addr().id;
+                        self.connection_monitor.update_peer_bandwidth(&peer_id, PeerBandwidth::Measured(0.0));
                         Ok(Some(NetworkEvent::DownloadFailed(result)))
                     }
                     None => Ok(None),
@@ -796,6 +830,12 @@ where
         }
         None
     }
+
+    pub fn clear_bandwidth_tracking(&mut self) {
+        self.state.bandwidth_tracker.clear();
+        self.connection_monitor.clear_all_bandwidth();
+    }
+
     pub fn connection_monitor(&self) -> ConnectionMonitor {
         self.connection_monitor.clone()
     }
@@ -949,6 +989,23 @@ fn hash_bytes(bytes: &Bytes) -> u64 {
     let mut hasher = DefaultHasher::new();
     bytes.hash(&mut hasher);
     hasher.finish()
+}
+
+fn spawn_network_diagnostics_loop(client: iroh_services::Client) -> AbortOnDropHandle<()> {
+    AbortOnDropHandle::new(tokio::spawn(async move {
+        let mut diagnostics_interval = tokio::time::interval(Duration::from_secs(60 * 60));
+        diagnostics_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        loop {
+            diagnostics_interval.tick().await;
+
+            match timeout(Duration::from_secs(10), client.net_diagnostics(true)).await {
+                Ok(Ok(report)) => info!("Network diagnostics report: {report:?}"),
+                Ok(Err(e)) => warn!("Failed to run network diagnostics: {e:#}"),
+                Err(_) => warn!("Timed out while running network diagnostics"),
+            }
+        }
+    }))
 }
 
 // Simplified param_request_task
