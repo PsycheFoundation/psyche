@@ -69,7 +69,7 @@ struct GatewayState {
     pending_requests: RwLock<HashMap<String, mpsc::Sender<InferenceResponse>>>,
     network_tx: mpsc::Sender<(EndpointId, InferenceMessage)>,
     gossip_tx: mpsc::Sender<InferenceGossipMessage>,
-    network: Arc<NetworkConnection<InferenceGossipMessage, ()>>,
+    endpoint_addr: EndpointAddr,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
@@ -275,12 +275,11 @@ async fn handle_load_model(
 
 #[axum::debug_handler]
 async fn handle_bootstrap(State(state): State<Arc<GatewayState>>) -> Json<EndpointAddr> {
-    let addr = state.network.router().endpoint().addr();
     info!(
         "Bootstrap request: returning endpoint addr {}",
-        addr.id.fmt_short()
+        state.endpoint_addr.id.fmt_short()
     );
-    Json(addr)
+    Json(state.endpoint_addr.clone())
 }
 
 #[derive(Debug)]
@@ -448,14 +447,14 @@ async fn run_gateway() -> Result<()> {
     let (network_tx, mut network_rx) = mpsc::channel::<(EndpointId, InferenceMessage)>(100);
     let (gossip_tx, mut gossip_rx) = mpsc::channel::<InferenceGossipMessage>(100);
 
-    let network_arc = Arc::new(network);
+    let endpoint_addr = network.router().endpoint().addr();
 
     let state = Arc::new(GatewayState {
         available_nodes: RwLock::new(HashMap::new()),
         pending_requests: RwLock::new(HashMap::new()),
         network_tx,
         gossip_tx,
-        network: network_arc.clone(),
+        endpoint_addr,
     });
 
     info!("Gateway ready! Listening on http://{}", args.listen_addr);
@@ -463,7 +462,6 @@ async fn run_gateway() -> Result<()> {
 
     let network_handle = {
         let state = state.clone();
-        let network = network_arc.clone();
         let cancel = cancel.clone();
         tokio::spawn(async move {
             let mut task_set = tokio::task::JoinSet::new();

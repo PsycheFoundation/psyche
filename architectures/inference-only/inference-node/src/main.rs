@@ -84,7 +84,7 @@ struct RunArgs {
     #[arg(long, default_value = "")]
     capabilities: String,
 
-    /// gateway HTTP URL to fetch bootstrap peer from (e.g. http://gateway:8000)
+    /// gateway HTTP URL to fetch bootstrap peer from
     #[arg(long, env = "PSYCHE_GATEWAY_URL")]
     bootstrap_url: Option<String>,
 
@@ -268,6 +268,11 @@ async fn main() -> Result<()> {
     let mut heartbeat_interval = tokio::time::interval(std::time::Duration::from_secs(30));
     heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
+    // re-bootstrap every 20 heartbeats (10 min)
+    let mut rebootstrap_interval = tokio::time::interval(std::time::Duration::from_secs(600));
+    rebootstrap_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    rebootstrap_interval.tick().await;
+
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
@@ -300,6 +305,20 @@ async fn main() -> Result<()> {
                     debug!("Re-broadcast successful (model: {})", model);
                 } else {
                     debug!("Re-broadcast successful (idle)");
+                }
+            }
+
+            _ = rebootstrap_interval.tick() => {
+                if let Some(ref url) = run_args.bootstrap_url {
+                    match psyche_inference_node::fetch_bootstrap_peer(url).await {
+                        Ok(peer) => {
+                            network.add_peers(vec![peer.id]);
+                            debug!("Re-bootstrapped from {}: peer {}", url, peer.id.fmt_short());
+                        }
+                        Err(e) => {
+                            warn!("Re-bootstrap from {} failed: {:#}", url, e);
+                        }
+                    }
                 }
             }
 
