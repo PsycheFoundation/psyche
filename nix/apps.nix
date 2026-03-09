@@ -130,49 +130,48 @@
             ];
             text = ''
               set +e
-              echo "=== ROOTLESS DOCKER SETUP TEST ==="
+              echo "=== ROOTLESS DOCKER VIA UNSHARE ==="
 
-              echo "--- 1. create user ---"
-              useradd -m testuser 2>&1; echo "exit: $?"
-
-              echo "--- 2. subuid/subgid ---"
-              echo "testuser:100000:65536" > /etc/subuid 2>&1; echo "subuid exit: $?"
-              echo "testuser:100000:65536" > /etc/subgid 2>&1; echo "subgid exit: $?"
+              echo "--- 1. setup subuid/subgid for root ---"
+              echo "root:100000:65536" > /etc/subuid 2>&1
+              echo "root:100000:65536" > /etc/subgid 2>&1
               cat /etc/subuid /etc/subgid
 
-              echo "--- 3. suid newuidmap/newgidmap ---"
+              echo "--- 2. suid newuidmap/newgidmap ---"
               mkdir -p /usr/local/bin
-              cp ${pkgs.shadow}/bin/newuidmap /usr/local/bin/newuidmap 2>&1; echo "cp newuidmap: $?"
-              cp ${pkgs.shadow}/bin/newgidmap /usr/local/bin/newgidmap 2>&1; echo "cp newgidmap: $?"
-              chmod u+s /usr/local/bin/newuidmap /usr/local/bin/newgidmap 2>&1; echo "chmod suid: $?"
-              ls -la /usr/local/bin/new*idmap
+              cp ${pkgs.shadow}/bin/newuidmap /usr/local/bin/newuidmap
+              cp ${pkgs.shadow}/bin/newgidmap /usr/local/bin/newgidmap
+              chmod u+s /usr/local/bin/newuidmap /usr/local/bin/newgidmap
+              export PATH="/usr/local/bin:$PATH"
 
-              echo "--- 4. unshare test ---"
-              unshare --user --map-root-user echo "unshare user ns works" 2>&1; echo "exit: $?"
+              echo "--- 3. rootlesskit as root (should fail) ---"
+              XDG_RUNTIME_DIR=$(mktemp -d)
+              export XDG_RUNTIME_DIR
+              HOME=$(mktemp -d)
+              export HOME
+              rootlesskit echo "rootlesskit as root works" 2>&1; echo "exit: $?"
 
-              echo "--- 5. unshare as testuser ---"
-              su testuser -s /bin/sh -c 'id; unshare --user echo "user unshare works"' 2>&1; echo "exit: $?"
+              echo "--- 4. rootlesskit via unshare --map-user=1000 ---"
+              unshare --user --map-user=1000 --map-group=1000 rootlesskit echo "rootlesskit in user ns works" 2>&1; echo "exit: $?"
 
-              echo "--- 6. rootlesskit test ---"
-              su testuser -s /bin/sh -c 'export XDG_RUNTIME_DIR=$(mktemp -d); export HOME=$(mktemp -d); export PATH=/usr/local/bin:$PATH:${pkgs.docker}/bin; rootlesskit echo "rootlesskit works"' 2>&1; echo "exit: $?"
-
-              echo "--- 7. cgroups ---"
-              cat /proc/self/cgroup 2>&1 || echo "no cgroup"
-              find /sys/fs/cgroup/ -maxdepth 1 2>/dev/null || echo "no cgroups dir"
-
-              echo "--- 8. attempt dockerd-rootless ---"
-              su testuser -s /bin/sh -c '
+              echo "--- 5. dockerd-rootless via unshare ---"
+              unshare --user --map-user=1000 --map-group=1000 sh -c '
                 export XDG_RUNTIME_DIR=$(mktemp -d)
                 export HOME=$(mktemp -d)
-                export PATH=/usr/local/bin:$PATH:${pkgs.docker}/bin
-                timeout 15 dockerd-rootless 2>&1 &
+                export PATH="/usr/local/bin:'"$PATH"'"
+                id
+                echo "starting dockerd-rootless..."
+                timeout 20 dockerd-rootless 2>&1 &
                 PID=$!
                 export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
-                for i in $(seq 1 10); do
+                for i in $(seq 1 15); do
                   if docker info >/dev/null 2>&1; then
                     echo "DOCKER IS RUNNING"
                     docker info 2>&1
                     break
+                  fi
+                  if [ "$i" = "15" ]; then
+                    echo "Docker failed to start"
                   fi
                   sleep 1
                 done
