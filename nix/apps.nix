@@ -154,7 +154,7 @@
               echo "--- can we unshare? ---"
               unshare --user --map-root-user echo "unshare user ns works" 2>&1 || echo "unshare user ns failed"
               echo "--- cgroups ---"
-              ls /sys/fs/cgroup/ 2>/dev/null | head -10 || echo "no cgroups"
+              find /sys/fs/cgroup/ -maxdepth 1 2>/dev/null | head -10 || echo "no cgroups"
               cat /proc/self/cgroup 2>/dev/null || echo "no cgroup info"
               echo "--- /var/lib writable? ---"
               mkdir -p /var/lib/docker 2>&1 && echo "yes" || echo "no"
