@@ -47,11 +47,20 @@
               mkdir -p /etc/containers
               echo '{"default":[{"type":"insecureAcceptAnything"}]}' > /etc/containers/policy.json
 
+              # Podman needs a containers policy to accept images
+              mkdir -p /etc/containers
+              echo '{"default":[{"type":"insecureAcceptAnything"}]}' > /etc/containers/policy.json
+
               # Point Bollard (Docker client) at podman's socket
               export DOCKER_HOST="unix:///run/podman/podman.sock"
 
+              # Start podman API service for docker-compose and Bollard
+              podman system service --time=0 "$DOCKER_HOST" &
+              PODMAN_PID=$!
+              trap 'kill "$PODMAN_PID" 2>/dev/null || true' EXIT
+              sleep 1
+
               # Make podman available as "docker" for docker-compose and scripts
-              # that invoke "docker" directly
               mkdir -p /tmp/docker-compat/bin
               ln -sf "$(command -v podman)" /tmp/docker-compat/bin/docker
               export PATH="/tmp/docker-compat/bin:$PATH"
@@ -92,6 +101,12 @@
               export PATH="/tmp/docker-compat/bin:$PATH"
 
               echo "=== PODMAN + COMPOSE TEST ==="
+
+              echo "--- starting podman API service ---"
+              podman system service --time=0 unix:///run/podman/podman.sock &
+              PODMAN_PID=$!
+              trap 'kill "$PODMAN_PID" 2>/dev/null || true' EXIT
+              sleep 1
 
               echo "--- loading validator image ---"
               ${self'.packages.docker-psyche-solana-test-validator} | podman load
