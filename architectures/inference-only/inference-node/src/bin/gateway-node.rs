@@ -17,6 +17,7 @@ use axum::{
     routing::{get, post},
 };
 use clap::Parser;
+use iroh::EndpointAddr;
 use psyche_inference::{
     INFERENCE_ALPN, InferenceGossipMessage, InferenceMessage, InferenceRequest, InferenceResponse,
 };
@@ -135,13 +136,6 @@ struct ChatCompletionResponse {
     model: String,
     choices: Vec<ChatCompletionChoice>,
     // we're omitting usage stats for now
-}
-
-#[derive(serde::Serialize)]
-struct BootstrapInfo {
-    node_id: String,
-    relay_url: Option<String>,
-    direct_addresses: Vec<String>,
 }
 
 #[axum::debug_handler]
@@ -280,36 +274,13 @@ async fn handle_load_model(
 }
 
 #[axum::debug_handler]
-async fn handle_bootstrap(
-    State(state): State<Arc<GatewayState>>,
-) -> Result<Json<BootstrapInfo>, AppError> {
-    let endpoint_addr = state.network.router().endpoint().node_addr();
-
-    info!("Bootstrap request received, returning gateway node address");
-
-    // Extract node_id
-    let node_id = endpoint_addr.node_id.to_string();
-
-    // Extract relay URL (if present)
-    let relay_url = endpoint_addr.info.relay_url().map(|url| url.to_string());
-
-    // Extract direct addresses
-    let direct_addresses: Vec<String> = endpoint_addr
-        .info
-        .direct_addresses()
-        .iter()
-        .map(|addr| addr.to_string())
-        .collect();
-
-    let bootstrap_info = BootstrapInfo {
-        node_id,
-        relay_url,
-        direct_addresses,
-    };
-
-    info!("Returning bootstrap info: {:?}", bootstrap_info);
-
-    Ok(Json(bootstrap_info))
+async fn handle_bootstrap(State(state): State<Arc<GatewayState>>) -> Json<EndpointAddr> {
+    let addr = state.network.router().endpoint().addr();
+    info!(
+        "Bootstrap request: returning endpoint addr {}",
+        addr.id.fmt_short()
+    );
+    Json(addr)
 }
 
 #[derive(Debug)]
