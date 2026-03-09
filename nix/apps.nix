@@ -46,11 +46,7 @@
               echo "starting docker daemon"
               dockerd --iptables=false &
               DOCKERD_PID=$!
-
-              cleanup() {
-                kill "$DOCKERD_PID" 2>/dev/null || true
-              }
-              trap cleanup EXIT
+              trap 'kill "$DOCKERD_PID" 2>/dev/null || true' EXIT
 
               echo "waiting for docker to be ready"
               for i in $(seq 1 30); do
@@ -71,8 +67,6 @@
               echo "running test from repo root"
               cd architectures/decentralized/testing
               test-psyche-decentralized-testing-integration_tests --nocapture "${testName}"
-              echo "DEBUG: test exited with $?"
-              exit 1
             '';
           };
         in
