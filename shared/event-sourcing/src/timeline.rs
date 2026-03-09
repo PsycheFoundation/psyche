@@ -64,14 +64,29 @@ fn coordinator_to_snapshot(
         .iter()
         .map(|c| c.id.to_string())
         .collect();
-    let batch_assignments: BTreeMap<_, _> = CommitteeSelection::from_coordinator(coord, 0)
-        .map(|sel| {
-            assign_data_for_state(coord, &sel)
-                .into_iter()
-                .map(|(batch_id, node_id)| (batch_id, node_id.to_string()))
-                .collect()
-        })
-        .unwrap_or_default();
+    let round_clients_len = coord
+        .current_round()
+        .map(|r| r.clients_len as usize)
+        .unwrap_or(0);
+    let batch_assignments: BTreeMap<_, _> = if round_clients_len == coord.epoch_state.clients.len()
+    {
+        CommitteeSelection::from_coordinator(coord, 0)
+            .map(|sel| {
+                assign_data_for_state(coord, &sel)
+                    .into_iter()
+                    .map(|(batch_id, node_id)| (batch_id, node_id.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    } else {
+        tracing::warn!(
+            round_clients_len,
+            epoch_clients_len = coord.epoch_state.clients.len(),
+            run_state = ?coord.run_state,
+            "coordinator snapshot has mismatched client counts, skipping batch assignment"
+        );
+        BTreeMap::new()
+    };
     CoordinatorStateSnapshot {
         timestamp,
         run_state: coord.run_state,
