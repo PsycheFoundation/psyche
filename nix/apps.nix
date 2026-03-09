@@ -44,7 +44,7 @@
             ];
             text = ''
               echo "starting docker daemon"
-              dockerd &
+              dockerd --iptables=false &
               DOCKERD_PID=$!
 
               cleanup() {
