@@ -55,10 +55,16 @@
               export DOCKER_HOST="unix:///run/podman/podman.sock"
 
               # Start podman API service for docker-compose and Bollard
+              mkdir -p /run/podman
               podman system service --time=0 "$DOCKER_HOST" &
               PODMAN_PID=$!
               trap 'kill "$PODMAN_PID" 2>/dev/null || true' EXIT
-              sleep 1
+              for i in $(seq 1 10); do
+                if [ -S /run/podman/podman.sock ]; then
+                  break
+                fi
+                sleep 1
+              done
 
               # Make podman available as "docker" for docker-compose and scripts
               mkdir -p /tmp/docker-compat/bin
@@ -103,10 +109,20 @@
               echo "=== PODMAN + COMPOSE TEST ==="
 
               echo "--- starting podman API service ---"
-              podman system service --time=0 unix:///run/podman/podman.sock &
+              mkdir -p /run/podman
+              podman system service --time=0 "unix:///run/podman/podman.sock" &
               PODMAN_PID=$!
               trap 'kill "$PODMAN_PID" 2>/dev/null || true' EXIT
-              sleep 1
+              for i in $(seq 1 10); do
+                if [ -S /run/podman/podman.sock ]; then
+                  echo "podman socket ready"
+                  break
+                fi
+                echo "waiting for podman socket... ($i)"
+                sleep 1
+              done
+              ls -la /run/podman/ 2>&1 || true
+              docker info 2>&1 | head -5 || true
 
               echo "--- loading validator image ---"
               ${self'.packages.docker-psyche-solana-test-validator} | podman load
