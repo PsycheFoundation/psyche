@@ -2,10 +2,8 @@ use psyche_coordinator::{Coordinator, get_batch_ids_for_node};
 use psyche_core::{BatchId, NodeIdentity};
 use psyche_data_provider::{DataProvider, TokenizedDataProvider};
 use psyche_modeling::{Batch, BatchData, BatchDataCPU};
-use psyche_network::AuthenticatableIdentity;
 use std::{
     collections::{BTreeMap, HashSet},
-    marker::PhantomData,
     sync::Arc,
     time::Duration,
 };
@@ -22,28 +20,26 @@ pub type BatchIdSet = HashSet<BatchId>;
 const MAX_RETRIES: u32 = 7;
 const BASE_DELAY_MS: u64 = 2000;
 
-pub struct DataFetcher<T: NodeIdentity, A: AuthenticatableIdentity> {
-    data_provider: Arc<Mutex<DataProvider<A>>>,
+pub struct DataFetcher {
+    data_provider: Arc<Mutex<DataProvider>>,
     active_fetch_task: Option<(BatchStep, JoinHandle<()>)>,
     buffer_size: usize,
-    _phantom: PhantomData<T>,
 }
 
-impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
-    pub fn new(data_provider: DataProvider<A>, buffer_size: usize) -> Self {
+impl DataFetcher {
+    pub fn new(data_provider: DataProvider, buffer_size: usize) -> Self {
         Self {
             data_provider: Arc::new(Mutex::new(data_provider)),
             active_fetch_task: None,
             buffer_size,
-            _phantom: Default::default(),
         }
     }
 
     pub fn fetch_data(
         &mut self,
-        state: &Coordinator<T>,
-        data_assignments: &BTreeMap<BatchId, T>,
-        identity: &T,
+        state: &Coordinator,
+        data_assignments: &BTreeMap<BatchId, NodeIdentity>,
+        identity: &NodeIdentity,
     ) -> TrainingDataForStep {
         let step = state.progress.step;
 
@@ -91,14 +87,14 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> DataFetcher<T, A> {
                                     retry_count += 1;
                                     let delay_ms = BASE_DELAY_MS * (retry_count as u64 - 1);
                                     warn!(
-                                        "Data fetch error (attempt {}/{}): \"{}\". Retrying in {}ms",
-                                        retry_count, MAX_RETRIES, err, delay_ms
+                                        "Data fetch error for batch_id={} (attempt {}/{}): \"{:#}\". Retrying in {}ms",
+                                        batch_id, retry_count, MAX_RETRIES, err, delay_ms
                                     );
                                     sleep(Duration::from_millis(delay_ms)).await;
                                     continue;
                                 }
                                 Err(err) => {
-                                    error!("Data fetch error: {err:#}");
+                                    error!("Data fetch failed for batch_id={} after {} attempts: {err:#}", batch_id, MAX_RETRIES);
                                     return;
                                 }
                             }

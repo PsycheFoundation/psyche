@@ -53,6 +53,7 @@ pub async fn run() {
             run_id: "this is a dummy run_id".to_string(),
             main_authority: main_authority.pubkey(),
             join_authority: join_authority.pubkey(),
+            client_version: "test".to_string(),
         },
     )
     .await

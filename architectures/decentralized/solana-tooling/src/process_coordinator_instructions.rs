@@ -4,7 +4,7 @@ use anyhow::Result;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
 use psyche_coordinator::model::Model;
-use psyche_solana_coordinator::ClientId;
+use psyche_core::NodeIdentity;
 use psyche_solana_coordinator::RunMetadata;
 use psyche_solana_coordinator::accounts::FreeCoordinatorAccounts;
 use psyche_solana_coordinator::accounts::InitCoordinatorAccounts;
@@ -121,7 +121,7 @@ pub async fn process_coordinator_join_run(
     authorization: &Pubkey,
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
-    client_id: ClientId,
+    client_id: NodeIdentity,
 ) -> Result<()> {
     let accounts = JoinRunAccounts {
         user: user.pubkey(),
@@ -173,8 +173,8 @@ pub async fn process_coordiantor_set_future_epoch_rates(
     authority: &Keypair,
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
-    epoch_earning_rate: Option<u64>,
-    epoch_slashing_rate: Option<u64>,
+    epoch_earning_rate_total_shared: Option<u64>,
+    epoch_slashing_rate_per_client: Option<u64>,
 ) -> Result<()> {
     let accounts = OwnerCoordinatorAccounts {
         authority: authority.pubkey(),
@@ -184,8 +184,8 @@ pub async fn process_coordiantor_set_future_epoch_rates(
     let instruction = Instruction {
         accounts: accounts.to_account_metas(None),
         data: SetFutureEpochRates {
-            epoch_earning_rate,
-            epoch_slashing_rate,
+            epoch_earning_rate_total_shared,
+            epoch_slashing_rate_per_client,
         }
         .data(),
         program_id: psyche_solana_coordinator::ID,

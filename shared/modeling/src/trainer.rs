@@ -1229,6 +1229,10 @@ impl CausalLM for LocalTrainer {
     fn prepare_for_training(&self) {}
 
     fn clip_grad_norm(&self, _max_grad_norm: f64) {}
+
+    fn convert(&self, _state_dict: Option<HashMap<String, Tensor>>) -> HashMap<String, Tensor> {
+        unimplemented!();
+    }
 }
 
 fn optimize_step(
@@ -1391,6 +1395,16 @@ impl CausalLM for Trainer {
             #[cfg(feature = "python")]
             Trainer::PythonDistributed(python_distributed_trainer) => {
                 python_distributed_trainer.clip_grad_norm(max_grad_norm)
+            }
+        }
+    }
+
+    fn convert(&self, state_dict: Option<HashMap<String, Tensor>>) -> HashMap<String, Tensor> {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.convert(state_dict),
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python_distributed_trainer) => {
+                python_distributed_trainer.convert(state_dict)
             }
         }
     }

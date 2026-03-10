@@ -1,10 +1,12 @@
-use crate::{CheckpointConfig, HubUploadInfo, WandBInfo};
+use crate::{CheckpointConfig, WandBInfo};
 
+use crate::UploadInfo;
 use anyhow::{Result, anyhow, bail};
 use clap::Args;
+use psyche_data_provider::{GcsUploadInfo, HubUploadInfo};
 use psyche_eval::tasktype_from_name;
 use psyche_modeling::Devices;
-use psyche_network::SecretKey;
+use psyche_network::{DiscoveryMode, RelayKind, SecretKey};
 use psyche_tui::LogOutput;
 use std::{path::PathBuf, time::Duration};
 
@@ -39,8 +41,12 @@ pub fn print_identity_keys(key: Option<&PathBuf>) -> Result<()> {
         anyhow!("Use --identity-secret-key-path or use `RAW_IDENTITY_SECRET_KEY` env variable")
     })?;
     println!("Public key: {}", key.public());
-    println!("Secret key: {}", hex::encode(key.secret().as_bytes()));
+    println!("Secret key: {}", hex::encode(key.to_bytes()));
     Ok(())
+}
+
+fn parse_trim_quotes(s: &str) -> Result<String, String> {
+    Ok(s.trim_matches('"').to_string())
 }
 
 #[derive(Args, Debug)]
@@ -56,6 +62,14 @@ pub struct TrainArgs {
     /// Sets the network interface for the client's P2P network participation. If not provided, will bind to all interfaces.
     #[clap(long, env)]
     pub bind_p2p_interface: Option<String>,
+
+    /// What relays to use - public n0 or the private Psyche ones
+    #[clap(long, env, default_value = "psyche")]
+    pub iroh_relay: RelayKind,
+
+    /// What discovery to use - public n0 or local
+    #[clap(long, env, default_value = "n0")]
+    pub iroh_discovery: DiscoveryMode,
 
     /// Sets clients logs interface
     /// tui: Enables a terminal-based graphical interface for monitoring analytics.
@@ -97,7 +111,7 @@ pub struct TrainArgs {
     pub metrics_local_port: Option<u16>,
 
     /// A unique identifier for the training run. This ID allows the client to join a specific active run.
-    #[clap(long, env)]
+    #[clap(long, env, value_parser = parse_trim_quotes)]
     pub run_id: String,
 
     #[clap(long, default_value_t = 1, env)]
@@ -134,6 +148,14 @@ pub struct TrainArgs {
     #[clap(long, env)]
     pub hub_repo: Option<String>,
 
+    /// Name of the GCS bucket containing model data and configuration.
+    #[clap(long, env)]
+    pub gcs_bucket: Option<String>,
+
+    /// Prefix within the GCS bucket for model data and configuration.
+    #[clap(long, env)]
+    pub gcs_prefix: Option<String>,
+
     #[clap(long, env, default_value_t = 3)]
     pub hub_max_concurrent_downloads: usize,
 
@@ -161,7 +183,7 @@ pub struct TrainArgs {
     #[clap(long, env)]
     pub dummy_training_delay_secs: Option<u64>,
 
-    #[clap(long, default_value_t = 4, env)]
+    #[clap(long, default_value_t = 8, env)]
     pub max_concurrent_parameter_requests: usize,
 
     #[clap(long, default_value_t = 4, env)]
@@ -176,6 +198,12 @@ pub struct TrainArgs {
 
     #[clap(long, env)]
     pub sidecar_port: Option<u16>,
+
+    #[clap(long, default_value_t = true, env)]
+    pub delete_old_steps: bool,
+
+    #[clap(long, default_value_t = 3, env)]
+    pub keep_steps: u32,
 }
 
 impl TrainArgs {
@@ -206,32 +234,72 @@ impl TrainArgs {
 
     pub fn checkpoint_config(&self) -> Result<Option<CheckpointConfig>> {
         let hub_read_token = std::env::var("HF_TOKEN").ok();
-        let checkpoint_upload_info = match (
-            &hub_read_token,
-            self.hub_repo.clone(),
-            self.checkpoint_dir.clone(),
-        ) {
-            (Some(token), Some(repo), Some(dir)) => Some(CheckpointConfig {
-                checkpoint_dir: dir,
-                hub_upload: Some(HubUploadInfo {
-                    hub_repo: repo,
-                    hub_token: token.to_string(),
-                }),
-            }),
-            (None, Some(_), Some(_)) => {
-                bail!("hub-repo and checkpoint-dir set, but no HF_TOKEN env variable.")
+
+        if self.hub_repo.is_some() && self.gcs_bucket.is_some() {
+            bail!("Use either GCS or HF hub for checkpoint uploads, not both.");
+        }
+
+        let checkpoint_dir = match &self.checkpoint_dir {
+            Some(dir) => dir,
+            None => {
+                if self.hub_repo.is_some() || self.gcs_bucket.is_some() {
+                    bail!(
+                        "--hub-repo or --gcs-bucket was set, but no --checkpoint-dir was passed!"
+                    );
+                }
+                return Ok(None);
             }
-            (_, Some(_), None) => {
-                bail!("--hub-repo was set, but no --checkpoint-dir was passed!")
-            }
-            (_, None, Some(dir)) => Some(CheckpointConfig {
-                checkpoint_dir: dir,
-                hub_upload: None,
-            }),
-            (_, None, _) => None,
         };
 
-        Ok(checkpoint_upload_info)
+        let upload_info = self.build_upload_info(&hub_read_token)?;
+
+        if upload_info.is_some() && self.keep_steps == 0 {
+            bail!(
+                "keep_steps must be >= 1 for checkpoint uploads (got {})",
+                self.keep_steps
+            );
+        }
+
+        Ok(Some(CheckpointConfig {
+            checkpoint_dir: checkpoint_dir.clone(),
+            upload_info,
+            delete_old_steps: self.delete_old_steps,
+            keep_steps: self.keep_steps,
+        }))
+    }
+
+    fn build_upload_info(&self, hub_token: &Option<String>) -> Result<Option<UploadInfo>> {
+        if let Some(repo) = &self.hub_repo {
+            return self.build_hub_upload_info(repo, hub_token);
+        }
+
+        if let Some(bucket) = &self.gcs_bucket {
+            return self.build_gcs_upload_info(bucket);
+        }
+
+        Ok(None)
+    }
+
+    fn build_hub_upload_info(
+        &self,
+        repo: &str,
+        token: &Option<String>,
+    ) -> Result<Option<UploadInfo>> {
+        let token = token.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("hub-repo and checkpoint-dir set, but no HF_TOKEN env variable.")
+        })?;
+
+        Ok(Some(UploadInfo::Hub(HubUploadInfo {
+            hub_repo: repo.to_string(),
+            hub_token: token.to_string(),
+        })))
+    }
+
+    fn build_gcs_upload_info(&self, bucket: &str) -> Result<Option<UploadInfo>> {
+        Ok(Some(UploadInfo::Gcs(GcsUploadInfo {
+            gcs_bucket: bucket.to_string(),
+            gcs_prefix: self.gcs_prefix.clone(),
+        })))
     }
 
     pub fn eval_tasks(&self) -> Result<Vec<psyche_eval::Task>> {

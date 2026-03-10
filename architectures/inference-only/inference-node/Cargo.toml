@@ -1,0 +1,47 @@
+[package]
+name = "psyche-inference-node"
+version.workspace = true
+edition = "2021"
+
+[[bin]]
+name = "psyche-inference-node"
+path = "src/main.rs"
+
+[[bin]]
+name = "test-network"
+path = "src/bin/test-network.rs"
+
+[[bin]]
+name = "gateway-node"
+path = "src/bin/gateway-node.rs"
+
+[dependencies]
+psyche-inference.workspace = true
+psyche-network.workspace = true
+psyche-core.workspace = true
+psyche-metrics.workspace = true
+
+tokio.workspace = true
+tokio-util.workspace = true
+
+anyhow.workspace = true
+
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+clap.workspace = true
+clap-markdown.workspace = true
+
+iroh.workspace = true
+iroh-blobs.workspace = true
+iroh-gossip.workspace = true
+
+serde_json.workspace = true
+serde.workspace = true
+uuid = { version = "1", features = ["v4"] }
+pyo3.workspace = true
+postcard.workspace = true
+axum = { version = "0.7", features = ["macros"] }
+tower = { version = "0.4" }
+tower-http = { version = "0.5", features = ["cors"] }
+tikv-jemallocator.workspace = true

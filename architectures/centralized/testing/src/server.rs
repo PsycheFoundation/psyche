@@ -1,12 +1,13 @@
+use crate::{COOLDOWN_TIME, test_utils::sample_rand_run_id};
+use crate::{MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME, WARMUP_TIME};
 use bytemuck::Zeroable;
 use psyche_centralized_server::app::App as ServerApp;
-use psyche_centralized_shared::ClientId;
 use psyche_coordinator::{Client, Round};
 use psyche_coordinator::{
     Coordinator, CoordinatorConfig, CoordinatorEpochState, RunState, SOLANA_MAX_NUM_CLIENTS,
     model::{Checkpoint, LLM, Model},
 };
-use psyche_core::FixedVec;
+use psyche_core::{FixedVec, NodeIdentity};
 use std::{collections::HashSet, mem::Discriminant, ops::ControlFlow};
 use tokio::{
     select,
@@ -17,18 +18,15 @@ use tokio::{
 };
 use tracing::debug;
 
-use crate::{COOLDOWN_TIME, test_utils::sample_rand_run_id};
-use crate::{MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME, WARMUP_TIME};
-
 enum TestingQueryMsg {
     Clients {
-        respond_to: oneshot::Sender<FixedVec<Client<ClientId>, SOLANA_MAX_NUM_CLIENTS>>,
+        respond_to: oneshot::Sender<FixedVec<Client, SOLANA_MAX_NUM_CLIENTS>>,
     },
     ClientsLen {
         respond_to: oneshot::Sender<usize>,
     },
     PendingClients {
-        respond_to: oneshot::Sender<HashSet<ClientId>>,
+        respond_to: oneshot::Sender<HashSet<NodeIdentity>>,
     },
     PendingClientsLen {
         respond_to: oneshot::Sender<usize>,
@@ -49,7 +47,7 @@ enum TestingQueryMsg {
         respond_to: oneshot::Sender<Checkpoint>,
     },
     Coordinator {
-        respond_to: oneshot::Sender<Coordinator<ClientId>>,
+        respond_to: oneshot::Sender<Coordinator>,
     },
 }
 
@@ -70,7 +68,6 @@ impl CoordinatorServer {
         let coordinator_config = CoordinatorConfig {
             warmup_time: WARMUP_TIME,
             cooldown_time: COOLDOWN_TIME,
-            rounds_per_epoch: 4,
             max_round_train_time: MAX_ROUND_TRAIN_TIME,
             round_witness_time: ROUND_WITNESS_TIME,
             min_clients,
@@ -80,21 +77,23 @@ impl CoordinatorServer {
             global_batch_size_warmup_tokens: 0,
             verification_percent: 0,
             witness_nodes,
-            total_steps: 10,
+            total_steps: 100,
+            waiting_for_members_extra_time: 2,
+            epoch_time: 30,
         };
 
         let epoch_state = CoordinatorEpochState {
             first_round: true.into(),
-            ..CoordinatorEpochState::<ClientId>::zeroed()
+            ..CoordinatorEpochState::zeroed()
         };
 
         let run_id = sample_rand_run_id();
-        let coordinator: Coordinator<ClientId> = Coordinator {
+        let coordinator: Coordinator = Coordinator {
             run_id: run_id.as_str().try_into().unwrap(),
             model: Model::LLM(LLM::dummy()),
             config: coordinator_config,
             epoch_state,
-            ..Coordinator::<ClientId>::zeroed()
+            ..Coordinator::zeroed()
         };
 
         debug!("ServerApp::new() waiting...");
@@ -212,7 +211,7 @@ impl CoordinatorServerHandle {
 
         let server_port = server.port;
         let run_id = server.run_id.clone();
-        // tokio::spawn(async move { server.run().await });
+
         // the above line will stack overflow, for reasons best left to contemplative reflection.
         // as a substitute to madness, we suggest the reader trust us on this point.
         std::thread::spawn(move || {
@@ -227,7 +226,7 @@ impl CoordinatorServerHandle {
         }
     }
 
-    pub async fn get_clients(&self) -> FixedVec<Client<ClientId>, SOLANA_MAX_NUM_CLIENTS> {
+    pub async fn get_clients(&self) -> FixedVec<Client, SOLANA_MAX_NUM_CLIENTS> {
         let (send, recv) = oneshot::channel();
         let msg = TestingQueryMsg::Clients { respond_to: send };
         let _ = self.query_chan_sender.send(msg).await;
@@ -241,7 +240,7 @@ impl CoordinatorServerHandle {
         recv.await.expect("Coordinator actor task has been killed")
     }
 
-    pub async fn get_pending_clients(&self) -> HashSet<ClientId> {
+    pub async fn get_pending_clients(&self) -> HashSet<NodeIdentity> {
         let (send, recv) = oneshot::channel();
         let msg = TestingQueryMsg::PendingClients { respond_to: send };
         let _ = self.query_chan_sender.send(msg).await;
@@ -292,8 +291,8 @@ impl CoordinatorServerHandle {
         std::mem::discriminant(&checkpoint)
     }
 
-    pub async fn get_coordinator(&self) -> Coordinator<ClientId> {
-        let (send, recv) = oneshot::channel::<Coordinator<ClientId>>();
+    pub async fn get_coordinator(&self) -> Coordinator {
+        let (send, recv) = oneshot::channel::<Coordinator>();
         let msg = TestingQueryMsg::Coordinator { respond_to: send };
         let _ = self.query_chan_sender.send(msg).await;
         recv.await.expect("Coordinator actor task has been killed")

@@ -1,10 +1,10 @@
 use psyche_coordinator::{
     Coordinator, MAX_TOKENS_TO_SEND, WitnessEvalResult, WitnessMetadata, model,
 };
-use psyche_core::{BoundedQueue, FixedVec, LearningRateSchedule, NodeIdentity};
+use psyche_core::{BoundedQueue, FixedVec, LearningRateSchedule};
 use psyche_metrics::ClientMetrics;
 use psyche_modeling::Trainer;
-use psyche_network::P2PNodeInfo;
+use psyche_network::P2PEndpointInfo;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokenizers::Tokenizer;
 use tracing::{debug, trace, warn};
@@ -28,7 +28,7 @@ pub struct StatsLogger {
     eval_history: HashMap<String, Vec<f64>>,
     lr_schedule: LearningRateSchedule,
 
-    pub node_info: Vec<P2PNodeInfo>,
+    pub endpoint_info: Vec<P2PEndpointInfo>,
 }
 
 impl StatsLogger {
@@ -49,12 +49,12 @@ impl StatsLogger {
             lr_schedule,
             eval_history: HashMap::new(),
             last_optim_stats: HashMap::new(),
-            node_info: Vec::new(),
+            endpoint_info: Vec::new(),
             metrics,
         }
     }
 
-    pub fn publish_round_stats<T: NodeIdentity>(&self, state: &Coordinator<T>) {
+    pub fn publish_round_stats(&self, state: &Coordinator) {
         let mut round_log = LogData::new();
 
         round_log.insert("_step", state.progress.step);
@@ -139,19 +139,23 @@ impl StatsLogger {
 
         // P2P nodes (only for wandb, not metrics as requested)
         let p2p_nodes: HashMap<String, DataValue> = self
-            .node_info
+            .endpoint_info
             .iter()
             .map(
-                |P2PNodeInfo {
-                     node_id,
-                     path,
+                |P2PEndpointInfo {
+                     id: endpoint_id,
+                     selected_path,
                      bandwidth,
                      latency,
                  }| {
+                    let path_str = selected_path
+                        .as_ref()
+                        .map(|p| p.to_string())
+                        .unwrap_or_else(|| "none".to_string());
                     (
-                        node_id.to_string(),
+                        endpoint_id.to_string(),
                         HashMap::from([
-                            ("path", DataValue::from(path.to_string())),
+                            ("path", DataValue::from(path_str)),
                             ("bandwidth", DataValue::from(*bandwidth)),
                             ("latency", DataValue::from(*latency)),
                         ])
@@ -171,8 +175,8 @@ impl StatsLogger {
         }
     }
 
-    pub fn get_witness_metadata<T: NodeIdentity>(&self, state: &Coordinator<T>) -> WitnessMetadata {
-        let bandwidth_total: f64 = self.node_info.iter().map(|v| v.bandwidth).sum();
+    pub fn get_witness_metadata(&self, state: &Coordinator) -> WitnessMetadata {
+        let bandwidth_total: f64 = self.endpoint_info.iter().map(|v| v.bandwidth).sum();
 
         let evals = {
             let mut evals: FixedVec<WitnessEvalResult, 8> = Default::default();
@@ -249,7 +253,7 @@ impl StatsLogger {
         &self.losses
     }
 
-    pub fn global_tokens_per_second<T: NodeIdentity>(&self, state: &Coordinator<T>) -> f32 {
+    pub fn global_tokens_per_second(&self, state: &Coordinator) -> f32 {
         match self.step_durations.is_empty() {
             true => 0.,
             false => match &state.model {
@@ -351,7 +355,7 @@ impl StatsLogger {
     }
 }
 
-fn total_tokens<T: NodeIdentity>(state: &Coordinator<T>) -> u64 {
+fn total_tokens(state: &Coordinator) -> u64 {
     state
         .current_round()
         .map(|y| y.data_index)
@@ -369,6 +373,6 @@ fn no_nan(val: f32, replacement: f32) -> f32 {
     if val.is_nan() { replacement } else { val }
 }
 
-fn token_batch_size<T: NodeIdentity>(state: &Coordinator<T>) -> u32 {
+fn token_batch_size(state: &Coordinator) -> u32 {
     state.get_target_global_batch_size(state.current_round()) as u32 * state.get_sequence_length()
 }

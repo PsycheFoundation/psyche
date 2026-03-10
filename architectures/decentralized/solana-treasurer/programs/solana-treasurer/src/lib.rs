@@ -4,7 +4,7 @@ pub mod state;
 use anchor_lang::prelude::*;
 use logic::*;
 
-declare_id!("vVeH6Xd43HAScbxjVtvfwDGqBMaMvNDLsAxwM5WK1pG");
+declare_id!("EnU7DRx5az5YWxaxgqEGbXSYtudcfnjXewyBRRZCjJPw");
 
 pub fn find_run(index: u64) -> Pubkey {
     Pubkey::find_program_address(
@@ -63,4 +63,7 @@ pub mod psyche_solana_treasurer {
 pub enum ProgramError {
     #[msg("Invalid parameter")]
     InvalidParameter,
+
+    #[msg("run_id must be 32 bytes or less")]
+    RunIdInvalidLength,
 }

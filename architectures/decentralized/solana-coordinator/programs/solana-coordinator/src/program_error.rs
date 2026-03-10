@@ -12,9 +12,6 @@ pub enum ProgramError {
     #[msg("Coordinator account incorrect size")]
     CoordinatorAccountIncorrectSize,
 
-    #[msg("Client id mismatch")]
-    ClientIdMismatch,
-
     #[msg("Clients list full")]
     ClientsFull,
 
@@ -74,6 +71,9 @@ pub enum ProgramError {
 
     #[msg("There are more clients than total number of batches to assign")]
     MoreClientsThanBatches,
+
+    #[msg("run_id must be 32 bytes or less")]
+    RunIdInvalidLength,
 }
 
 impl From<CoordinatorError> for ProgramError {
@@ -95,9 +95,6 @@ impl From<CoordinatorError> for ProgramError {
                 ProgramError::CoordinatorErrorInvalidHealthCheck
             },
             CoordinatorError::Halted => ProgramError::CoordinatorErrorHalted,
-            CoordinatorError::AlreadyCheckpointed => {
-                ProgramError::CoordinatorErrorInvalidCheckpoint
-            },
             CoordinatorError::WitnessesFull => {
                 ProgramError::CoordinatorErrorWitnessesFull
             },

@@ -36,7 +36,9 @@ pub struct ParticipantClaimAccounts<'info> {
     )]
     pub run_collateral: Box<Account<'info, TokenAccount>>,
 
-    #[account()]
+    #[account(
+        constraint = coordinator_account.load()?.version == CoordinatorAccount::VERSION,
+    )]
     pub coordinator_account: AccountLoader<'info, CoordinatorAccount>,
 
     #[account(
@@ -73,7 +75,7 @@ pub fn participant_claim_processor(
         .clients
         .iter()
     {
-        if client.id.signer == context.accounts.user.key() {
+        if *client.id.signer() == context.accounts.user.key().to_bytes() {
             participant_earned_points = client.earned;
             break;
         }

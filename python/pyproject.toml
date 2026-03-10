@@ -1,21 +1,23 @@
-[build-system]
-requires = ["maturin>=1.8,<2.0"]
-build-backend = "maturin"
-
 [project]
-name = "psyche"
-requires-python = ">=3.8"
-classifiers = [
-  "Programming Language :: Rust",
-  "Programming Language :: Python :: Implementation :: CPython",
+dependencies = ["transformers==4.57.3", "flash-linear-attention==0.4.0"]
+name = "psyche-deps"
+version = "0.1.0"
+requires-python = "==3.12.*"
+
+# these deps are provided by nix, never include them & their deps in the uv.lock
+[tool.uv]
+override-dependencies = [
+  "torch==99.99.99",
+  "torchtitan==99.99.99",
+  "flash-attn==99.99.99",
+  "liger-kernel==99.99.99",
 ]
-dynamic = ["version"]
-dependencies = ["torch==2.9.0.dev20250827", "transformers==4.56.1"]
+[tool.uv.sources]
+torch = { path = "stub/torch" }
 
 [project.optional-dependencies]
 tests = ["pytest"]
 
-[tool.maturin]
-python-source = "python"
-module-name = "psyche._psyche_ext"
-features = ["python-extension"]
+[build-system]
+requires = ["uv_build<0.9"]
+build-backend = "uv_build"

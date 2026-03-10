@@ -17,5 +17,5 @@ OTLP_METRICS_URL = "http://localhost:4318/v1/metrics" # OpenTelemetry collector 
 OTLP_LOGS_URL = "http://localhost:4318/v1/logs"       # OpenTelemetry collector logs endpoint
 ```
 
-For convenience, you can run `just start-training-localnet-light-client-telemetry` to start the Psyche client with
+For convenience, you can run `just dev start-training-localnet-light-client-telemetry` to start the Psyche client with
 the arguments already set for telemetry collection

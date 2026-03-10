@@ -1,7 +1,8 @@
 use crate::{
-    AllReduce, AttentionImplementation, Communicator, CommunicatorId, ModelConfig, ModelLoadError,
+    AllReduce, AttentionImplementation, Communicator, CommunicatorId, ModelLoadError,
     PretrainedSource, ReduceType, RoPEConfig, StableVarStoreIterator, StableVariableIterator,
 };
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::{fmt::Debug, sync::atomic::AtomicBool};
@@ -44,6 +45,7 @@ pub trait CausalLM: Send {
     fn prepare_for_training(&self);
     fn clip_grad_norm(&self, max_grad_norm: f64);
     fn shutdown(&self) {}
+    fn convert(&self, state_dict: Option<HashMap<String, Tensor>>) -> HashMap<String, Tensor>;
 }
 
 pub trait LanguageModelForward: Send + Debug {
@@ -56,7 +58,9 @@ pub trait LanguageModelForward: Send + Debug {
     ) -> Tensor;
 }
 
-pub trait LanguageModelConfig: ModelConfig + Send + Debug + serde::de::DeserializeOwned {
+pub trait LanguageModelConfig:
+    serde::Serialize + Clone + Send + Debug + serde::de::DeserializeOwned
+{
     fn tie_word_embeddings(&self) -> bool;
     fn set_max_position_embeddings(&mut self, set: usize);
     fn hidden_size(&self) -> usize;
@@ -300,6 +304,14 @@ impl<M: LanguageModelForward, C: LanguageModelConfig> CausalLM for CausalLanguag
                 }
             }
         }
+    }
+
+    fn convert(&self, state_dict: Option<HashMap<String, Tensor>>) -> HashMap<String, Tensor> {
+        state_dict.unwrap_or_else(|| {
+            self.variables()
+                .map(|x| (x.name().to_string(), x.logical_tensor()))
+                .collect()
+        })
     }
 }
 

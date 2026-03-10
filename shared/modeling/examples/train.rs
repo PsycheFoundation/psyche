@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use clap::{Parser, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use psyche_core::{
     Barrier, BatchId, CancellableBarrier, ClosedInterval, CosineLR, OptimizerDefinition, Shuffle,
 };
@@ -10,9 +10,8 @@ use psyche_data_provider::{
 use psyche_modeling::{
     AttentionImplementation, Batch, BatchData, BatchDataCPU, CausalLM, CommunicatorId,
     DataParallel, Devices, LocalTrainer, ModelLoadError, ParallelModels, Trainer,
-    auto_model_for_causal_lm_from_pretrained,
+    auto_model_for_causal_lm_from_pretrained, save_tensors_into_safetensors,
 };
-use psyche_network::AuthenticatableIdentity;
 use psyche_tui::{logging, setup_ctrl_c};
 use std::{sync::Arc, thread::JoinHandle, time::SystemTime};
 use tch::Kind;
@@ -37,44 +36,26 @@ impl From<AttnImpl> for AttentionImplementation {
     }
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq, Default, Copy)]
-struct DummyNodeIdentity(());
+#[derive(Parser, Debug)]
+struct CliArgs {
+    #[command(subcommand)]
+    command: Option<Commands>,
 
-impl AuthenticatableIdentity for DummyNodeIdentity {
-    type PrivateKey = ();
-
-    fn from_signed_challenge_bytes(
-        _bytes: &[u8],
-        _challenge: [u8; 32],
-    ) -> std::result::Result<Self, psyche_network::FromSignedBytesError> {
-        unimplemented!()
-    }
-
-    fn to_signed_challenge_bytes(
-        &self,
-        _private_key: &Self::PrivateKey,
-        _challenge: [u8; 32],
-    ) -> Vec<u8> {
-        unimplemented!()
-    }
-
-    fn get_p2p_public_key(&self) -> &[u8; 32] {
-        unimplemented!()
-    }
-
-    fn raw_p2p_sign(&self, _private_key: &Self::PrivateKey, _bytes: &[u8]) -> [u8; 64] {
-        unimplemented!()
-    }
+    #[command(flatten)]
+    run_args: RunArgs,
 }
 
-impl std::fmt::Display for DummyNodeIdentity {
-    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        unimplemented!()
-    }
+#[derive(Subcommand, Debug)]
+enum Commands {
+    #[clap(hide = true)]
+    PrintAllHelp {
+        #[arg(long, required = true)]
+        markdown: bool,
+    },
 }
 
-#[derive(Parser, Debug, Clone)]
-struct Args {
+#[derive(Args, Debug, Clone)]
+struct RunArgs {
     #[arg(long, default_value = "emozilla/llama2-215m-init")]
     model: String,
 
@@ -160,6 +141,16 @@ struct Args {
     #[cfg(feature = "python")]
     #[clap(long)]
     python: bool,
+
+    #[cfg(feature = "python")]
+    #[clap(long, default_value = "HfAuto")]
+    python_arch: String,
+
+    #[arg(long)]
+    seed: Option<u32>,
+
+    #[arg(long)]
+    save_path: Option<String>,
 }
 
 #[tokio::main]
@@ -170,7 +161,15 @@ async fn main() -> Result<()> {
     // For ctrl-c handling
     let cancel = setup_ctrl_c();
 
-    let args = Args::parse();
+    let cli_args = CliArgs::parse();
+
+    if let Some(Commands::PrintAllHelp { markdown }) = cli_args.command {
+        assert!(markdown);
+        clap_markdown::print_help_markdown::<CliArgs>();
+        return Ok(());
+    }
+
+    let args = cli_args.run_args;
 
     let target_device = args.device.device_for_rank(0).unwrap();
 
@@ -188,11 +187,20 @@ async fn main() -> Result<()> {
         )?
     };
 
-    let mut dataset: DataProvider<DummyNodeIdentity> = match LocalDataProvider::new_from_directory(
+    let shuffle = match args.seed {
+        Some(x) => {
+            let mut array = [0u8; 32];
+            array[28..32].copy_from_slice(&x.to_be_bytes());
+            Shuffle::Seeded(array)
+        }
+        None => Shuffle::DontShuffle,
+    };
+
+    let mut dataset: DataProvider = match LocalDataProvider::new_from_directory(
         &args.data_path,
         args.token_size.try_into()?,
         args.sequence_length,
-        Shuffle::DontShuffle,
+        shuffle,
     )
     .with_context(|| "Failed to load data with local data provider.")
     {
@@ -210,7 +218,7 @@ async fn main() -> Result<()> {
             let dataset = PreprocessedDataProvider::new_from_directory(
                 &args.data_path,
                 args.sequence_length,
-                Shuffle::DontShuffle,
+                shuffle,
                 Some(Split::Train),
                 None,
             )
@@ -293,7 +301,7 @@ async fn main() -> Result<()> {
     if python {
         #[cfg(feature = "python")]
         {
-            psyche_python_extension_impl::init_embedded_python();
+            psyche_python_extension_impl::init_embedded_python()?;
 
             let source = psyche_modeling::PretrainedSource::RepoFiles(repo_files);
             let dp = args.data_parallelism.unwrap_or(1);
@@ -303,14 +311,14 @@ async fn main() -> Result<()> {
                 std::thread::spawn(move || {
                     if dp != 1 || tp != 1 {
                         let model = psyche_modeling::PythonDistributedCausalLM::new(
-                            "hf-auto".to_string(),
+                            args.python_arch,
                             source,
                             target_device,
                             args.attn_implementation.map(Into::into).unwrap_or_default(),
                             psyche_modeling::ParallelismConfig { dp, tp },
                             Some(args.sequence_length),
                             None,
-                            None,
+                            Some(args.device.size() as i64),
                         )?;
 
                         Ok(psyche_modeling::PythonDistributedTrainer::new(
@@ -324,7 +332,7 @@ async fn main() -> Result<()> {
                         .into())
                     } else {
                         let models = vec![Box::new(psyche_modeling::PythonCausalLM::new(
-                            "hf-auto",
+                            &args.python_arch,
                             &source,
                             target_device,
                             args.attn_implementation.map(Into::into).unwrap_or_default(),
@@ -540,6 +548,18 @@ async fn main() -> Result<()> {
             break;
         }
     }
+
+    if let Some(save_path) = args.save_path {
+        let extracted = trainers[0].extract()?;
+        println!("Extracted {} tensors", extracted.len());
+
+        let _ = save_tensors_into_safetensors(
+            trainers[0].convert(Some(extracted)),
+            save_path.clone().into(),
+        )?;
+        println!("Saved checkpoint to {}", save_path)
+    }
+
     for trainer in trainers {
         trainer.shutdown();
     }

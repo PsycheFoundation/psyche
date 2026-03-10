@@ -1,0 +1,22 @@
+[package]
+name = "psyche-solana-distributor"
+version = "0.1.1"
+description = "Psyche Solana Distributor"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "psyche_solana_distributor"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+
+[dependencies]
+anchor-lang = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5" }
+anchor-spl = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5" }

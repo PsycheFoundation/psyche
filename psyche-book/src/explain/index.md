@@ -8,6 +8,8 @@ The core system is composed of three main actors:
 
 - **[Data Provider](./data-provider.md)**: Each run requires training data. This data could be served by the Psyche Data Provider server, over HTTP, or loaded from local copies of a dataset.
 
+Psyche provides two different implementations of the network, one for [decentralized](./general-workflow.md#decentralized-backend) runs that use the Solana Blockchain with the coordinator running in it and another for [centralized](./general-workflow.md#centralized-backend) runs that use the Coordinator as a regular TCP server and mostly is mostly used to test local runs and as a dev oriented tool.
+
 ## Sample topologies
 
 ```mermaid
@@ -29,7 +31,7 @@ and model snapshots
 
 ```mermaid
 ---
-title: Centralized Run, training data provided thru TCP data server
+title: Centralized Run, training data provided thru TCP data server.
 ---
 flowchart TB
 subgraph "Coordinator Server"
@@ -46,7 +48,7 @@ and model snapshots
 
 ## What constitutes a training run?
 
-The training process for a given model is divided into small steps that incrementally train the model in a coordinated manner. A training run is divided into **epochs**, where clients can join and leave the run, and **epochs** are further divided into **steps**, where the model is incrementally trained.
+The training process for a given model is divided into small steps that incrementally train the model in a coordinated manner. A training run is divided into **epochs**, where clients can join and leave the run, and **epochs** are further divided into **rounds** that will be further divided into **steps**, where the model is incrementally trained.
 
 During a training run, clients primarily perform three tasks:
 
@@ -54,17 +56,19 @@ During a training run, clients primarily perform three tasks:
 - **Witnessing**: Verify the liveness and correctness of other participants.
 - **Verifying**: Recompute and compare training results to identify and punish malicious participants.
 
+These three phases constitute a **round** of training and will be looping until the **epoch** is completed.
+
 ## Waiting for Members & Warmup
 
-At the start of an **epoch**, all clients have a window of time to join the run by requesting to be added by coordinator, and then connecting to the other participating clients.
+At the start of an **epoch**, all clients have a window of time to join the run by requesting to be added by coordinator, and then connecting to the other participating clients. This state will be known as the _Waiting for Members_ phase.
 
-Once a minimum threshold of clients has been met, the run will transition to the _Warmup_ phase and begin a countdown to allow connected clients to update their copy of the model, after which it will enter the _Training_ phase.
+Once a minimum threshold of clients has been met, the run will transition to the _Warmup_ phase and begin a countdown to allow connected clients to update their copy of the model. To obtain a copy of the model, the Coordinator will either direct clients to a checkpoint uploaded somewhere like HuggingFace and they will have to download it from there or direct clients to [download the model from other clients](./model-sharing.md) via the p2p network. In the first epoch, all clients will download the model from HuggingFace and after that every new epoch, clients will download the model from other clients via the p2p network.
 
-To obtain a copy of the model, the Coordinator will either direct clients to a checkpoint uploaded somewhere like: HuggingFace or direct clients to [download the model from other clients](./model-sharing.md) via the p2p network.
+After the _Warmup_ phase ends, it will enter the _Training_ phase.
 
 ## Training
 
-At the beginning of an **epoch**, after the _Warmup_ phase ends, clients are assigned specific tasks that require them to train the model on a portion of the data.
+At the beginning of a **round**, either after the _Warmup_ or _Witness_ phase ends, clients are assigned specific tasks that require them to train the model on a portion of the data.
 
 The coordinator contains information that uniquely assigns pieces of training data to clients based on the current **round**.
 
@@ -72,7 +76,7 @@ If clients have already been training (i.e., it is not the first round of the ep
 
 After completing the training on their assigned data, each client emits a p2p broadcast to all other clients containing their training results and a cryptographic commitment that binds them to those results.
 
-As the training results are received from other clients, they are downloaded to be later incorporated into the current model.
+As the training results are received from other clients, they are downloaded to be later incorporated into the current copy of the model of each client.
 
 ## Witnessing
 
@@ -80,15 +84,13 @@ At the start of each round, one or more clients are randomly selected as witness
 
 These bloom filters are sent to the coordinator, which then combines them into a provable consensus of which results to apply to the model.
 
-Once a witness quorum is reached, the coordinator advances to the _Training_ phase to allow all clients a brief window to download every training result.
-
-Once the _Witness_ phase concludes, the coordinator returns to the _Training_ phase. Clients are assigned new data, and the process repeats. After a predefined number of rounds, a _Cooldown_ round occurs, marking the end of an **epoch**.
+Once a witness quorum is reached, the coordinator advances to the _Training_ phase to allow all clients a brief window to download every training result of the previous round, clients are assigned new data, and the process repeats. After a fixed amount of time, a _Cooldown_ round occurs, marking the end of an **epoch**. This time is configurable in the run creation process that we'll explore in the other sections.
 
 ## The witness/train loop visualized
 
 Here's a high-level overview of the process.
 
-Additional details exist, but this captures the overall flow of a single Round from an Epoch:
+There are additional implementation details, but this captures the overall flow of a single Round in an Epoch:
 
 ```mermaid
 sequenceDiagram
@@ -96,18 +98,21 @@ sequenceDiagram
     participant Client2
     participant Coordinator
     participant Data Hosting
-    Client1 ->> Data Hosting: get_data
-    Client2 ->> Data Hosting: get_data
-    Coordinator ->> Client2: witness
-    Note over Client1: Train
-    Note over Client2: Train
-    Client1 ->> Client2: Send results
-    Client2 ->> Client1: Send results
-    Note over Client1: Download results
-    Note over Client2: Download results
-    Client2 ->> Coordinator: Send witness
-    Note over Coordinator: Quorum reached
-    Note over Coordinator: Starting Witness phase
+    loop Every round
+      Client1 ->> Data Hosting: get_data
+      Client2 ->> Data Hosting: get_data
+      Coordinator ->> Client2: witness
+      Note over Client1: Train
+      Note over Client2: Train
+      Client1 ->> Client2: Send results
+      Client2 ->> Client1: Send results
+      Note over Client1: Download results
+      Note over Client2: Download results
+      Client2 ->> Coordinator: Send witness
+      Note over Coordinator: Quorum reached
+      Note over Coordinator: Starting Witness phase
+      Note over Coordinator: Starting Training phase
+    end
 ```
 
 ## Glossary

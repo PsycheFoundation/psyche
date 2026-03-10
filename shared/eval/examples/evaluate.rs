@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use psyche_core::RunningAverage;
-use psyche_data_provider::download_model_repo_sync;
+use psyche_data_provider::{download_model_from_gcs_sync, download_model_repo_sync};
 use psyche_eval::{
     ALL_TASK_NAMES, EvalTaskOptions, Task, progress_bar_template_with_task, tasktype_from_name,
 };
@@ -13,6 +13,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use tch::{Device, Kind};
 use tokenizers::Tokenizer;
+use tracing::Level;
 
 #[derive(Parser, Debug, Clone)]
 struct Args {
@@ -24,6 +25,14 @@ struct Args {
 
     #[arg(long)]
     hf_token: Option<String>,
+
+    /// GCS bucket name (use instead of HuggingFace model)
+    #[arg(long)]
+    gcs_bucket: Option<String>,
+
+    /// GCS prefix/directory within the bucket
+    #[arg(long)]
+    gcs_prefix: Option<String>,
 
     #[arg(long, default_value_t = ALL_TASK_NAMES.join(","))]
     tasks: String,
@@ -46,9 +55,14 @@ struct Args {
     #[cfg(feature = "python")]
     #[clap(long)]
     python: bool,
+
+    #[cfg(feature = "python")]
+    #[clap(long, default_value = "HfAuto")]
+    python_arch: String,
 }
 
 fn main() -> Result<()> {
+    tracing_subscriber::fmt().with_max_level(Level::INFO).init();
     let args = Args::parse();
     let tasks: Result<Vec<Task>> = args
         .tasks
@@ -71,13 +85,23 @@ fn main() -> Result<()> {
         } else {
             "".to_string()
         };
+        let model_source = if let Some(ref bucket) = args.gcs_bucket {
+            format!(
+                "gs://{}/{}",
+                bucket,
+                args.gcs_prefix.as_deref().unwrap_or("")
+            )
+        } else {
+            args.model.clone()
+        };
         println!(
-            "Running tasks with model {}, seed: {}, DP={}{}",
-            args.model, args.seed, args.data_parallelism, limit_str
+            "\n\n Running tasks with model {}, seed: {}, DP={}{}",
+            model_source, args.seed, args.data_parallelism, limit_str
         );
         for task in &tasks {
             println!("  - {}: {} few-shot examples", task, task.num_fewshot);
         }
+        println!("\n\n");
     }
 
     if args.data_parallelism > 1 {
@@ -103,18 +127,22 @@ fn main() -> Result<()> {
         }
     }
 
-    let repo = download_model_repo_sync(&args.model, args.revision, None, args.hf_token, true)?;
+    let repo = if let Some(ref bucket) = args.gcs_bucket {
+        download_model_from_gcs_sync(bucket, args.gcs_prefix.as_deref())?
+    } else {
+        download_model_repo_sync(&args.model, args.revision, None, args.hf_token, true)?
+    };
     let tokenizer = auto_tokenizer(&repo)?;
 
-    let python = {
+    let (python, python_arch) = {
         #[cfg(feature = "python")]
         {
-            args.python
+            (args.python, args.python_arch)
         }
 
         #[cfg(not(feature = "python"))]
         {
-            false
+            (false, String::new())
         }
     };
 
@@ -128,6 +156,7 @@ fn main() -> Result<()> {
         args.seed,
         args.limit,
         python,
+        python_arch,
     )?;
     Ok(())
 }
@@ -142,6 +171,7 @@ fn run_data_parallel(
     seed: u64,
     limit: Option<usize>,
     python: bool,
+    python_arch: String,
 ) -> Result<()> {
     let task_info: Vec<(String, usize, u64)> = tasks
         .iter()
@@ -192,6 +222,8 @@ fn run_data_parallel(
         let shared_results = shared_results.clone();
         let shared_progress_bars = shared_progress_bars.clone();
         let task_info = task_info.clone();
+        #[allow(unused)]
+        let python_arch = python_arch.clone();
 
         let handle = std::thread::spawn(move || -> Result<()> {
             let device = if data_parallelism == 1 {
@@ -203,10 +235,10 @@ fn run_data_parallel(
             let mut model: Box<dyn CausalLM> = if python {
                 #[cfg(feature = "python")]
                 {
-                    psyche_python_extension_impl::init_embedded_python();
+                    psyche_python_extension_impl::init_embedded_python()?;
 
                     Box::new(psyche_modeling::PythonDistributedCausalLM::new(
-                        "hf-auto".to_string(),
+                        python_arch,
                         psyche_modeling::PretrainedSource::RepoFiles(repo),
                         device,
                         psyche_modeling::AttentionImplementation::default(),

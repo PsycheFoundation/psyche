@@ -3,7 +3,7 @@ run_state = "WaitingForMembers"
 [config]
 warmup_time = 30
 cooldown_time = 10
-rounds_per_epoch = 20
+epoch_time = 600
 max_round_train_time = 30
 round_witness_time = 2
 round_apply_time = 4
@@ -15,6 +15,7 @@ global_batch_size_warmup_tokens = 0
 verification_percent = 0
 witness_nodes = 1
 total_steps = 25000
+waiting_for_members_extra_time = 3
 
 [model.LLM]
 architecture = "HfLlama"

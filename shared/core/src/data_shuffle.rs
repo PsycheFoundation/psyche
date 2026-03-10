@@ -13,16 +13,13 @@ use ts_rs::TS;
     Debug,
     Zeroable,
     Copy,
+    PartialEq,
     TS,
 )]
 #[repr(C)]
+#[derive(Default)]
 pub enum Shuffle {
+    #[default]
     DontShuffle,
     Seeded([u8; 32]),
-}
-
-impl Default for Shuffle {
-    fn default() -> Self {
-        Self::DontShuffle
-    }
 }

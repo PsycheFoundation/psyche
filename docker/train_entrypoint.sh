@@ -79,14 +79,22 @@ while true; do
         --logs "console" &
 
     PSYCHE_CLIENT_PID=$!
-    wait "$PSYCHE_CLIENT_PID" || true  # Wait for the app to exit; continue on signal interrupt
+    set +e
+    wait "$PSYCHE_CLIENT_PID"
+    EXIT_STATUS=$?
+    set -e
 
     duration=$((SECONDS - start_time))  # Calculate runtime duration
-    EXIT_STATUS=$?
     echo -e "\n[!] Psyche client exited with status '$EXIT_STATUS'."
 
     # Reset PID after client exits
     PSYCHE_CLIENT_PID=0
+
+    # Exit code 10 means version mismatch - exit container immediately (no retry)
+    if [[ $EXIT_STATUS -eq 10 ]]; then
+        echo -e "[!] Version mismatch detected. Exiting container without retry..."
+        exit 10
+    fi
 
     # Reset restart counter if client ran longer than RESET_TIME
     if [ $duration -ge $RESET_TIME ]; then

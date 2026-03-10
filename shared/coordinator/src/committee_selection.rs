@@ -119,8 +119,8 @@ impl CommitteeSelection {
         })
     }
 
-    pub fn from_coordinator<T: NodeIdentity>(
-        coordinator: &Coordinator<T>,
+    pub fn from_coordinator(
+        coordinator: &Coordinator,
         offset: isize,
     ) -> Result<Self, CoordinatorError> {
         let round = match offset {
@@ -178,25 +178,25 @@ impl CommitteeSelection {
         }
     }
 
-    pub fn verify_committee_for_client<T: NodeIdentity>(
+    pub fn verify_committee_for_client(
         &self,
-        client_id: &T,
+        client_id: &NodeIdentity,
         proof: &CommitteeProof,
-        clients: &[Client<T>],
+        clients: &[Client],
     ) -> bool {
         Self::verify_client(client_id, proof.index, clients) && self.verify_committee(proof)
     }
 
-    pub fn verify_witness_for_client<T: NodeIdentity>(
+    pub fn verify_witness_for_client(
         &self,
-        client_id: &T,
+        client_id: &NodeIdentity,
         proof: &WitnessProof,
-        clients: &[Client<T>],
+        clients: &[Client],
     ) -> bool {
         Self::verify_client(client_id, proof.index, clients) && self.verify_witness(proof)
     }
 
-    fn verify_client<T: NodeIdentity>(client_id: &T, index: u64, clients: &[Client<T>]) -> bool {
+    fn verify_client(client_id: &NodeIdentity, index: u64, clients: &[Client]) -> bool {
         clients.get(index as usize).map(|c| &c.id) == Some(client_id)
     }
 
@@ -385,7 +385,7 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_comittee_selections() {
+    fn test_invalid_committee_selections() {
         // verification_percent > 100
         assert!(CommitteeSelection::new(10, 5, 101, 100, 12345).is_err());
         // total_nodes < tie_breaker_nodes

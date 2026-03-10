@@ -1,0 +1,23 @@
+[package]
+name = "psyche-inference"
+version.workspace = true
+edition = "2021"
+
+[features]
+vllm-tests = []
+
+[dependencies]
+pyo3.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+uuid = { version = "1.10", features = ["v4"] }
+
+iroh.workspace = true
+tokio.workspace = true
+postcard.workspace = true
+
+[dev-dependencies]
+# For integration tests
+serial_test = "3.2"

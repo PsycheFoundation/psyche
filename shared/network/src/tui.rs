@@ -1,7 +1,7 @@
-use crate::{NetworkConnection, Networkable, P2PNodeInfo, util::fmt_bytes};
+use crate::{NetworkConnection, Networkable, P2PEndpointInfo, util::fmt_bytes};
 
 use futures_util::StreamExt;
-use iroh::{NodeId, endpoint::ConnectionType};
+use iroh::EndpointId;
 use psyche_tui::ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
@@ -41,7 +41,7 @@ impl psyche_tui::CustomWidget for NetworkTui {
             {
                 Paragraph::new(
                     state
-                        .node_id
+                        .endpoint_id
                         .map(|m| m.to_string())
                         .unwrap_or("unknown".to_string()),
                 )
@@ -54,21 +54,25 @@ impl psyche_tui::CustomWidget for NetworkTui {
                 )
                 .render(chunks[0], buf);
 
-                List::new(state.node_connections.iter().map(
-                    |P2PNodeInfo {
-                         node_id,
-                         path,
+                List::new(state.endpoint_connections.iter().map(
+                    |P2PEndpointInfo {
+                         id: endpoint_id,
+                         selected_path,
                          bandwidth,
                          latency,
                      }| {
+                        let path_str = selected_path
+                            .as_ref()
+                            .map(|p| p.to_string())
+                            .unwrap_or_else(|| "none".to_string());
                         let li = ListItem::new(format!(
                             "{} ({}): {} ({:.2}s)",
-                            node_id.fmt_short(),
-                            path,
+                            endpoint_id.fmt_short(),
+                            path_str,
                             bandwidth,
                             latency,
                         ));
-                        if *bandwidth > 1.0 && !matches!(path, ConnectionType::None) {
+                        if *bandwidth > 1.0 && selected_path.is_some() {
                             li.bg(Color::LightYellow).fg(Color::Black)
                         } else {
                             li
@@ -203,8 +207,8 @@ pub struct UIDownloadProgress {
 
 #[derive(Default, Debug, Clone)]
 pub struct NetworkTUIStateInner {
-    pub node_id: Option<NodeId>,
-    pub node_connections: Vec<P2PNodeInfo>,
+    pub endpoint_id: Option<EndpointId>,
+    pub endpoint_connections: Vec<P2PEndpointInfo>,
     // pub data_per_sec_per_client: HashMap<PublicKey, f64>,
     pub total_data_per_sec: f64,
     pub download_bandwidth_history: VecDeque<f64>,
@@ -237,8 +241,8 @@ impl NetworkTUIState {
 
         Ok(Self {
             inner: Some(NetworkTUIStateInner {
-                node_id: s.node_id,
-                node_connections: s.node_connections.clone(),
+                endpoint_id: s.endpoint_id,
+                endpoint_connections: s.connection_info.clone(),
                 total_data_per_sec: s.bandwidth_tracker.get_total_bandwidth(),
                 download_bandwidth_history: s.bandwidth_history.clone(),
                 downloads: s

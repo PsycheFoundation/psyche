@@ -5,40 +5,32 @@ version.workspace = true
 
 [dependencies]
 anchor-client.workspace = true
-anchor-spl.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
-bytemuck.workspace = true
 clap.workspace = true
 clap-markdown.workspace = true
-futures-util.workspace = true
-psyche-watcher.workspace = true
+psyche-client.workspace = true
+psyche-coordinator.workspace = true
 psyche-core.workspace = true
 psyche-data-provider.workspace = true
-psyche-solana-authorizer.workspace = true
-psyche-solana-coordinator.workspace = true
-psyche-solana-treasurer.workspace = true
+psyche-eval.workspace = true
 psyche-metrics.workspace = true
 psyche-modeling.workspace = true
-psyche-client.workspace = true
-psyche-eval.workspace = true
-psyche-coordinator.workspace = true
 psyche-network.workspace = true
+psyche-solana-rpc.workspace = true
+psyche-solana-coordinator.workspace = true
 psyche-tui.workspace = true
-tokio.workspace = true
-tokio-util.workspace = true
+psyche-watcher.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tracing.workspace = true
-rand.workspace = true
 time.workspace = true
-toml.workspace = true
-rand_chacha.workspace = true
-home = "0.5.9"
-solana-account-decoder-client-types = "=2.1.4"
-solana-transaction-status-client-types = "=2.1.4"
-backon = "1.4.1"
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
 psyche-python-extension-impl = { workspace = true, optional = true }
+tikv-jemallocator.workspace = true
 
 [features]
 parallelism = ["psyche-client/parallelism"]

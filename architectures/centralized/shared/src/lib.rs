@@ -1,3 +1,3 @@
 mod protocol;
 
-pub use protocol::{ClientId, ClientToServerMessage, ServerToClientMessage};
+pub use protocol::{ClientToServerMessage, ServerToClientMessage};

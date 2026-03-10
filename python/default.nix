@@ -1,11 +1,9 @@
 {
   psycheLib,
-  python312Packages,
-  config,
   python312,
-  system,
+  stdenvNoCC,
+  config,
   lib,
-  stdenv,
 }:
 let
   inherit (psycheLib)
@@ -14,74 +12,31 @@ let
     rustWorkspaceArgs
     ;
 
-  # build the extension .so file using Crane
+  # build the actual rust extension that the python psyche code loads
   rustExtension = craneLib.buildPackage (
     rustWorkspaceArgs
-    // rec {
+    // {
       inherit cargoArtifacts;
       pname = "psyche-python-extension";
-
       cargoExtraArgs =
         " --package psyche-python-extension"
         + lib.optionalString (config.cudaSupport) " --features parallelism";
-
-      nativeBuildInputs = rustWorkspaceArgs.nativeBuildInputs ++ [
-        python312
-      ];
       doCheck = false;
     }
   );
 
   # expected lib file ext for the python extension
-  ext = if stdenv.isDarwin then "dylib" else "so";
+  ext = if stdenvNoCC.isDarwin then "dylib" else "so";
 
-  # parse pyproject.toml to get expected dep versions
-  pyprojectToml = builtins.fromTOML (builtins.readFile ./pyproject.toml);
-  expectedVersions = lib.listToAttrs (
-    map (
-      dep:
-      let
-        parts = lib.splitString "==" dep;
-        name = lib.head parts;
-        version = if lib.length parts > 1 then lib.elemAt parts 1 else null;
-      in
-      {
-        name = name;
-        value = version;
-      }
-    ) pyprojectToml.project.dependencies
-  );
-
-  # verify versions match nixpkgs
-  versionAssertions = lib.mapAttrsToList (
-    depName: expectedVersion:
-    let
-      nixpkgsVersion = python312Packages.${depName}.version or null;
-    in
-    lib.assertMsg (expectedVersion == null || nixpkgsVersion == expectedVersion)
-      "Version mismatch for ${depName}: expected ${toString expectedVersion} from pyproject.toml, got ${toString nixpkgsVersion} in nixpkgs."
-  ) expectedVersions;
 in
-assert lib.all (x: x) versionAssertions;
-python312Packages.buildPythonPackage rec {
-  pname = "psyche";
+# a combination of the python files and rust ext for the psyche python code
+stdenvNoCC.mkDerivation {
+  __structuredAttrs = true;
+
+  name = "psyche";
   version = "0.1.0";
-  format = "other"; # skip setup.py, we're assembling it ourselves
 
   src = ./python/psyche;
-
-  propagatedBuildInputs =
-    with python312Packages;
-    [
-      torch
-      transformers
-    ]
-    ++ (lib.optionals (!stdenv.isDarwin) [
-      (python312Packages.callPackage ./liger-kernel.nix { })
-    ])
-    ++ (lib.optionals config.cudaSupport [
-      (python312Packages.callPackage ./flash-attn.nix { })
-    ]);
 
   installPhase = ''
     runHook preInstall

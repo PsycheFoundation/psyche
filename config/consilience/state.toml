@@ -1,0 +1,46 @@
+run_id = "consilience-40b"
+run_state = "WaitingForMembers"
+
+[config]
+warmup_time = 3600
+cooldown_time = 120
+epoch_time = 100000
+max_round_train_time = 360
+round_witness_time = 5
+min_clients = 16
+init_min_clients = 16
+verification_percent = 0
+witness_nodes = 0
+global_batch_size_start = 12288
+global_batch_size_end = 32768
+global_batch_size_warmup_tokens = 549755813888 # 540B tokens
+total_steps = 325000                           # ~22T tokens, 67M tokens/batch
+waiting_for_members_extra_time = 10
+
+[model.LLM]
+architecture = "HfDeepseek"
+data_type = "Pretraining"
+max_seq_len = 2048
+data_location = { WeightedHttp = "https://storage.googleapis.com/nous-pretraining-public-us/consilience-stage1-mix.json" }
+cold_start_warmup_steps = 100
+
+[model.LLM.checkpoint.Hub]
+repo_id = "PsycheFoundation/consilience-v1-40b-init"
+
+[model.LLM.lr_schedule.WarmupStableDecay]
+warmup_steps = 2000
+warmup_init_lr = 0.0
+base_lr = 2.0e-4
+stable_steps = 161000
+cosine_decay_steps = 150000
+cosine_decay_final_lr = 2.0e-5
+linear_decay_steps = 12000
+linear_decay_final_lr = 2.0e-5 # constant
+
+[model.LLM.optimizer.Distro]
+clip_grad_norm = 1.0
+compression_decay = 0.995
+compression_chunk = 64
+compression_topk = 4
+quantize_1bit = true
+weight_decay = 0.1

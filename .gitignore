@@ -51,6 +51,7 @@ logs/
 txt/
 config/testing/dolma/
 **/devnet_funded_accounts
+config/solana-test/test-config.toml
 
 ### Solana ###
 test-ledger

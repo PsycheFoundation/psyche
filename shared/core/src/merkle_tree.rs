@@ -1,3 +1,5 @@
+#![allow(clippy::manual_is_multiple_of)]
+
 use std::fmt::Debug;
 
 use crate::sha256::sha256v;

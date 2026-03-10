@@ -1,7 +1,15 @@
 mod nix
+mod dev 'architectures/decentralized/justfile'
 
 default:
     just --list
+
+check-client:
+    cargo run -p psyche-solana-client -- --help
+
+# test inference network discovery (2 nodes in tmux)
+test-inference-network:
+    ./scripts/test-inference-network.sh
 
 # format & lint-fix code
 fmt:
@@ -23,13 +31,47 @@ integration-test test_name="":
         cargo test --release -p psyche-centralized-testing --test integration_tests -- --nocapture "{{ test_name }}"; \
     fi
 
-# run integration decentralized tests
-decentralized-integration-test test_name="":
-    just setup_test_infra
-    if [ "{{ test_name }}" = "" ]; then \
-        cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture; \
-    else \
-        cargo test --release -p psyche-decentralized-testing --test integration_tests -- --nocapture "{{ test_name }}"; \
+# Determine whether to use Python support based on environment variable
+
+use_python := env("USE_PYTHON", "0")
+
+# Run decentralized integration tests with optional Python support and test filtering
+decentralized-integration-tests test_name="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if [[ "{{ use_python }}" == "1" ]]; then
+        echo "Running tests with Python support"
+        just setup_python_test_infra
+
+        if [[ -z "{{ test_name }}" ]]; then
+            cargo test --release \
+                -p psyche-decentralized-testing \
+                --features python,parallelism \
+                --test integration_tests \
+                -- --nocapture
+        else
+            cargo test --release \
+                -p psyche-decentralized-testing \
+                --features python,parallelism \
+                --test integration_tests \
+                -- --nocapture "{{ test_name }}"
+        fi
+    else
+        echo "Running tests without Python support"
+        just setup_test_infra
+
+        if [[ -z "{{ test_name }}" ]]; then
+            cargo test --release \
+                -p psyche-decentralized-testing \
+                --test integration_tests \
+                -- --nocapture
+        else
+            cargo test --release \
+                -p psyche-decentralized-testing \
+                --test integration_tests \
+                -- --nocapture "{{ test_name }}"
+        fi
     fi
 
 # run integration decentralized chaos tests
@@ -40,54 +82,8 @@ decentralized-chaos-integration-test test_name="":
         cargo test --release -p psyche-decentralized-testing --test chaos_tests -- --nocapture "{{ test_name }}"; \
     fi
 
-# Deploy coordinator on localnet and create a "test" run for 1.1b model.
-setup-solana-localnet-test-run run_id="test" *args='':
-    RUN_ID={{ run_id }} ./scripts/setup-and-deploy-solana-test.sh {{ args }}
-
-# Deploy coordinator on localnet and create a "test" run for 20m model.
-setup-solana-localnet-light-test-run run_id="test" *args='':
-    RUN_ID={{ run_id }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/setup-and-deploy-solana-test.sh {{ args }}
-
-# Start client for training on localnet.
-start-training-localnet-client run_id="test" *args='':
-    RUN_ID={{ run_id }} ./scripts/train-solana-test.sh {{ args }}
-
-# Start client for training on localnet without data parallelism features and using light model.
-start-training-localnet-light-client run_id="test" *args='':
-    RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
-
-OTLP_METRICS_URL := "http://localhost:4318/v1/metrics"
-OTLP_LOGS_URL := "http://localhost:4318/v1/logs"
-
-# The same command as above but with arguments set to export telemetry data
-start-training-localnet-light-client-telemetry run_id="test" *args='':
-    OTLP_METRICS_URL={{ OTLP_METRICS_URL }} OTLP_LOGS_URL={{ OTLP_LOGS_URL }} RUN_ID={{ run_id }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
-
-DEVNET_RPC := "https://api.devnet.solana.com"
-DEVNET_WS_RPC := "wss://api.devnet.solana.com"
-
-# Deploy coordinator on Devnet and create a "test" run for 1.1b model.
-setup-solana-devnet-test-run run_id="test" *args='':
-    RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} ./scripts/deploy-solana-test.sh {{ args }}
-
-# Deploy coordinator on Devnet and create a "test" run for 20m model.
-setup-solana-devnet-light-test-run run_id="test" *args='':
-    RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} CONFIG_FILE=./config/solana-test/light-config.toml ./scripts/deploy-solana-test.sh  {{ args }}
-
-# Start client for training on Devnet.
-start-training-devnet-client run_id="test" *args='':
-    RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} ./scripts/train-solana-test.sh {{ args }}
-
-# Start client for training on localnet without data parallelism features and using light model.
-start-training-devnet-light-client run_id="test" *args='':
-    RUN_ID={{ run_id }} RPC={{ DEVNET_RPC }} WS_RPC={{ DEVNET_WS_RPC }} BATCH_SIZE=1 DP=1 ./scripts/train-solana-test.sh {{ args }}
-
 solana-client-tests:
     cargo test --package psyche-solana-client --features solana-localnet-tests
-
-# install deps for building mdbook
-book_deps:
-    cargo install mdbook mdbook-mermaid mdbook-linkcheck
 
 build_book output-dir="../book": generate_cli_docs
     mdbook build psyche-book -d {{ output-dir }}
@@ -103,10 +99,11 @@ generate_cli_docs:
     cargo run -p psyche-centralized-server print-all-help --markdown > psyche-book/generated/cli/psyche-centralized-server.md
     cargo run -p psyche-centralized-local-testnet print-all-help --markdown > psyche-book/generated/cli/psyche-centralized-local-testnet.md
     cargo run -p psyche-sidecar print-all-help --markdown > psyche-book/generated/cli/psyche-sidecar.md
+    cargo run -p psyche-solana-client print-all-help --markdown > psyche-book/generated/cli/psyche-solana-client.md
 
 run_docker_client *ARGS:
     just nix build_docker_solana_client
-    docker run -d {{ ARGS }} --gpus all psyche-prod-solana-client
+    docker run -d {{ ARGS }} --gpus all psyche-solana-client
 
 # Setup clients assigning one available GPU to each of them.
 
@@ -131,22 +128,276 @@ setup_test_infra:
     just nix build_docker_solana_test_client_no_python
     just nix build_docker_solana_test_validator
 
+# Setup the infrastructure for testing locally using Docker.
+setup_python_test_infra:
+    cd architectures/decentralized/solana-coordinator && anchor build
+    cd architectures/decentralized/solana-authorizer && anchor build
+    just nix build_docker_solana_test_client
+    just nix build_docker_solana_test_validator
+
 run_test_infra num_clients="1":
     #!/usr/bin/env bash
+    set -e
+
     cd docker/test
+
+    # Start validator only first
+    echo "Starting validator and deploying contracts..."
+    docker compose up -d --wait psyche-solana-test-validator
+
+    sleep 2  # Extra buffer for RPC to be fully ready
+
+    # Run setup script from project root
+    echo "Setting up test run..."
+    cd ../..
+    ./scripts/setup-test-run.sh
+
+    # Now start the client services
+    cd docker/test
+    echo "Starting clients..."
     if [ "${USE_GPU}" != "0" ] && command -v nvidia-smi &> /dev/null; then
         echo "GPU detected and USE_GPU not set to 0, enabling GPU support"
-        NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --force-recreate
+        NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d psyche-test-client
     else
         echo "Running without GPU support"
-        NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml up -d --force-recreate
+        NUM_REPLICAS={{ num_clients }} docker compose -f docker-compose.yml up -d psyche-test-client
     fi
 
-run_test_infra_with_proxies_validator num_clients="1":
-    cd docker/test/subscriptions_test && NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml up -d --force-recreate
+run_test_infra_with_rpc_fallback_proxies num_clients="1":
+    #!/usr/bin/env bash
+    set -e
 
-run_test_infra_three_clients:
-    cd docker/test/three_clients_test && docker compose -f docker-compose.yml up -d --force-recreate
+    cd docker/test/rpc_fallback_test
+
+    # Start validator only first
+    echo "Starting validator and deploying contracts..."
+    docker compose -f ../docker-compose.yml up -d --wait psyche-solana-test-validator
+
+    sleep 2  # Extra buffer for RPC to be fully ready
+
+    # Run setup script from project root
+    echo "Setting up test run..."
+    cd ../../..
+    RPC="http://127.0.0.1:8899" WS_RPC="ws://127.0.0.1:8900" RUN_ID="test" ./scripts/setup-test-run.sh
+
+    # Now start the client and proxy services
+    cd docker/test/rpc_fallback_test
+    echo "Starting clients and proxies..."
+    if [ "${USE_GPU}" != "0" ] && command -v nvidia-smi &> /dev/null; then
+        echo "GPU detected and USE_GPU not set to 0, enabling GPU support"
+        NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml -f ../docker-compose.gpu.yml up -d psyche-test-client nginx nginx_2
+    else
+        echo "Running without GPU support"
+        NUM_REPLICAS={{ num_clients }} docker compose -f ../docker-compose.yml -f docker-compose.yml up -d psyche-test-client nginx nginx_2
+    fi
 
 stop_test_infra:
-    cd docker/test && docker compose -f docker-compose.yml -f subscriptions_test/docker-compose.yml down
+    cd docker/test && docker compose -f docker-compose.yml -f rpc_fallback_test/docker-compose.yml down
+
+# Run inference node with a local model (requires Python venv with vLLM)
+inference-node model="gpt2":
+    RUST_LOG=info,psyche_network=debug nix run .#psyche-inference-node -- \
+        --model-name {{ model }} \
+        --discovery-mode n0 \
+        --relay-kind n0
+
+# Run gateway node (HTTP API for inference requests)
+gateway-node:
+    RUST_LOG=info,psyche_network=debug nix run .#bin-psyche-inference-node-gateway-node -- \
+        --discovery-mode n0 \
+        --relay-kind n0
+
+run-docker-gateway-node *ARGS:
+    just nix build_docker_gateway_node
+    docker run -d {{ ARGS }} psyche-gateway-node
+
+# Run full inference stack (gateway + inference node in tmux)
+inference-stack model="gpt2":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Check if tmux is available
+    if ! command -v tmux &> /dev/null; then
+        echo "Error: tmux is required but not installed"
+        exit 1
+    fi
+
+    SESSION="psyche-inference"
+    GATEWAY_PEER_FILE="/tmp/psyche-gateway-peer.json"
+
+    # Clean up old peer file
+    rm -f "$GATEWAY_PEER_FILE"
+
+    # Kill existing session if it exists
+    tmux kill-session -t $SESSION 2>/dev/null || true
+
+    echo "building gateway and inference node..."
+    nix build .#bin-psyche-inference-node-gateway-node .#psyche-inference-node
+
+    echo "Starting gateway node (bootstrap node)..."
+
+    # Create new session with gateway (starts first to be bootstrap node)
+    tmux new-session -d -s $SESSION -n gateway
+    tmux send-keys -t $SESSION:gateway "PSYCHE_GATEWAY_ENDPOINT_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#bin-psyche-inference-node-gateway-node -- --discovery-mode n0 --relay-kind n0" C-m
+
+    # Wait for gateway to start and write peer file
+    echo "Waiting for gateway to initialize and write endpoint..."
+    for i in $(seq 1 30); do
+        if [ -f "$GATEWAY_PEER_FILE" ]; then
+            echo "Gateway peer file created"
+            break
+        fi
+        sleep 1
+    done
+
+    if [ ! -f "$GATEWAY_PEER_FILE" ]; then
+        echo "Error: Gateway failed to create peer file"
+        exit 1
+    fi
+
+    # Wait a bit more for gateway HTTP server
+    sleep 2
+    echo "Gateway ready"
+    echo ""
+    echo "Starting inference node..."
+
+    # Create window for inference node (bootstraps from gateway)
+    tmux new-window -t $SESSION -n inference
+    tmux send-keys -t $SESSION:inference "PSYCHE_GATEWAY_BOOTSTRAP_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#psyche-inference-node -- --model-name {{ model }} --discovery-mode n0 --relay-kind n0" C-m
+
+    # Wait for inference node to start
+    sleep 3
+    echo "Inference node started"
+    echo ""
+
+    # Create window for testing
+    tmux new-window -t $SESSION -n test
+    tmux send-keys -t $SESSION:test "echo 'Test inference with:'; echo 'curl -X POST http://127.0.0.1:8000/v1/chat/completions -H \"Content-Type: application/json\" -d '\"'\"'{\"messages\": [{\"role\": \"user\", \"content\": \"Hello, world!\"}], \"max_tokens\": 50}'\"'\"''" C-m
+
+    # Attach to session
+    echo "Starting inference stack in tmux session '$SESSION'"
+    echo "Windows: inference (node), gateway (HTTP API), test (for curl commands)"
+    echo ""
+    echo "To attach: tmux attach -t $SESSION"
+    echo "To kill: tmux kill-session -t $SESSION"
+    echo ""
+    tmux attach -t $SESSION
+
+# Test inference via HTTP (requires inference stack to be running)
+test-inference prompt="Hello, world!" max_tokens="50":
+    curl -X POST http://127.0.0.1:8000/v1/chat/completions \
+        -H "Content-Type: application/json" \
+        -d '{"messages": [{"role": "user", "content": "{{ prompt }}"}], "max_tokens": {{ max_tokens }}}'
+
+# Run end-to-end test: start nodes, send request, verify response
+test-inference-e2e model="gpt2" prompt="Hello, world!":
+    ./scripts/test-inference-e2e.sh "{{ model }}" "{{ prompt }}"
+
+# Test dynamic model loading with multiple nodes (gateway + 2 inference nodes)
+test-model-loading initial_model="gpt2":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Check if tmux is available
+    if ! command -v tmux &> /dev/null; then
+        echo "Error: tmux is required but not installed"
+        exit 1
+    fi
+
+    SESSION="psyche-model-loading"
+    GATEWAY_PEER_FILE="/tmp/psyche-gateway-peer.json"
+
+    # Clean up old peer file
+    rm -f "$GATEWAY_PEER_FILE"
+
+    # Kill existing session if it exists
+    tmux kill-session -t $SESSION 2>/dev/null || true
+
+    echo "Building gateway and inference node..."
+    nix build .#bin-psyche-inference-node-gateway-node .#psyche-inference-node
+
+    echo "Starting gateway node (bootstrap node)..."
+
+    # Create new session with gateway
+    tmux new-session -d -s $SESSION -n gateway
+    tmux send-keys -t $SESSION:gateway "PSYCHE_GATEWAY_ENDPOINT_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#bin-psyche-inference-node-gateway-node -- --discovery-mode local --relay-kind n0" C-m
+
+    # Wait for gateway to start
+    echo "Waiting for gateway to initialize..."
+    for i in $(seq 1 30); do
+        if [ -f "$GATEWAY_PEER_FILE" ]; then
+            echo "Gateway peer file created"
+            break
+        fi
+        sleep 1
+    done
+
+    if [ ! -f "$GATEWAY_PEER_FILE" ]; then
+        echo "Error: Gateway failed to create peer file"
+        exit 1
+    fi
+
+    sleep 2
+    echo "Gateway ready"
+
+    # Start inference node 1 with initial model
+    echo "Starting inference node 1 (with model: {{ initial_model }})..."
+    tmux new-window -t $SESSION -n node1
+    tmux send-keys -t $SESSION:node1 "PSYCHE_GATEWAY_BOOTSTRAP_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#psyche-inference-node -- --model-name {{ initial_model }} --discovery-mode local --relay-kind n0 --tensor-parallel-size 1 --gpu-memory-utilization 0.35" C-m
+
+    # Start inference node 2 without model (idle mode)
+    echo "Starting inference node 2 (idle mode - no initial model)..."
+    tmux new-window -t $SESSION -n node2
+    tmux send-keys -t $SESSION:node2 "PSYCHE_GATEWAY_BOOTSTRAP_FILE=$GATEWAY_PEER_FILE RUST_LOG=info,psyche_network=debug nix run .#psyche-inference-node -- --discovery-mode local --relay-kind n0 --tensor-parallel-size 1 --gpu-memory-utilization 0.35" C-m
+
+    sleep 5
+    echo ""
+    echo "All nodes started"
+    echo ""
+
+    # Create test window with instructions
+    tmux new-window -t $SESSION -n test
+    tmux send-keys -t $SESSION:test "cat << 'EOF'" C-m
+    tmux send-keys -t $SESSION:test "═══════════════════════════════════════════════════════════════" C-m
+    tmux send-keys -t $SESSION:test "  Dynamic Model Loading Test" C-m
+    tmux send-keys -t $SESSION:test "═══════════════════════════════════════════════════════════════" C-m
+    tmux send-keys -t $SESSION:test "" C-m
+    tmux send-keys -t $SESSION:test "Status:" C-m
+    tmux send-keys -t $SESSION:test "  • Gateway: running on http://127.0.0.1:8000" C-m
+    tmux send-keys -t $SESSION:test "  • Node 1: {{ initial_model }}" C-m
+    tmux send-keys -t $SESSION:test "  • Node 2: idle (no model)" C-m
+    tmux send-keys -t $SESSION:test "" C-m
+    tmux send-keys -t $SESSION:test "Test 1: Send inference request with current model" C-m
+    tmux send-keys -t $SESSION:test "────────────────────────────────────────────────────────────────" C-m
+    tmux send-keys -t $SESSION:test "curl -X POST http://127.0.0.1:8000/v1/chat/completions \\\\" C-m
+    tmux send-keys -t $SESSION:test "  -H 'Content-Type: application/json' \\\\" C-m
+    tmux send-keys -t $SESSION:test "  -d '{\"messages\": [{\"role\": \"user\", \"content\": \"Hello!\"}], \"max_tokens\": 50}'" C-m
+    tmux send-keys -t $SESSION:test "" C-m
+    tmux send-keys -t $SESSION:test "Test 2: Load new model on all nodes" C-m
+    tmux send-keys -t $SESSION:test "────────────────────────────────────────────────────────────────" C-m
+    tmux send-keys -t $SESSION:test "curl -X POST http://127.0.0.1:8000/admin/load-model \\\\" C-m
+    tmux send-keys -t $SESSION:test "  -H 'Content-Type: application/json' \\\\" C-m
+    tmux send-keys -t $SESSION:test "  -d '{\"model_name\": \"gpt2\", \"source_type\": \"huggingface\"}'" C-m
+    tmux send-keys -t $SESSION:test "" C-m
+    tmux send-keys -t $SESSION:test "Expected: Both nodes reload with new model" C-m
+    tmux send-keys -t $SESSION:test "" C-m
+    tmux send-keys -t $SESSION:test "Test 3: Send inference with new model" C-m
+    tmux send-keys -t $SESSION:test "────────────────────────────────────────────────────────────────" C-m
+    tmux send-keys -t $SESSION:test "(Use same command as Test 1)" C-m
+    tmux send-keys -t $SESSION:test "" C-m
+    tmux send-keys -t $SESSION:test "Navigation:" C-m
+    tmux send-keys -t $SESSION:test "  • Switch windows: Ctrl-b then 0/1/2/3" C-m
+    tmux send-keys -t $SESSION:test "    0=gateway, 1=node1, 2=node2, 3=test" C-m
+    tmux send-keys -t $SESSION:test "  • Exit tmux: Ctrl-b then d" C-m
+    tmux send-keys -t $SESSION:test "  • Kill session: tmux kill-session -t psyche-model-loading" C-m
+    tmux send-keys -t $SESSION:test "═══════════════════════════════════════════════════════════════" C-m
+    tmux send-keys -t $SESSION:test "EOF" C-m
+
+    # Attach to session
+    echo "Starting multi-node test in tmux session '$SESSION'"
+    echo "Windows: gateway, node1, node2, test"
+    echo ""
+    echo "To attach: tmux attach -t $SESSION"
+    echo "To kill: tmux kill-session -t $SESSION"
+    echo ""
+    tmux attach -t $SESSION

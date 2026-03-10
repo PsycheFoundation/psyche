@@ -1,22 +1,24 @@
-use crate::{IntegrationTestLogMarker, WandBInfo, fetch_data::DataFetcher};
+use crate::{WandBInfo, fetch_data::DataFetcher};
 use psyche_coordinator::{
     Coordinator, HealthChecks,
     model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
 };
-use psyche_core::{Barrier, CancellableBarrier, NodeIdentity, Shuffle, TokenSize};
+use psyche_core::{
+    Barrier, CancellableBarrier, IntegrationTestLogMarker, NodeIdentity, Shuffle, TokenSize,
+};
 use psyche_data_provider::{
-    DataProvider, DataProviderTcpClient, DummyDataProvider, PreprocessedDataProvider, Split,
-    WeightedDataProvider, download_dataset_repo_async, download_model_repo_async,
+    DataProvider, DataProviderTcpClient, DownloadError, DummyDataProvider,
+    PreprocessedDataProvider, Split, WeightedDataProvider, download_dataset_repo_async,
+    download_model_from_gcs_async, download_model_repo_async,
     http::{FileURLs, HttpDataProvider},
 };
 use psyche_metrics::ClientMetrics;
 use psyche_modeling::{
     AttentionImplementation, AutoConfig, AutoTokenizerError, CausalLM, CommunicatorId,
     DataParallel, DeepseekForCausalLM, Devices, DummyModel, LlamaConfig, LlamaForCausalLM,
-    LocalTrainer, ModelConfig, ModelLoadError, ParallelModels, PretrainedSource, Trainer,
-    auto_tokenizer,
+    LocalTrainer, ModelLoadError, ParallelModels, PretrainedSource, Trainer, auto_tokenizer,
 };
-use psyche_network::{AuthenticatableIdentity, BlobTicket};
+use psyche_network::{BlobTicket, SecretKey};
 use psyche_watcher::OpportunisticData;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tch::{Kind, Tensor};
@@ -36,11 +38,10 @@ use super::{
 };
 use iroh_blobs::api::Tag;
 
-pub struct RunInitConfig<T: NodeIdentity, A: AuthenticatableIdentity> {
+pub struct RunInitConfig {
     // identity for connecting to the data server
-    pub identity: T,
-    pub network_identity: A,
-    pub private_key: A::PrivateKey,
+    pub identity: NodeIdentity,
+    pub p2p_secret_key: SecretKey,
 
     // p2p model parameters sharing config
     pub max_concurrent_parameter_requests: usize,
@@ -88,6 +89,9 @@ pub enum InitRunError {
 
     #[error("failed to read HF model info: {0}")]
     HfModelLoad(#[from] hf_hub::api::tokio::ApiError),
+
+    #[error("failed to download model from GCS: {0}")]
+    GcsModelLoad(#[from] DownloadError),
 
     #[error("model loading thread crashed")]
     ModelLoadingThreadCrashed(JoinError),
@@ -143,14 +147,14 @@ struct RawLoadedModel {
 }
 
 type OneshotModelParameterSender = oneshot::Sender<HashMap<String, Tensor>>;
-type OneShotModelConfigSender = oneshot::Sender<(String, Tokenizer)>;
+type OneShotModelConfigSender = oneshot::Sender<(String, Tokenizer, Vec<String>)>;
 
-pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
-    pub init_config: RunInitConfig<T, A>,
+pub struct RunInitConfigAndIO {
+    pub init_config: RunInitConfig,
 
-    pub tx_health_check: UnboundedSender<HealthChecks<T>>,
+    pub tx_health_check: UnboundedSender<HealthChecks>,
     pub tx_witness: UnboundedSender<OpportunisticData>,
-    pub tx_checkpoint: UnboundedSender<model::HubRepo>,
+    pub tx_checkpoint: UnboundedSender<model::Checkpoint>,
     pub tx_model: UnboundedSender<HashMap<String, Tensor>>,
     pub tx_parameters_req: UnboundedSender<(Vec<String>, OneshotModelParameterSender)>,
     pub tx_config: UnboundedSender<(String, String)>,
@@ -162,12 +166,9 @@ pub struct RunInitConfigAndIO<T: NodeIdentity, A: AuthenticatableIdentity> {
     pub metrics: Arc<ClientMetrics>,
 }
 
-impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T, A> {
+impl RunInitConfigAndIO {
     /// Call this on first warmup - when we need to enter the run, we have to load the model, connect to the data server, etc
-    pub async fn init_run(
-        self,
-        state: Coordinator<T>,
-    ) -> Result<StepStateMachine<T, A>, InitRunError> {
+    pub async fn init_run(self, state: Coordinator) -> Result<StepStateMachine, InitRunError> {
         let Self {
             init_config,
             tx_witness,
@@ -185,6 +186,13 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
         tch::manual_seed(1337);
 
+        // Check device availability early
+        if !init_config.device.is_probably_available() {
+            return Err(InitRunError::ModelLoad(
+                psyche_modeling::ModelLoadError::UnavailbleDevice(init_config.device),
+            ));
+        }
+
         let model::Model::LLM(llm) = state.model;
 
         let hub_read_token = init_config.hub_read_token.clone();
@@ -195,8 +203,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                 LLMTrainingDataLocation::Server(data_server) => DataProvider::Server(
                     DataProviderTcpClient::connect(
                         (&data_server).into(),
-                        init_config.network_identity,
-                        init_config.private_key,
+                        init_config.p2p_secret_key.clone(),
                     )
                     .await?,
                 ),
@@ -260,7 +267,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
         {
             model::LLMArchitecture::HfLlama
             | model::LLMArchitecture::HfDeepseek
-            | model::LLMArchitecture::HfAuto => match &llm.checkpoint {
+            | model::LLMArchitecture::HfAuto
+            | model::LLMArchitecture::Torchtitan => match &llm.checkpoint {
                 model::Checkpoint::Dummy(_) => tokio::spawn(async move {
                     let tokenizer = Arc::new(Tokenizer::new(ModelWrapper::WordLevel(
                         WordLevel::builder().build().unwrap(),
@@ -302,7 +310,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                     tx_config.send((config.to_string(), tokenizer)).unwrap();
                     Ok(model)
                 }),
-                model::Checkpoint::Hub(_) | model::Checkpoint::P2P(_) => {
+                model::Checkpoint::Hub(_)
+                | model::Checkpoint::P2P(_)
+                | model::Checkpoint::P2PGcs(_)
+                | model::Checkpoint::Gcs(_) => {
                     let checkpoint = llm.checkpoint;
                     tokio::spawn(async move {
                         let (source, tokenizer, checkpoint_extra_files) = match checkpoint {
@@ -310,7 +321,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 let repo_id: String = (&hub_repo.repo_id).into();
                                 let revision = hub_repo.revision.map(|bytes| (&bytes).into());
 
-                                info!("Downloading {} (if needed)", hub_repo.repo_id);
+                                info!(
+                                    "Downloading {}, revision: {:?} (if needed)",
+                                    hub_repo.repo_id, revision
+                                );
                                 let repo_files = download_model_repo_async(
                                     &repo_id,
                                     revision,
@@ -320,7 +334,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     false,
                                 )
                                 .await?;
-
                                 let checkpoint_extra_files = repo_files
                                     .iter()
                                     .filter(|file| {
@@ -340,7 +353,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     checkpoint_extra_files,
                                 )
                             }
-                            model::Checkpoint::P2P(_) => {
+                            model::Checkpoint::P2P(_) | model::Checkpoint::P2PGcs(_) => {
                                 let (tx_model_config_response, rx_model_config_response) =
                                     oneshot::channel();
                                 info!("Checkpoint is p2p, requesting model config over network");
@@ -349,7 +362,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     .send(tx_model_config_response)
                                     .unwrap();
 
-                                let (model_config, tokenizer) =
+                                let (model_config, tokenizer, parameter_names) =
                                     rx_model_config_response.await.unwrap();
                                 debug!("Got p2p info, model_config: {}", model_config);
 
@@ -360,7 +373,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     model::LLMArchitecture::HfDeepseek => {
                                         AutoConfig::Deepseek(serde_json::from_str(&model_config)?)
                                     }
-                                    model::LLMArchitecture::HfAuto => {
+                                    model::LLMArchitecture::HfAuto
+                                    | model::LLMArchitecture::Torchtitan => {
                                         #[cfg(feature = "python")]
                                         {
                                             AutoConfig::Auto(serde_json::from_str::<
@@ -373,12 +387,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                         #[cfg(not(feature = "python"))]
                                         {
                                             return Err(InitRunError::UnsupportedArchitecture(
-                                                "HfAuto".to_string(),
+                                                llm.architecture.to_string(),
                                             ));
                                         }
                                     }
                                 };
-                                let parameter_names = model_config.get_parameter_names();
                                 info!(
                                     "Requesting {} parameters over p2p network",
                                     parameter_names.len()
@@ -398,6 +411,39 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     ),
                                     Arc::new(tokenizer),
                                     vec![],
+                                )
+                            }
+                            model::Checkpoint::Gcs(gcs_repo) => {
+                                let bucket: String = (&gcs_repo.bucket).into();
+                                let prefix: Option<String> = gcs_repo.prefix.map(|p| (&p).into());
+
+                                info!(
+                                    "Downloading model from gs://{}/{}",
+                                    bucket,
+                                    prefix.as_deref().unwrap_or("")
+                                );
+
+                                let repo_files =
+                                    download_model_from_gcs_async(&bucket, prefix.as_deref())
+                                        .await?;
+
+                                let checkpoint_extra_files = repo_files
+                                    .iter()
+                                    .filter(|file| {
+                                        file.ends_with("config.json")
+                                            || file.ends_with("tokenizer.json")
+                                            || file.ends_with("tokenizer_config.json")
+                                            || file.ends_with("special_tokens_map.json")
+                                            || file.ends_with("generation_config.json")
+                                            || file.ends_with(".py")
+                                    })
+                                    .cloned()
+                                    .collect();
+                                let tokenizer = Arc::new(auto_tokenizer(&repo_files)?);
+                                (
+                                    PretrainedSource::<AutoConfig>::RepoFiles(repo_files),
+                                    tokenizer,
+                                    checkpoint_extra_files,
                                 )
                             }
                             _ => unreachable!(),
@@ -436,24 +482,25 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 model::LLMTrainingDataType::Pretraining => None,
                             };
 
-                        let raw_loaded_model_type: RawLoadedModelType =
-                            if llm.architecture == model::LLMArchitecture::HfAuto {
+                        let raw_loaded_model_type: RawLoadedModelType = match llm.architecture {
+                            model::LLMArchitecture::HfAuto | model::LLMArchitecture::Torchtitan => {
                                 #[cfg(feature = "python")]
                                 {
                                     let dp = init_config.data_parallelism;
                                     let tp = init_config.tensor_parallelism;
+                                    let num_local_ranks = init_config.device.size() as i64;
 
                                     tokio::task::spawn_blocking(move || {
                                         if tp != 1 || dp != 1 {
                                             psyche_modeling::PythonDistributedCausalLM::new(
-                                                "hf-auto".to_string(),
+                                                llm.architecture.to_string(),
                                                 source.try_into()?,
                                                 tch::Device::cuda_if_available(),
                                                 attn_implementation.unwrap_or_default(),
                                                 psyche_modeling::ParallelismConfig { dp, tp },
                                                 Some(llm.max_seq_len as usize),
                                                 init_config.sidecar_port,
-                                                None,
+                                                Some(num_local_ranks),
                                             )
                                             .map(RawLoadedModelType::PythonDistributed)
                                             .map_err(InitRunError::PythonDistributedError)
@@ -468,7 +515,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                     )
                                                 })?;
                                             psyche_modeling::PythonCausalLM::new(
-                                                "hf-auto",
+                                                &llm.architecture.to_string(),
                                                 &source.try_into()?,
                                                 device,
                                                 attn_implementation.unwrap_or_default(),
@@ -486,10 +533,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 #[cfg(not(feature = "python"))]
                                 {
                                     return Err(InitRunError::UnsupportedArchitecture(
-                                        "HfAuto".to_string(),
+                                        llm.architecture.to_string(),
                                     ));
                                 }
-                            } else {
+                            }
+                            architecture => {
                                 let mut futures: Vec<
                                     JoinHandle<Result<Box<dyn CausalLM>, ModelLoadError>>,
                                 > = Vec::with_capacity(
@@ -523,7 +571,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                             let device = device.ok_or_else(|| {
                                                 ModelLoadError::NoDeviceForRank(rank, devices)
                                             })?;
-                                            match llm.architecture {
+                                            match architecture {
                                                 model::LLMArchitecture::HfLlama => {
                                                     LlamaForCausalLM::from_pretrained(
                                                         &source.try_into()?,
@@ -546,7 +594,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                                     )
                                                     .map(|x| Box::new(x) as Box<dyn CausalLM>)
                                                 }
-                                                model::LLMArchitecture::HfAuto => unreachable!(),
+                                                model::LLMArchitecture::HfAuto
+                                                | model::LLMArchitecture::Torchtitan => {
+                                                    unreachable!()
+                                                }
                                             }
                                         }));
                                     }
@@ -561,7 +612,8 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                 }
 
                                 RawLoadedModelType::ParallelNativeModels(models)
-                            };
+                            }
+                        };
 
                         debug!("Config uploaded: {}", serialized_config);
                         let serialized_tokenizer = tokenizer.to_string(false).unwrap();
@@ -610,7 +662,6 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
                                     state.config.global_batch_size_warmup_tokens,
                                 ),
                                 ("total_steps", state.config.total_steps),
-                                ("rounds_per_epoch", state.config.rounds_per_epoch),
                                 ("run_id", run_id),
                             ));
                         if let Some(entity) = wandb_info.entity {
@@ -650,8 +701,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> RunInitConfigAndIO<T
 
         // TODO add data fetching for verifying, too..
         let data_provider = data.map_err(InitRunError::DataProviderConnect)?;
-        let data_fetcher =
-            DataFetcher::<T, A>::new(data_provider, init_config.data_parallelism * 2);
+        let data_fetcher = DataFetcher::new(data_provider, init_config.data_parallelism * 2);
 
         let trainers: Vec<Trainer> = match models {
             RawLoadedModelType::ParallelNativeModels(models) => {

@@ -15,12 +15,8 @@ exporters:
   loki:
     endpoint: http://loki:3100/loki/api/v1/push
 
-  prometheus:
-    endpoint: '0.0.0.0:8889'
-    resource_to_telemetry_conversion:
-      enabled: true
-    const_labels:
-      service: 'otel-collector'
+  otlphttp:
+    endpoint: http://prometheus:9090/api/v1/otlp
 
   # Useful for debugging to see logs in the collector's stdout
   debug:
@@ -41,4 +37,4 @@ service:
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [prometheus, debug]
+      exporters: [otlphttp, debug]

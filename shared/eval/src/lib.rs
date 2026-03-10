@@ -9,14 +9,16 @@ pub use harness::{
     EvalTaskOptions, PROGRESS_BAR_TEMPLATE, PreparedTask, PreparedTaskResult, Task, TaskType,
     progress_bar_template_with_task,
 };
-pub use tasks::{ArcChallenge, ArcEasy, BoolQ, CEval, Hellaswag, MMLU, MMLUPro, OpenbookQA, PIQA};
+pub use tasks::{
+    ArcChallenge, ArcEasy, BoolQ, CEval, Hellaswag, MMLU, MMLUCF, MMLUPro, OpenbookQA, PIQA,
+};
 
 pub const ASCII_UPPERCASE: [&str; 26] = [
     "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S",
     "T", "U", "V", "W", "X", "Y", "Z",
 ];
 
-pub const ALL_TASK_NAMES: [&str; 9] = [
+pub const ALL_TASK_NAMES: [&str; 10] = [
     ArcChallenge::name(),
     ArcEasy::name(),
     BoolQ::name(),
@@ -24,6 +26,7 @@ pub const ALL_TASK_NAMES: [&str; 9] = [
     Hellaswag::name(),
     MMLUPro::name(),
     MMLU::name(),
+    MMLUCF::name(),
     OpenbookQA::name(),
     PIQA::name(),
 ];
@@ -59,6 +62,7 @@ pub fn tasktype_from_name(name: &str) -> Result<TaskType> {
         "hellaswag" => Hellaswag::load(),
         "mmlu_pro" => MMLUPro::load(),
         "mmlu" => MMLU::load(),
+        "mmlu_cf" => MMLUCF::load(),
         "openbookqa" => OpenbookQA::load(),
         "piqa" => PIQA::load(),
         _ => bail!("Unknown task {name}"),

@@ -29,6 +29,7 @@ export function Progress({
 	ratio,
 	format = (num) => formatNumber(num, 3),
 	size,
+	showRight = true,
 }: {
 	chunkWidth: number
 	chunkHeight: number
@@ -39,6 +40,7 @@ export function Progress({
 	ratio?: number
 	format?: (val: number) => string
 	size?: 'normal' | 'big' | 'small'
+	showRight?: boolean
 }) {
 	return (
 		<ProgressContainer>
@@ -51,9 +53,11 @@ export function Progress({
 			/>
 			<ProgressDescription className={text['aux/sm/medium']}>
 				<span>{label}</span>
-				<span>
-					{format(current)}/{format(total)}
-				</span>
+				{showRight && (
+					<span>
+						{format(current)}/{format(total)}
+					</span>
+				)}
 			</ProgressDescription>
 		</ProgressContainer>
 	)

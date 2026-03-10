@@ -39,10 +39,10 @@
               StateDirectory = "backend";
               DynamicUser = true;
               EnvironmentFile = config.age.secrets.backendRpc.path;
-              Environment = "NODE_OPTIONS=--max-old-space-size=3000";
+              Environment = "NODE_OPTIONS='--max-old-space-size=3000 --enable-source-maps'";
               # don't start until we have DNS!
               ExecStartPre = "/bin/sh -c 'until ${pkgs.bind.host}/bin/host example.com; do sleep 1; done'";
-              ExecStart = lib.getExe (pkgs.callPackage ../website/backend { });
+              ExecStart = lib.getExe pkgs.psyche-website-backend;
 
               # restart if something breaks, e.g. OOM
               Restart = "on-failure";
@@ -213,106 +213,117 @@
       nixosConfigurations."psyche-http-devnet" = persistentPsycheWebsite {
         configName = "psyche-http-devnet";
         hostnames = [ "devnet-preview.psyche.network" ];
-        backendSecret = ../secrets/devnet/backend.age;
+        backendSecret = ../secrets/devnet/backend-old.age;
         miningPoolRpc = devnetFrontendRpc;
         coordinatorCluster = "devnet";
         miningPoolCluster = "devnet";
       };
       nixosConfigurations."psyche-http-mainnet" = persistentPsycheWebsite {
         configName = "psyche-http-mainnet";
-        hostnames = [ "mainnet-preview.psyche.network" ];
-        backendSecret = ../secrets/mainnet/backend.age;
+        hostnames = [
+          "mainnet-preview.psyche.network"
+          "psyche.network"
+        ];
+        backendSecret = ../secrets/mainnet/backend-old.age;
         miningPoolRpc = mainnetFrontendRpc;
         coordinatorCluster = "devnet";
         miningPoolCluster = "mainnet";
       };
 
       # server for hosting the mainnet docs & frontend/backend.
-      nixosConfigurations."psyche-http" = lib.nixosSystem {
-        system = "x86_64-linux";
-        modules = [
-          self.nixosModules.base-system
-          self.nixosModules.debug-ssh
-          (psyche-website-backend ../secrets/mainnet/backend.age)
-          (
-            {
-              pkgs,
-              ...
-            }:
-            let
-              backendPath = "/api";
-              psyche-website-frontend = pkgs.callPackage ../website/frontend {
-                miningPoolRpc = mainnetFrontendRpc;
-                inherit backendPath;
-                coordinatorCluster = "devnet";
-                miningPoolCluster = "mainnet";
-              };
-            in
-            {
-              # don't lose our nice db every time we deploy!
-              garnix.server.persistence = {
-                enable = true;
-                name = "psyche-mainnet";
-              };
+      nixosConfigurations."psyche-http" =
+        let
+          system = "x86_64-linux";
+        in
+        lib.nixosSystem {
+          inherit system;
+          modules = [
+            self.nixosModules.base-system
+            self.nixosModules.debug-ssh
+            (psyche-website-backend ../secrets/mainnet/backend-old.age)
+            (
+              {
+                pkgs,
+                ...
+              }:
+              let
+                backendPath = "/api";
+                psyche-website-frontend = pkgs.callPackage ../website/frontend {
+                  miningPoolRpc = mainnetFrontendRpc;
+                  inherit backendPath;
+                  coordinatorCluster = "devnet";
+                  miningPoolCluster = "mainnet";
+                };
+              in
+              {
+                # don't lose our nice db every time we deploy!
+                garnix.server.persistence = {
+                  enable = true;
+                  name = "psyche-mainnet";
+                };
 
-              services.caddy = {
-                enable = true;
-                virtualHosts =
+                services.caddy = {
+                  enable = true;
+                  virtualHosts =
+                    let
+                      psyche-website = ''
+                        handle {
+                          root * ${psyche-website-frontend}
+                          ${serveStaticSpa}
+                        }
+
+                        handle_path ${backendPath}/* {
+                          reverse_proxy :${backend-port}
+                        }
+                      '';
+                    in
+                    {
+                      "https://docs.psyche.network".extraConfig = ''
+                        root * ${self.packages.${system}.psyche-book}
+                        file_server
+                      '';
+
+                      "https://psyche.network".extraConfig = psyche-website;
+                      "http://psyche-http.main.psyche.nousresearch.garnix.me".extraConfig = psyche-website;
+                      "http://psyche-http.main.psyche.psychefoundation.garnix.me".extraConfig = psyche-website;
+                    };
+                };
+              }
+            )
+          ];
+        };
+
+      # server for hosting docs, for test deploys
+      nixosConfigurations."psyche-http-docs" =
+        let
+          system = "x86_64-linux";
+        in
+        lib.nixosSystem {
+          inherit system;
+          modules = [
+            self.nixosModules.base-system
+            (
+              { ... }:
+              {
+                services.caddy =
                   let
-                    psyche-website = ''
-                      handle {
-                        root * ${psyche-website-frontend}
-                        ${serveStaticSpa}
-                      }
-
-                      handle_path ${backendPath}/* {
-                        reverse_proxy :${backend-port}
-                      }
+                    conf = ''
+                      root * ${self.packages.${system}.psyche-book}
+                      file_server
                     '';
                   in
                   {
-                    "https://docs.psyche.network".extraConfig = ''
-                      root * ${self.packages.${pkgs.system}.psyche-book}
-                      file_server
-                    '';
-
-                    "https://psyche.network".extraConfig = psyche-website;
-                    "http://psyche-http.main.psyche.nousresearch.garnix.me".extraConfig = psyche-website;
-                    "http://psyche-http.main.psyche.psychefoundation.garnix.me".extraConfig = psyche-website;
+                    enable = true;
+                    virtualHosts = {
+                      "http://psyche-http-docs.test-deploy-docs.psyche.nousresearch.garnix.me".extraConfig = conf;
+                      "http://psyche-http-docs.test-deploy-docs.psyche.psychefoundation.garnix.me".extraConfig = conf;
+                      "http://docs-preview.psyche.network".extraConfig = conf;
+                    };
                   };
-              };
-            }
-          )
-        ];
-      };
-
-      # server for hosting docs, for test deploys
-      nixosConfigurations."psyche-http-docs" = lib.nixosSystem {
-        system = "x86_64-linux";
-        modules = [
-          self.nixosModules.base-system
-          (
-            { pkgs, ... }:
-            {
-              services.caddy =
-                let
-                  conf = ''
-                    root * ${self.packages.${pkgs.system}.psyche-book}
-                    file_server
-                  '';
-                in
-                {
-                  enable = true;
-                  virtualHosts = {
-                    "http://psyche-http-docs.test-deploy-docs.psyche.nousresearch.garnix.me".extraConfig = conf;
-                    "http://psyche-http-docs.test-deploy-docs.psyche.psychefoundation.garnix.me".extraConfig = conf;
-                    "http://docs-preview.psyche.network".extraConfig = conf;
-                  };
-                };
-            }
-          )
-        ];
-      };
+              }
+            )
+          ];
+        };
     };
 
   perSystem =
@@ -333,7 +344,7 @@
             {
               name = "validate-${configName}-caddyfile";
               value =
-                pkgs.runCommandNoCC "validate-${configName}-caddyfile"
+                pkgs.runCommand "validate-${configName}-caddyfile"
                   {
                     nativeBuildInputs = with pkgs; [
                       bubblewrap

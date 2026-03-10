@@ -9,6 +9,7 @@ type PsycheSolanaCoordinator = coordinatorTypes.PsycheSolanaCoordinator
 type PsycheSolanaMiningPool = miningPoolTypes.PsycheSolanaMiningPool
 
 import type {
+	GcsRepo,
 	HubRepo,
 	LearningRateSchedule,
 	LLMArchitecture,
@@ -115,13 +116,14 @@ export interface RunData {
 	state?: {
 		phase: RunState
 		phaseStartTime: Date
+		epochStartTime: Date
 		clients: Array<RunRoundClient>
 
-		checkpoint: HubRepo | null
+		checkpoint: { Hub: HubRepo } | { Gcs: GcsRepo } | null
 
 		round: number
 		config: {
-			roundsPerEpoch: number
+			epochTime: number
 			minClients: number
 
 			warmupTime: number
@@ -179,6 +181,9 @@ export type ApiGetRuns = MaybeError<{
 	runs: RunSummary[]
 	totalTokens: bigint
 	totalTokensPerSecondActive: bigint
+}>
+export type ApiGetCheckpointStatus = MaybeError<{
+	isValid: boolean
 }>
 export type ApiGetContributionInfo = MaybeError<ContributionInfo>
 

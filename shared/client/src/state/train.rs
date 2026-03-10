@@ -1,5 +1,4 @@
 use crate::{
-    IntegrationTestLogMarker,
     fetch_data::{BatchIdSet, DataFetcher, TrainingDataForStep},
     state::types::{DeserializeError, PayloadState},
 };
@@ -9,14 +8,14 @@ use psyche_coordinator::{
     BLOOM_FALSE_RATE, Commitment, CommitteeSelection, Coordinator, CoordinatorError, HealthChecks,
     assign_data_for_state, get_batch_ids_for_node, get_batch_ids_for_round, model,
 };
-use psyche_core::{BatchId, Bloom, NodeIdentity, OptimizerDefinition};
+use psyche_core::{BatchId, Bloom, IntegrationTestLogMarker, NodeIdentity, OptimizerDefinition};
 use psyche_modeling::{
     ApplyDistroResultError, Batch, BatchData, DistroResult, TrainOutput, Trainer,
     TrainerThreadCommunicationError,
 };
 use psyche_network::{
-    AuthenticatableIdentity, Hash, SerializeDistroResultError, SerializedDistroResult,
-    TransmittableDistroResult, distro_results_to_bytes,
+    Hash, SerializeDistroResultError, SerializedDistroResult, TransmittableDistroResult,
+    distro_results_to_bytes,
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -84,17 +83,17 @@ pub enum TrainError {
     #[error("Failed to send health checks, channel must be closed")]
     SendHealthChecks,
 
-    #[error("Healthcheck thread crashed")]
+    #[error("Health check thread crashed")]
     HealthCheckCrashed,
 
     #[error("Coordinator error: {0}")]
     CoordinatorError(CoordinatorError),
 }
 
-pub struct TrainingStepMetadata<T: NodeIdentity, A: AuthenticatableIdentity> {
-    pub identity: T,
-    pub data_fetcher: DataFetcher<T, A>,
-    pub tx_health_check: mpsc::UnboundedSender<HealthChecks<T>>,
+pub struct TrainingStepMetadata {
+    pub identity: NodeIdentity,
+    pub data_fetcher: DataFetcher,
+    pub tx_health_check: mpsc::UnboundedSender<HealthChecks>,
     pub tx_distro_result: mpsc::UnboundedSender<DistroBroadcastAndPayload>,
 
     pub write_gradients_dir: Option<PathBuf>,
@@ -137,14 +136,14 @@ impl TrainingStep {
     }
 }
 
-impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata<T, A> {
+impl TrainingStepMetadata {
     pub fn start(
         &mut self,
         client_index: u64,
-        state: &Coordinator<T>,
+        state: &Coordinator,
         trainers: Vec<Trainer>,
-        previous_round: &mut RoundState<T>,
-        current_round: &mut RoundState<T>,
+        previous_round: &mut RoundState,
+        current_round: &mut RoundState,
     ) -> Result<TrainingStep, TrainError> {
         if trainers.is_empty() {
             return Err(TrainError::NoTrainers);
@@ -173,27 +172,24 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
         )
         .map_err(TrainError::CoordinatorError)?;
 
-        let have_training = round.height < state.config.rounds_per_epoch - 2;
-        let (data_assignments, num_all_batch_ids, batch_ids_not_yet_trained_on) =
-            match have_training {
-                true => {
-                    let data_assignments = assign_data_for_state(state, &committee_selection);
-                    let all_batch_ids = get_batch_ids_for_round(
-                        state.current_round().unwrap(),
-                        state,
-                        committee_selection.get_num_trainer_nodes(),
-                    );
-                    let num_all_batch_ids = all_batch_ids.len();
-                    let batch_ids_not_yet_trained_on: BatchIdSet =
-                        all_batch_ids.into_iter().collect();
-                    (
-                        data_assignments,
-                        num_all_batch_ids,
-                        Arc::new(Mutex::new(Some(batch_ids_not_yet_trained_on))),
-                    )
-                }
-                false => (BTreeMap::new(), 0, Arc::new(Mutex::new(None))),
-            };
+        let have_training = !state.epoch_state.last_step_set();
+        let (data_assignments, num_all_batch_ids, batch_ids_not_yet_trained_on) = if have_training {
+            let data_assignments = assign_data_for_state(state, &committee_selection);
+            let all_batch_ids = get_batch_ids_for_round(
+                state.current_round().unwrap(),
+                state,
+                committee_selection.get_num_trainer_nodes(),
+            );
+            let num_all_batch_ids = all_batch_ids.len();
+            let batch_ids_not_yet_trained_on: BatchIdSet = all_batch_ids.into_iter().collect();
+            (
+                data_assignments,
+                num_all_batch_ids,
+                Arc::new(Mutex::new(Some(batch_ids_not_yet_trained_on))),
+            )
+        } else {
+            (BTreeMap::new(), 0, Arc::new(Mutex::new(None)))
+        };
 
         let committee_proof = committee_selection.get_committee(client_index);
         let witness_proof = committee_selection.get_witness(client_index);
@@ -241,7 +237,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
             round = round.height,
             epoch = epoch,
             index = client_index,
-            comittee_position = committee_proof.position,
+            committee_position = committee_proof.position,
             committee = %committee_proof.committee,
             witness_position = witness_proof.position,
             witness = %witness_proof.witness,
@@ -485,9 +481,9 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
     fn apply_results(
         &mut self,
         trainers: Vec<Trainer>,
-        state: &Coordinator<T>,
-        previous_round: &mut RoundState<T>,
-        current_round: &mut RoundState<T>,
+        state: &Coordinator,
+        previous_round: &mut RoundState,
+        current_round: &mut RoundState,
     ) -> Result<JoinHandle<Result<Vec<Trainer>, ApplyError>>, ApplyError> {
         if current_round.height == 0 {
             // the first TWO training step of each epoch has no apply phase.
@@ -507,11 +503,16 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                 .witnesses
                 .len() as u16,
         );
-        let cold_start_warmup_steps = match &state.model {
-            model::Model::LLM(llm) => llm.cold_start_warmup_steps,
+        let (cold_start_warmup_steps, checkpoint_is_p2p) = match &state.model {
+            model::Model::LLM(llm) => (
+                llm.cold_start_warmup_steps,
+                matches!(
+                    llm.checkpoint,
+                    model::Checkpoint::P2P(_) | model::Checkpoint::P2PGcs(_)
+                ),
+            ),
         };
         let warmup_lr_between = state.get_cold_start_warmup_bounds();
-        let epoch = state.progress.epoch;
 
         // coordinator has already advanced to the next round (unless we're in cooldown) but we haven't started ours yet.
         // so our current_round corresponds to the coordinator's previous_round
@@ -562,7 +563,7 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
                         }
                     };
                     trace!("Commitments for batch {batch_id}: {batch_commitments:?}");
-                    let consensus = match Coordinator::<T>::select_consensus_commitment_by_witnesses(
+                    let consensus = match Coordinator::select_consensus_commitment_by_witnesses(
                         &batch_commitments
                             .iter()
                             .map(|x| x.1.0)
@@ -607,11 +608,11 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
 
                     match maybe_results {
                         Ok((results, trainer_nonce)) => {
-                            if trainer_nonce < cold_start_warmup_steps && epoch != 0 && warmup_lr_between.is_none()  {
-                                // results are not actually applied for the first cold_start_warmup_steps of a trainer's lifetime
+                            if trainer_nonce < cold_start_warmup_steps && checkpoint_is_p2p {
+                                // Only filter results from trainers that are still warming up their optimizer,
+                                // and only when the checkpoint is P2P (meaning other clients exist from a previous epoch).
+                                // When checkpoint is Hub (first epoch or mass restart), all trainers are equally new so no filtering is needed.
                                 // note, we are relying on honest communication of this value here -- will need to harden with verification.
-                                // the only exception is for the first steps of the first epoch
-                                // or when doing a cold start (warmup_lr_between.is_some())
                                 info!("Skipping apply of batch {batch_id}, trainer warming up ({trainer_nonce}/{cold_start_warmup_steps})");
                             } else {
                                 distro_results.push(results);
@@ -647,10 +648,10 @@ impl<T: NodeIdentity, A: AuthenticatableIdentity + 'static> TrainingStepMetadata
     }
 }
 
-fn start_sending_health_checks<T: NodeIdentity>(
-    round_state: &mut RoundState<T>,
-    state: &Coordinator<T>,
-    tx_health_check: mpsc::UnboundedSender<HealthChecks<T>>,
+fn start_sending_health_checks(
+    round_state: &mut RoundState,
+    state: &Coordinator,
+    tx_health_check: mpsc::UnboundedSender<HealthChecks>,
 ) -> Result<Option<JoinHandle<Result<(), TrainError>>>, TrainError> {
     // we won't have any information to health check with until at least one round of training has finished
     if round_state.height == 0 {
@@ -682,7 +683,7 @@ fn start_sending_health_checks<T: NodeIdentity>(
                 }
 
                 if !checks.is_empty() {
-                    info!("Sending health check for following indicies: {:?}", checks);
+                    info!("Sending health check for following indices: {:?}", checks);
                     tx_health_check
                         .send(checks)
                         .map_err(|_| TrainError::SendHealthChecks)
@@ -729,9 +730,9 @@ enum WriteGradientsError {
     },
 }
 
-async fn write_gradients_to_disk<T: NodeIdentity>(
+async fn write_gradients_to_disk(
     write_gradients_dir: PathBuf,
-    identity: T,
+    identity: NodeIdentity,
     distro_result: TransmittableDistroResult,
 ) -> Result<(), WriteGradientsError> {
     debug!("Trying to write distro result to disk...");

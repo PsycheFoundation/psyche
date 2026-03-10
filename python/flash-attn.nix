@@ -11,7 +11,6 @@
   setuptools,
   torch,
   wheel,
-  callPackage,
 }:
 let
   inherit (cudaPackages)
@@ -50,7 +49,10 @@ buildPythonPackage rec {
     substituteInPlace setup.py \
       --replace-fail \
         '+ cc_flag' \
-        '+ ["${concatStringsSep ''","'' flags.gencode}"]'
+        '+ ["${concatStringsSep ''","'' flags.gencode}"]' \
+      --replace-fail \
+        'compiler_c17_flag=["-O3", "-std=c++17"]' \
+        'compiler_c17_flag=["-O3", "-std=c++17", "-mcmodel=medium"]'
   '';
 
   preConfigure = ''
@@ -91,7 +93,7 @@ buildPythonPackage rec {
     homepage = "https://github.com/Dao-AILab/flash-attention";
     license = lib.licenses.bsd3;
     platforms = lib.platforms.linux;
-    maintainers = with lib.maintainers; [ ];
+    maintainers = [ ];
     broken = !config.cudaSupport;
   };
 }

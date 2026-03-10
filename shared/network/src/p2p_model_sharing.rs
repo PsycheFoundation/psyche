@@ -1,12 +1,12 @@
 use anyhow::Result;
-use iroh::NodeId;
+use iroh::EndpointId;
 use iroh::protocol::AcceptError;
 use iroh::{endpoint::Connection, protocol::ProtocolHandler};
 use iroh_blobs::api::Tag;
 use iroh_blobs::ticket::BlobTicket;
-use std::collections::VecDeque;
-use std::collections::{HashMap, HashSet, hash_map::Entry};
+use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
 use std::io::{Cursor, Write};
+use std::time::Duration;
 use tch::Tensor;
 use thiserror::Error;
 use tokenizers::Tokenizer;
@@ -18,8 +18,8 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, trace, warn};
 
+use crate::connection_monitor::{ConnectionMonitor, PeerBandwidth};
 use crate::{NetworkConnection, Networkable, TransmittableDownload};
-
 #[derive(Debug)]
 /// Manager for the list of peers to ask for the model parameters and config
 pub struct PeerManagerHandle {
@@ -30,28 +30,33 @@ pub struct PeerManagerHandle {
 /// List of commands that the Peer manager actor will respond in the process of asking and downloading the model parameters
 enum PeerCommand {
     SetPeers {
-        peers: Vec<NodeId>,
+        peers: Vec<EndpointId>,
     },
     GetPeer {
-        reply: oneshot::Sender<Option<NodeId>>,
+        reply: oneshot::Sender<Option<EndpointId>>,
     },
     ReportSuccess {
-        peer_id: NodeId,
+        peer_id: EndpointId,
     },
     ReportModelDownloadError {
         blob_ticket: Option<BlobTicket>,
-        peer_id: NodeId,
+        peer_id: EndpointId,
     },
 }
 
 impl PeerManagerHandle {
-    pub fn new(max_errors_per_peer: u8, cancellation_token: CancellationToken) -> Self {
+    pub fn new(
+        max_errors_per_peer: u8,
+        cancellation_token: CancellationToken,
+        connection_monitor: ConnectionMonitor,
+    ) -> Self {
         let (peer_tx, peer_rx) = mpsc::unbounded_channel();
 
         // Spawn the peer manager actor
         tokio::spawn(peer_manager_actor(
             peer_rx,
             max_errors_per_peer,
+            connection_monitor,
             cancellation_token,
         ));
 
@@ -59,13 +64,13 @@ impl PeerManagerHandle {
     }
 
     /// Set the list of peers that the manager will use to download the model parameters
-    pub fn set_peers(&self, peers: Vec<NodeId>) {
+    pub fn set_peers(&self, peers: Vec<EndpointId>) {
         let _ = self.peer_tx.send(PeerCommand::SetPeers { peers });
     }
 
     /// Get the next peer to download the model parameters from
     /// We'll get a None if no peers are available, a peer might be available later when it finishes sharing a parameter
-    pub async fn get_next_peer(&self) -> Option<NodeId> {
+    pub async fn get_next_peer(&self) -> Option<EndpointId> {
         let (reply_tx, reply_rx) = oneshot::channel();
 
         if self
@@ -80,14 +85,14 @@ impl PeerManagerHandle {
     }
 
     /// Report that a peer has successfully shared the hash of a blob ticket for a parameter
-    pub fn report_success(&self, peer_id: NodeId) {
+    pub fn report_success(&self, peer_id: EndpointId) {
         let _ = self.peer_tx.send(PeerCommand::ReportSuccess { peer_id });
     }
 
     /// Report that a peer has failed to share the hash of the blob ticket for a model parameter
     pub fn report_blob_ticket_request_error(
         &self,
-        peer_id: NodeId,
+        peer_id: EndpointId,
         blob_ticket: Option<BlobTicket>,
     ) {
         if self
@@ -105,37 +110,98 @@ impl PeerManagerHandle {
 
 struct PeerManagerActor {
     /// Peers that are available to request the model to
-    available_peers: VecDeque<NodeId>,
+    available_peers: VecDeque<EndpointId>,
     /// A map for the peer's blob ticket to their errors
-    errors_per_peers: HashMap<NodeId, u8>,
+    errors_per_peers: HashMap<EndpointId, u8>,
     /// Max errors we tolerate for a peer to share a parameter blob ticket
     max_errors_per_peer: u8,
+    /// Connection monitor for bandwidth and latency-based peer sorting
+    connection_monitor: ConnectionMonitor,
 }
 
 impl PeerManagerActor {
-    pub fn new(max_errors_per_peer: u8) -> Self {
+    pub fn new(max_errors_per_peer: u8, connection_monitor: ConnectionMonitor) -> Self {
         Self {
             available_peers: VecDeque::new(),
             errors_per_peers: HashMap::new(),
             max_errors_per_peer,
+            connection_monitor,
         }
+    }
+
+    /// Assigns a priority tier to a peer based on its bandwidth measurement.
+    fn bandwidth_tier(bw: &PeerBandwidth) -> u8 {
+        match bw {
+            PeerBandwidth::Measured(v) if *v > 0.0 => 0,
+            PeerBandwidth::NotMeasured => 1,
+            PeerBandwidth::Measured(_) => 2,
+        }
+    }
+
+    fn compare_bandwidth(a: &PeerBandwidth, b: &PeerBandwidth) -> std::cmp::Ordering {
+        match (a, b) {
+            (PeerBandwidth::Measured(a_bw), PeerBandwidth::Measured(b_bw)) => {
+                b_bw.partial_cmp(a_bw).unwrap_or(std::cmp::Ordering::Equal)
+            }
+            _ => std::cmp::Ordering::Equal,
+        }
+    }
+
+    fn sort_peers_by_quality(peers: &mut [(EndpointId, PeerBandwidth, Duration)]) {
+        peers.sort_by(|a, b| {
+            Self::bandwidth_tier(&a.1)
+                .cmp(&Self::bandwidth_tier(&b.1))
+                .then_with(|| Self::compare_bandwidth(&a.1, &b.1))
+                .then_with(|| a.2.cmp(&b.2))
+        });
     }
 
     fn handle_message(&mut self, message: PeerCommand, cancellation_token: CancellationToken) {
         match message {
             PeerCommand::SetPeers { peers } => {
-                self.available_peers = VecDeque::from(peers);
-                let errors_per_peers_vec = self.available_peers.iter().map(|peer| (*peer, 0_u8));
-                self.errors_per_peers = HashMap::from_iter(errors_per_peers_vec);
+                self.available_peers = peers.into_iter().collect();
+                self.errors_per_peers = self
+                    .available_peers
+                    .iter()
+                    .map(|peer| (*peer, 0_u8))
+                    .collect();
 
-                info!(
-                    "Updated peer list: {} peers available to ask for the model parameters",
-                    self.available_peers.len()
-                );
+                info!("Updated peer list ({} peers)", self.available_peers.len(),);
             }
             PeerCommand::GetPeer { reply } => {
+                let mut peers_with_priority: Vec<(EndpointId, PeerBandwidth, Duration)> = self
+                    .available_peers
+                    .drain(..)
+                    .map(|peer| {
+                        let bandwidth = self
+                            .connection_monitor
+                            .get_bandwidth(&peer)
+                            .unwrap_or(PeerBandwidth::NotMeasured);
+                        let latency = self
+                            .connection_monitor
+                            .get_latency(&peer)
+                            .unwrap_or(Duration::MAX);
+                        (peer, bandwidth, latency)
+                    })
+                    .collect();
+
+                Self::sort_peers_by_quality(&mut peers_with_priority);
+
+                self.available_peers = peers_with_priority.into_iter().map(|(p, _, _)| p).collect();
+
                 let peer = if let Some(peer) = self.available_peers.pop_front() {
-                    info!("Selected peer {peer} to ask for the model parameters");
+                    let bandwidth = self
+                        .connection_monitor
+                        .get_bandwidth(&peer)
+                        .unwrap_or(PeerBandwidth::NotMeasured);
+                    let bw_display = match bandwidth {
+                        PeerBandwidth::NotMeasured => "unmeasured".to_string(),
+                        PeerBandwidth::Measured(bw) => format!("{:.1} KB/s", bw / 1024.0),
+                    };
+                    info!(
+                        "Selected peer {} (bandwidth: {}) for model parameters",
+                        peer, bw_display,
+                    );
                     Some(peer)
                 } else {
                     info!("No available peers to ask for the model parameters at the moment");
@@ -189,9 +255,10 @@ impl PeerManagerActor {
 async fn peer_manager_actor(
     mut rx: mpsc::UnboundedReceiver<PeerCommand>,
     max_errors_per_peer: u8,
+    connection_monitor: ConnectionMonitor,
     cancellation_token: CancellationToken,
 ) {
-    let mut actor = PeerManagerActor::new(max_errors_per_peer);
+    let mut actor = PeerManagerActor::new(max_errors_per_peer, connection_monitor);
 
     while let Some(message) = rx.recv().await {
         actor.handle_message(message, cancellation_token.clone());
@@ -306,11 +373,16 @@ impl TransmittableModelParameter {
 pub struct TransmittableModelConfig {
     pub config: String,
     pub tokenizer: String,
+    pub parameter_names: Vec<String>,
 }
 
 impl TransmittableModelConfig {
-    pub fn new(config: String, tokenizer: String) -> Self {
-        Self { config, tokenizer }
+    pub fn new(config: String, tokenizer: String, parameter_names: Vec<String>) -> Self {
+        Self {
+            config,
+            tokenizer,
+            parameter_names,
+        }
     }
 }
 
@@ -324,10 +396,11 @@ pub struct SharableModel {
         HashMap<String, JoinHandle<Result<TransmittableModelParameter, SharableModelError>>>,
     >,
     serialized_parameters: Option<HashMap<String, BlobTicket>>,
+    parameters_to_download: Vec<String>,
     model_config: Option<String>,
     tokenizer_config: Option<Tokenizer>,
     config_and_tokenizer_ticket: Option<BlobTicket>,
-    pub tx_model_config_response: Option<oneshot::Sender<(String, Tokenizer)>>,
+    pub tx_model_config_response: Option<oneshot::Sender<(String, Tokenizer, Vec<String>)>>,
     tx_params_response: Option<oneshot::Sender<HashMap<String, Tensor>>>,
 }
 
@@ -344,6 +417,7 @@ impl SharableModel {
             tokenizer_config: None,
             config_and_tokenizer_ticket: None,
             tx_model_config_response: None,
+            parameters_to_download: Vec::new(),
         }
     }
 }
@@ -438,7 +512,7 @@ impl SharableModel {
                     let transmittable_download =
                         TransmittableDownload::ModelParameter(transmittable_parameter);
                     trace!("Adding parameter downloadable {param_name}");
-                    let blob_ticket = p2p
+                    let (blob_ticket, _) = p2p
                         .add_downloadable(transmittable_download, tag)
                         .await
                         .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
@@ -473,11 +547,19 @@ impl SharableModel {
                 let raw_tokenizer = tokenizer
                     .to_string(false)
                     .map_err(|err| SharableModelError::ParseConfig(err.to_string()))?;
-                let transmittable_config: TransmittableModelConfig =
-                    TransmittableModelConfig::new(config.clone(), raw_tokenizer);
+                let transmittable_config: TransmittableModelConfig = TransmittableModelConfig::new(
+                    config.clone(),
+                    raw_tokenizer,
+                    self.parameters
+                        .as_ref()
+                        .ok_or(SharableModelError::ModelConfigNotInitialized)?
+                        .keys()
+                        .cloned()
+                        .collect::<Vec<_>>(),
+                );
                 let transmittable_download =
                     TransmittableDownload::ModelConfig(transmittable_config);
-                let ticket = p2p
+                let (ticket, _) = p2p
                     .add_downloadable(transmittable_download, Tag::from(tag))
                     .await
                     .map_err(|err| SharableModelError::P2PAddDownloadError(err.to_string()))?;
@@ -559,6 +641,7 @@ impl SharableModel {
 
         self.model_config = Some(config);
         self.tokenizer_config = Some(tokenizer);
+        self.parameters_to_download = transmittable_config.parameter_names;
         Ok(())
     }
 
@@ -609,7 +692,7 @@ impl SharableModel {
                 return Err(SharableModelError::TokenizerConfigNotInitialized);
             };
             tx_model_config_response
-                .send((config, tokenizer))
+                .send((config, tokenizer, self.parameters_to_download.clone()))
                 .map_err(|_e| SharableModelError::SendConfig)?;
             return Ok(());
         }

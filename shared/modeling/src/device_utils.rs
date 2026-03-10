@@ -90,6 +90,15 @@ impl Devices {
             _ => None,
         }
     }
+
+    /// Returns if the device is available to be accessed
+    pub fn is_probably_available(&self) -> bool {
+        match self {
+            Devices::Cpu => true,
+            Devices::Cuda(_) => tch::utils::has_cuda() && tch::Cuda::is_available(),
+            Devices::Mps => has_mps(),
+        }
+    }
 }
 
 /// Get all available devices, for debugging purposes

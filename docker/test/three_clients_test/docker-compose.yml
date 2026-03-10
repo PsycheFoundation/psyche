@@ -1,26 +1,10 @@
 services:
-  psyche-run-owner:
-    image: psyche-test-client:latest
-    depends_on:
-      psyche-solana-test-validator:
-        condition: service_started
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
-    env_file:
-      - '../../../config/client/.env.local'
-    volumes:
-      - ${CONFIG_PATH:-../../../config/solana-test/light-config.toml}:/usr/local/config.toml
-    entrypoint:
-      ['/bin/sh', '-c', 'sleep 15 && /usr/local/run_owner_entrypoint.sh']
-    networks:
-      - psyche-test-network
-
   psyche-test-client-1:
     container_name: test-psyche-test-client-1
     image: psyche-test-client:latest
     depends_on:
-      psyche-run-owner:
-        condition: service_completed_successfully
+      psyche-solana-test-validator:
+        condition: service_started
     deploy:
       resources:
         reservations:
@@ -39,8 +23,8 @@ services:
     container_name: test-psyche-test-client-2
     image: psyche-test-client:latest
     depends_on:
-      psyche-run-owner:
-        condition: service_completed_successfully
+      psyche-solana-test-validator:
+        condition: service_started
     deploy:
       resources:
         reservations:
@@ -59,8 +43,8 @@ services:
     container_name: test-psyche-test-client-3
     image: psyche-test-client:latest
     depends_on:
-      psyche-run-owner:
-        condition: service_completed_successfully
+      psyche-solana-test-validator:
+        condition: service_started
     deploy:
       resources:
         reservations:

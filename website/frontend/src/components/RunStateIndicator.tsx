@@ -162,9 +162,9 @@ export function RunStateIndicator({
 }) {
 	const {
 		phase,
-		round,
-		config: { roundsPerEpoch, minClients },
+		config: { minClients, epochTime },
 		clients,
+		epochStartTime,
 	} = state
 	const [now, setNow] = useState(new Date(Date.now()))
 	useInterval(() => setNow(new Date(Date.now())), 100)
@@ -203,25 +203,33 @@ export function RunStateIndicator({
 					{(phase === 'Warmup' ||
 						phase === 'RoundTrain' ||
 						phase === 'RoundWitness' ||
-						phase === 'Cooldown') && (
-						<Progress
-							chunkHeight={8}
-							chunkWidth={4}
-							chunkSpacing={1}
-							ratio={
-								(round +
-									(phase === 'RoundWitness'
-										? 0.5
-										: phase === 'Cooldown'
+						phase === 'Cooldown') &&
+						(() => {
+							const elapsedMs = now.getTime() - epochStartTime.getTime()
+							const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1000))
+							const isFinalizingEpoch =
+								elapsedSeconds >= epochTime && elapsedSeconds > 0
+
+							return (
+								<Progress
+									chunkHeight={8}
+									chunkWidth={4}
+									chunkSpacing={1}
+									ratio={
+										isFinalizingEpoch
 											? 1
-											: 0)) /
-								roundsPerEpoch
-							}
-							current={round + 1}
-							total={roundsPerEpoch}
-							label="round"
-						/>
-					)}
+											: (now.getTime() - epochStartTime.getTime()) /
+												(epochTime * 1000)
+									}
+									current={elapsedSeconds}
+									total={epochTime}
+									label={
+										isFinalizingEpoch ? 'finalizing epoch' : 'epoch time (s)'
+									}
+									showRight={!isFinalizingEpoch}
+								/>
+							)
+						})()}
 					{phase === 'WaitingForMembers' && (
 						<Progress
 							chunkHeight={8}

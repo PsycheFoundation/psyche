@@ -142,7 +142,7 @@ def main():
             world_size=args.world_size,
             is_master=False,
             timeout=timedelta(hours=2),
-            use_libuv=False,
+            use_libuv=True,
         )
 
     dist.init_process_group(
@@ -195,7 +195,9 @@ def main():
             dist.broadcast(tensor, 0)
             barrier()
 
-            state_dict[name] = tensor
+            state_dict[name] = (
+                tensor.cpu()
+            )  # move back to CPU memory so we don't hold full model in GPU memory
 
         source = PretrainedSourceStateDict(config_json=config, state_dict=state_dict)
     else:

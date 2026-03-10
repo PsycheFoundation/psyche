@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
+use psyche_core::NodeIdentity;
 use psyche_solana_authorizer::state::Authorization;
 
-use crate::ClientId;
 use crate::CoordinatorAccount;
 use crate::CoordinatorInstance;
 use crate::bytes_from_string;
@@ -36,20 +36,21 @@ pub struct JoinRunAccounts<'info> {
     #[account(
         mut,
         constraint = coordinator_instance.coordinator_account == coordinator_account.key(),
+        constraint = coordinator_account.load()?.version == CoordinatorAccount::VERSION,
     )]
     pub coordinator_account: AccountLoader<'info, CoordinatorAccount>,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct JoinRunParams {
-    pub client_id: ClientId,
+    pub client_id: NodeIdentity,
 }
 
 pub fn join_run_processor(
     context: Context<JoinRunAccounts>,
     params: JoinRunParams,
 ) -> Result<()> {
-    if &params.client_id.signer != context.accounts.user.key {
+    if *params.client_id.signer() != context.accounts.user.key.to_bytes() {
         return err!(ProgramError::SignerMismatch);
     }
     let mut account = context.accounts.coordinator_account.load_mut()?;

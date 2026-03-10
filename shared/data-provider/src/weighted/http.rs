@@ -222,10 +222,8 @@ mod tests {
                     i32::from_le_bytes([1, 1, 0, 0]),
                     i32::from_le_bytes([1, 1, 0, 0]),
                     i32::from_le_bytes([1, 1, 0, 0]),
-                    i32::from_le_bytes([1, 1, 0, 0]),
                 ],
                 [
-                    i32::from_le_bytes([3, 3, 0, 0]),
                     i32::from_le_bytes([3, 3, 0, 0]),
                     i32::from_le_bytes([3, 3, 0, 0]),
                     i32::from_le_bytes([3, 3, 0, 0]),
@@ -234,41 +232,34 @@ mod tests {
                     i32::from_le_bytes([1, 1, 0, 0]),
                     i32::from_le_bytes([1, 1, 0, 0]),
                     i32::from_le_bytes([1, 1, 0, 0]),
-                    i32::from_le_bytes([1, 1, 0, 0]),
                 ],
                 [
                     i32::from_le_bytes([3, 3, 0, 0]),
                     i32::from_le_bytes([3, 3, 0, 0]),
                     i32::from_le_bytes([3, 3, 0, 0]),
-                    i32::from_le_bytes([3, 3, 0, 0]),
                 ],
                 [
-                    i32::from_le_bytes([2, 2, 0, 0]),
-                    i32::from_le_bytes([2, 2, 0, 0]),
-                    i32::from_le_bytes([2, 2, 0, 0]),
-                    i32::from_le_bytes([2, 2, 0, 0]),
-                ],
-                [
-                    i32::from_le_bytes([4, 4, 0, 0]),
-                    i32::from_le_bytes([4, 4, 0, 0]),
-                    i32::from_le_bytes([4, 4, 0, 0]),
-                    i32::from_le_bytes([4, 4, 0, 0]),
-                ],
-                [
-                    i32::from_le_bytes([2, 2, 0, 0]),
                     i32::from_le_bytes([2, 2, 0, 0]),
                     i32::from_le_bytes([2, 2, 0, 0]),
                     i32::from_le_bytes([2, 2, 0, 0]),
                 ],
                 [
                     i32::from_le_bytes([4, 4, 0, 0]),
+                    i32::from_le_bytes([4, 4, 0, 0]),
+                    i32::from_le_bytes([4, 4, 0, 0]),
+                ],
+                [
+                    i32::from_le_bytes([2, 2, 0, 0]),
+                    i32::from_le_bytes([2, 2, 0, 0]),
+                    i32::from_le_bytes([2, 2, 0, 0]),
+                ],
+                [
                     i32::from_le_bytes([4, 4, 0, 0]),
                     i32::from_le_bytes([4, 4, 0, 0]),
                     i32::from_le_bytes([4, 4, 0, 0]),
                 ],
                 // at this point we run out of samples and we just.. serve whatever
                 [
-                    i32::from_le_bytes([1, 1, 0, 0]),
                     i32::from_le_bytes([1, 1, 0, 0]),
                     i32::from_le_bytes([1, 1, 0, 0]),
                     i32::from_le_bytes([1, 1, 0, 0]),

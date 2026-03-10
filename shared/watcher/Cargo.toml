@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 psyche-core.workspace = true
 psyche-coordinator.workspace = true
-psyche-network.workspace = true
 psyche-tui.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true

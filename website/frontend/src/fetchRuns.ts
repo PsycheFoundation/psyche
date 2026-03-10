@@ -3,6 +3,7 @@ import {
 	ApiGetRuns,
 	ApiGetRun,
 	ApiGetContributionInfo,
+	ApiGetCheckpointStatus,
 	formats,
 	CURRENT_VERSION,
 } from 'shared'
@@ -24,7 +25,7 @@ if (path && !path.startsWith('/')) {
 	path = `/${path}`
 }
 
-const BACKEND_URL = `${origin}${path}`
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? `${origin}${path}`
 
 function psycheJsonFetch(path: string) {
 	return fetch(`${BACKEND_URL}/${path}`)
@@ -52,6 +53,23 @@ export async function fetchRuns(): Promise<ApiGetRuns> {
 				totalTokensPerSecondActive: 23_135_234n,
 			} satisfies ApiGetRuns)
 		: psycheJsonFetch('runs')
+}
+
+export async function fetchCheckpointStatus(
+	owner: string,
+	repo: string,
+	revision?: string
+): Promise<ApiGetCheckpointStatus> {
+	const queryParams = `owner=${owner}&repo=${repo}${revision ? `&revision=${revision}` : ''}`
+	return psycheJsonFetch(`check-checkpoint?${queryParams}`)
+}
+
+export async function fetchGcsCheckpointStatus(
+	bucket: string,
+	prefix?: string
+): Promise<ApiGetCheckpointStatus> {
+	const queryParams = `bucket=${bucket}${prefix ? `&prefix=${prefix}` : ''}`
+	return psycheJsonFetch(`check-gcs-bucket?${queryParams}`)
 }
 
 interface DecodeState {
@@ -272,7 +290,9 @@ async function getOneJsonPayloadFromStream<T>(
 			return null
 		}
 
-		decodeState.buffer += decodeState.decoder.decode(value, { stream: true })
+		decodeState.buffer += decodeState.decoder.decode(value, {
+			stream: true,
+		})
 		const lines = decodeState.buffer.split('\n')
 
 		if (lines.length > 1) {
@@ -312,5 +332,8 @@ async function openStreamToBackendPath(path: string) {
 		)
 	}
 
-	return { reader: response.body.getReader(), decodeState: makeDecodeState() }
+	return {
+		reader: response.body.getReader(),
+		decodeState: makeDecodeState(),
+	}
 }

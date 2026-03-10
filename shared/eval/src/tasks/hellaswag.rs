@@ -82,6 +82,7 @@ impl Hellaswag {
             answer,
             category: Some(activity_label),
             cot_content: None,
+            eval_name: Hellaswag::name().to_string(),
         }
     }
 }
