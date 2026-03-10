@@ -38,7 +38,7 @@
         printf '[storage]\ndriver = "vfs"\n' > /etc/containers/storage.conf
 
         # Cgroup subtree_control is read-only on garnix. Disable cgroup management.
-        printf '[engine]\ncgroup_manager = "disabled"\n' > /etc/containers/containers.conf
+        printf '[containers]\ncgroups = "disabled"\n' > /etc/containers/containers.conf
 
         export DOCKER_HOST="unix:///run/podman/podman.sock"
 
