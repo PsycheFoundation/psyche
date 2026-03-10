@@ -160,10 +160,21 @@ struct ModelAssignmentSpec {
 }
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+enum AssignmentStatus {
+    Unassigned,
+    UnassignedWithModel,
+    Loading,
+    Loaded,
+    Idle,
+    Offline,
+}
+
+#[derive(serde::Serialize)]
 struct AssignmentInfo {
     node_id: String,
     model_name: String,
-    status: String, // "loading", "loaded", "idle", "offline"
+    status: AssignmentStatus,
 }
 
 #[derive(serde::Serialize)]
@@ -429,7 +440,6 @@ async fn handle_bootstrap(State(state): State<Arc<GatewayState>>) -> Json<Endpoi
         state.endpoint_addr.id.fmt_short()
     );
     Json(state.endpoint_addr.clone())
-
 }
 
 async fn handle_get_assignments(
@@ -444,9 +454,9 @@ async fn handle_get_assignments(
         let (assigned_model, status) = match assignments.get(node_id) {
             None => {
                 let status = if node_info.model_name.is_some() {
-                    "unassigned_with_model".to_string()
+                    AssignmentStatus::UnassignedWithModel
                 } else {
-                    "unassigned".to_string()
+                    AssignmentStatus::Unassigned
                 };
                 (None, status)
             }
@@ -458,7 +468,7 @@ async fn handle_get_assignments(
                             node_id.fmt_short(),
                             assigned_model
                         );
-                        "idle".to_string()
+                        AssignmentStatus::Idle
                     }
                     Some(current_model) if current_model == assigned_model => {
                         info!(
@@ -466,7 +476,7 @@ async fn handle_get_assignments(
                             node_id.fmt_short(),
                             current_model
                         );
-                        "loaded".to_string()
+                        AssignmentStatus::Loaded
                     }
                     Some(current_model) => {
                         info!(
@@ -475,7 +485,7 @@ async fn handle_get_assignments(
                             current_model,
                             assigned_model
                         );
-                        "loading".to_string()
+                        AssignmentStatus::Loading
                     }
                 };
                 (Some(assigned_model.clone()), status)
@@ -498,7 +508,7 @@ async fn handle_get_assignments(
             result.push(AssignmentInfo {
                 node_id: node_id.to_string(),
                 model_name: assigned_model.clone(),
-                status: "offline".to_string(),
+                status: AssignmentStatus::Offline,
             });
         }
     }
@@ -726,6 +736,7 @@ async fn run_gateway() -> Result<()> {
                         for (node_id, age) in stale_nodes {
                             warn!("Removing stale node {} (no heartbeat for {:?})", node_id.fmt_short(), age);
                             nodes.remove(&node_id);
+                            state.model_assignments.write().await.remove(&node_id);
                         }
                     }
 
