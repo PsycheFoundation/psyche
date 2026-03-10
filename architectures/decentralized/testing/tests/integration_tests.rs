@@ -279,7 +279,7 @@ async fn test_rejoining_client_delay() {
         .unwrap();
 
     // Wait for the first training round to start in epoch 0.
-    // We spawn client-2 here so it joins in the next epoch, after Hub->P2P transition.
+    // We spawn client-2 here so it joins in the next epoch when checkpoint is p2p.
     println!("Waiting for epoch 0 training to start");
     while let Some(response) = watcher.log_rx.recv().await {
         if let Response::StateChange(_, _, _old_state, new_state, epoch, step) = response {
