@@ -1,14 +1,34 @@
-# Override for environments without CAP_NET_ADMIN (e.g. garnix CI).
-# Uses host networking instead of bridge, with extra_hosts for
-# service name resolution.
+# Standalone compose file for environments without CAP_NET_ADMIN (e.g. garnix CI).
+# Uses host networking instead of bridge networks.
 services:
   psyche-test-client:
+    image: psyche-solana-test-client:latest
+    depends_on:
+      psyche-solana-test-validator:
+        condition: service_healthy
+    deploy:
+      replicas: ${NUM_REPLICAS:-1}
     network_mode: host
     extra_hosts:
+      - 'host.docker.internal:127.0.0.1'
       - 'psyche-solana-test-validator:127.0.0.1'
+    env_file:
+      - '../../config/client/.env.local'
     environment:
+      - HF_TOKEN=${HF_TOKEN:-}
       - RPC=http://127.0.0.1:8899
       - WS_RPC=ws://127.0.0.1:8900
 
   psyche-solana-test-validator:
+    image: psyche-solana-test-validator:latest
     network_mode: host
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'AUTHORIZER_ID=$(solana address -k /local/solana-authorizer/target/deploy/psyche_solana_authorizer-keypair.json) && COORDINATOR_ID=$(solana address -k /local/solana-coordinator/target/deploy/psyche_solana_coordinator-keypair.json) && solana account $$AUTHORIZER_ID --url http://localhost:8899 | grep -q "Executable: true" && solana account $$COORDINATOR_ID --url http://localhost:8899 | grep -q "Executable: true" || exit 1',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s

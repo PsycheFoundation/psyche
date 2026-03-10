@@ -116,10 +116,10 @@
 
               echo "--- testing compose up (validator only, host network) ---"
               cd docker/test
-              podman compose -f docker-compose.yml -f docker-compose.host-network.yml up -d --wait psyche-solana-test-validator 2>&1
-              podman compose -f docker-compose.yml -f docker-compose.host-network.yml ps 2>&1
-              podman compose -f docker-compose.yml -f docker-compose.host-network.yml logs psyche-solana-test-validator 2>&1 | tail -30
-              podman compose -f docker-compose.yml -f docker-compose.host-network.yml down 2>&1
+              podman compose -f docker-compose.host-network.yml up -d --wait psyche-solana-test-validator 2>&1
+              podman compose -f docker-compose.host-network.yml ps 2>&1
+              podman compose -f docker-compose.host-network.yml logs psyche-solana-test-validator 2>&1 | tail -30
+              podman compose -f docker-compose.host-network.yml down 2>&1
 
               echo "=== END ==="
             '';
