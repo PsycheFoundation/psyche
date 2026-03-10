@@ -18,7 +18,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, trace, warn};
 
-use crate::connection_monitor::ConnectionMonitor;
+use crate::connection_monitor::{ConnectionMonitor, PeerBandwidth};
 use crate::{NetworkConnection, Networkable, TransmittableDownload};
 #[derive(Debug)]
 /// Manager for the list of peers to ask for the model parameters and config
@@ -129,6 +129,33 @@ impl PeerManagerActor {
         }
     }
 
+    /// Assigns a priority tier to a peer based on its bandwidth measurement.
+    fn bandwidth_tier(bw: &PeerBandwidth) -> u8 {
+        match bw {
+            PeerBandwidth::Measured(v) if *v > 0.0 => 0,
+            PeerBandwidth::NotMeasured => 1,
+            PeerBandwidth::Measured(_) => 2,
+        }
+    }
+
+    fn compare_bandwidth(a: &PeerBandwidth, b: &PeerBandwidth) -> std::cmp::Ordering {
+        match (a, b) {
+            (PeerBandwidth::Measured(a_bw), PeerBandwidth::Measured(b_bw)) => {
+                b_bw.partial_cmp(a_bw).unwrap_or(std::cmp::Ordering::Equal)
+            }
+            _ => std::cmp::Ordering::Equal,
+        }
+    }
+
+    fn sort_peers_by_quality(peers: &mut [(EndpointId, PeerBandwidth, Duration)]) {
+        peers.sort_by(|a, b| {
+            Self::bandwidth_tier(&a.1)
+                .cmp(&Self::bandwidth_tier(&b.1))
+                .then_with(|| Self::compare_bandwidth(&a.1, &b.1))
+                .then_with(|| a.2.cmp(&b.2))
+        });
+    }
+
     fn handle_message(&mut self, message: PeerCommand, cancellation_token: CancellationToken) {
         match message {
             PeerCommand::SetPeers { peers } => {
@@ -142,12 +169,14 @@ impl PeerManagerActor {
                 info!("Updated peer list ({} peers)", self.available_peers.len(),);
             }
             PeerCommand::GetPeer { reply } => {
-                // Sort available peers by bandwidth (highest first), falling back to latency
-                let mut peers_with_priority: Vec<(EndpointId, f64, Duration)> = self
+                let mut peers_with_priority: Vec<(EndpointId, PeerBandwidth, Duration)> = self
                     .available_peers
                     .drain(..)
                     .map(|peer| {
-                        let bandwidth = self.connection_monitor.get_bandwidth(&peer).unwrap_or(0.0);
+                        let bandwidth = self
+                            .connection_monitor
+                            .get_bandwidth(&peer)
+                            .unwrap_or(PeerBandwidth::NotMeasured);
                         let latency = self
                             .connection_monitor
                             .get_latency(&peer)
@@ -155,21 +184,23 @@ impl PeerManagerActor {
                         (peer, bandwidth, latency)
                     })
                     .collect();
-                // Sort: highest bandwidth first; for peers with equal bandwidth, use lowest latency
-                peers_with_priority.sort_by(|a, b| {
-                    b.1.partial_cmp(&a.1)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                        .then_with(|| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
-                });
+
+                Self::sort_peers_by_quality(&mut peers_with_priority);
 
                 self.available_peers = peers_with_priority.into_iter().map(|(p, _, _)| p).collect();
 
                 let peer = if let Some(peer) = self.available_peers.pop_front() {
-                    let bandwidth = self.connection_monitor.get_bandwidth(&peer).unwrap_or(0.0);
+                    let bandwidth = self
+                        .connection_monitor
+                        .get_bandwidth(&peer)
+                        .unwrap_or(PeerBandwidth::NotMeasured);
+                    let bw_display = match bandwidth {
+                        PeerBandwidth::NotMeasured => "unmeasured".to_string(),
+                        PeerBandwidth::Measured(bw) => format!("{:.1} KB/s", bw / 1024.0),
+                    };
                     info!(
-                        "Selected peer {} (bandwidth: {:.1} KB/s) for model parameters",
-                        peer,
-                        bandwidth / 1024.0,
+                        "Selected peer {} (bandwidth: {}) for model parameters",
+                        peer, bw_display,
                     );
                     Some(peer)
                 } else {
