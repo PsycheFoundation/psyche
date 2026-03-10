@@ -11,13 +11,6 @@ use tokio::task::JoinHandle;
 
 use psyche_core::BatchId;
 
-#[derive(Clone, Copy)]
-pub enum StateFilter {
-    Warmup,
-    RoundTrain,
-    RoundWitness,
-}
-
 #[derive(Debug)]
 pub enum Response {
     StateChange(String, String, String, String, u64, u64),
@@ -71,6 +64,12 @@ pub struct ProcessRegistry {
     processes: HashMap<String, u32>,
 }
 
+impl Default for ProcessRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProcessRegistry {
     pub fn new() -> Self {
         Self {
@@ -82,10 +81,6 @@ impl ProcessRegistry {
         self.processes.insert(name, pid);
     }
 
-    pub fn unregister(&mut self, name: &str) {
-        self.processes.remove(name);
-    }
-
     pub fn get_pid(&self, name: &str) -> Option<u32> {
         self.processes.get(name).copied()
     }
@@ -93,16 +88,18 @@ impl ProcessRegistry {
     pub fn running_names(&self) -> Vec<String> {
         self.processes.keys().cloned().collect()
     }
-
-    pub fn len(&self) -> usize {
-        self.processes.len()
-    }
 }
 
 pub struct SubprocessWatcher {
     log_tx: mpsc::Sender<Response>,
     pub log_rx: mpsc::Receiver<Response>,
     pub registry: Arc<Mutex<ProcessRegistry>>,
+}
+
+impl Default for SubprocessWatcher {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SubprocessWatcher {
