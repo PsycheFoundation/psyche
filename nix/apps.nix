@@ -37,10 +37,12 @@
         # Native overlay-on-overlay also fails. Use vfs driver.
         printf '[storage]\ndriver = "vfs"\n' > /etc/containers/storage.conf
 
-        # Garnix VM constraints:
-        # - cgroup subtree_control is read-only -> disable cgroups
-        # - no CAP_SYS_ADMIN -> can't mount /proc -> share host PID namespace
-        printf '[containers]\ncgroups = "disabled"\npidns = "host"\n' > /etc/containers/containers.conf
+        # Garnix VM: cgroup subtree_control is read-only, but we can't disable
+        # cgroups (requires private PID ns which needs CAP_SYS_ADMIN to mount /proc).
+        # Try to pre-enable the controllers crun needs, and if that fails,
+        # use cgroupfs manager with no-conmon to minimize cgroup operations.
+        echo "+cpu +io +memory +pids" > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null || true
+        printf '[engine]\ncgroup_manager = "cgroupfs"\n' > /etc/containers/containers.conf
 
         export DOCKER_HOST="unix:///run/podman/podman.sock"
 
