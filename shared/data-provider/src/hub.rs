@@ -12,7 +12,7 @@ use psyche_coordinator::model;
 use psyche_core::FixedString;
 use std::{path::PathBuf, time::Instant};
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 const MODEL_EXTENSIONS: [&str; 3] = [".safetensors", ".json", ".py"];
 const DATASET_EXTENSIONS: [&str; 1] = [".parquet"];
@@ -84,12 +84,6 @@ async fn download_repo_async(
         }
     }
 
-    if let Err(e) = api.mark_download_as_complete() {
-        warn!(
-            "Failed to mark model download as complete in the cache: {}, it will be re-downloaded again next time",
-            e
-        );
-    }
     Ok(ret)
 }
 
