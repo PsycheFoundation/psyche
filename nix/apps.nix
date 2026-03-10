@@ -81,6 +81,9 @@
               ${validatorImage} | podman load
               ${clientImage} | podman load
 
+              # Use host networking (garnix lacks CAP_NET_ADMIN for bridges)
+              export DOCKER_NETWORK=host
+
               echo "running test from repo root"
               cd architectures/decentralized/testing
               test-psyche-decentralized-testing-integration_tests --nocapture "${testName}"
@@ -111,12 +114,12 @@
               ${self'.packages.docker-psyche-solana-test-client-no-python} | podman load
               podman images
 
-              echo "--- testing compose up (validator only) ---"
+              echo "--- testing compose up (validator only, host network) ---"
               cd docker/test
-              podman compose up -d --wait psyche-solana-test-validator 2>&1
-              podman compose ps 2>&1
-              podman compose logs psyche-solana-test-validator 2>&1 | tail -30
-              podman compose down 2>&1
+              podman compose -f docker-compose.yml -f docker-compose.host-network.yml up -d --wait psyche-solana-test-validator 2>&1
+              podman compose -f docker-compose.yml -f docker-compose.host-network.yml ps 2>&1
+              podman compose -f docker-compose.yml -f docker-compose.host-network.yml logs psyche-solana-test-validator 2>&1 | tail -30
+              podman compose -f docker-compose.yml -f docker-compose.host-network.yml down 2>&1
 
               echo "=== END ==="
             '';

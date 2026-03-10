@@ -1,0 +1,14 @@
+# Override for environments without CAP_NET_ADMIN (e.g. garnix CI).
+# Uses host networking instead of bridge, with extra_hosts for
+# service name resolution.
+services:
+  psyche-test-client:
+    network_mode: host
+    extra_hosts:
+      - 'psyche-solana-test-validator:127.0.0.1'
+    environment:
+      - RPC=http://127.0.0.1:8899
+      - WS_RPC=ws://127.0.0.1:8900
+
+  psyche-solana-test-validator:
+    network_mode: host

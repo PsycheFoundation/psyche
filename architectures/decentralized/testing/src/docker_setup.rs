@@ -136,8 +136,9 @@ pub async fn spawn_new_client(
     // Check if GPU is available
     let has_gpu = has_gpu_support();
 
-    // Setting extra hosts and optionally nvidia request
-    let network_name = "test_psyche-test-network";
+    // Network name is configurable for host-network environments (e.g. garnix CI)
+    let network_name =
+        std::env::var("DOCKER_NETWORK").unwrap_or_else(|_| "test_psyche-test-network".to_string());
 
     // Build volume binds and extra env vars for keypair
     let (binds, extra_env) = if let Some(path) = keypair_path {
