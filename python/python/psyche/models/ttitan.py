@@ -449,6 +449,14 @@ class TorchtitanAuto(CausalLM):
                         )
                     shift_logits = pred[:, :-1, :].contiguous()
                     shift_labels = labels[:, 1:].contiguous()
+                    if isinstance(shift_logits, DTensor) and not isinstance(
+                        shift_labels, DTensor
+                    ):
+                        shift_labels = DTensor.from_local(
+                            shift_labels,
+                            device_mesh=shift_logits.device_mesh,
+                            placements=[Replicate()],
+                        )
                     loss = self.loss_fn(shift_logits, shift_labels)
         except Exception as e:
             import traceback
