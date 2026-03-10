@@ -13,11 +13,11 @@ from torch.distributed.tensor import DTensor, Replicate, distribute_tensor
 from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
     _CHECKPOINT_PREFIX,
 )
-
 from .hf_transformers import auto_config_from_dict
 
 import torchtitan
 from torchtitan.config import JobConfig
+from torchtitan.config.job_config import PEFT
 from torchtitan.components.loss import build_cross_entropy_loss
 from torchtitan.distributed import ParallelDims
 from torchtitan.distributed.utils import maybe_enable_amp
@@ -328,7 +328,10 @@ class TorchtitanAuto(CausalLM):
 
         model = None
         with torch.device("meta"), set_default_dtype(torch.float32):
-            model = train_spec.model_cls(config_tt)
+            try:
+                model = train_spec.model_cls(config_tt, PEFT())
+            except TypeError:
+                model = train_spec.model_cls(config_tt)
         torch.cuda.set_device(device)
 
         model_param_count, _ = config_tt.get_nparams_and_flops(
