@@ -1,7 +1,7 @@
 use psyche_coordinator::{
     Coordinator, MAX_TOKENS_TO_SEND, WitnessEvalResult, WitnessMetadata, model,
 };
-use psyche_core::{BoundedQueue, FixedVec, LearningRateSchedule, NodeIdentity};
+use psyche_core::{BoundedQueue, FixedVec, LearningRateSchedule};
 use psyche_metrics::ClientMetrics;
 use psyche_modeling::Trainer;
 use psyche_network::P2PEndpointInfo;
@@ -54,7 +54,7 @@ impl StatsLogger {
         }
     }
 
-    pub fn publish_round_stats<T: NodeIdentity>(&self, state: &Coordinator<T>) {
+    pub fn publish_round_stats(&self, state: &Coordinator) {
         let mut round_log = LogData::new();
 
         round_log.insert("_step", state.progress.step);
@@ -175,7 +175,7 @@ impl StatsLogger {
         }
     }
 
-    pub fn get_witness_metadata<T: NodeIdentity>(&self, state: &Coordinator<T>) -> WitnessMetadata {
+    pub fn get_witness_metadata(&self, state: &Coordinator) -> WitnessMetadata {
         let bandwidth_total: f64 = self.endpoint_info.iter().map(|v| v.bandwidth).sum();
 
         let evals = {
@@ -253,7 +253,7 @@ impl StatsLogger {
         &self.losses
     }
 
-    pub fn global_tokens_per_second<T: NodeIdentity>(&self, state: &Coordinator<T>) -> f32 {
+    pub fn global_tokens_per_second(&self, state: &Coordinator) -> f32 {
         match self.step_durations.is_empty() {
             true => 0.,
             false => match &state.model {
@@ -355,7 +355,7 @@ impl StatsLogger {
     }
 }
 
-fn total_tokens<T: NodeIdentity>(state: &Coordinator<T>) -> u64 {
+fn total_tokens(state: &Coordinator) -> u64 {
     state
         .current_round()
         .map(|y| y.data_index)
@@ -373,6 +373,6 @@ fn no_nan(val: f32, replacement: f32) -> f32 {
     if val.is_nan() { replacement } else { val }
 }
 
-fn token_batch_size<T: NodeIdentity>(state: &Coordinator<T>) -> u32 {
+fn token_batch_size(state: &Coordinator) -> u32 {
     state.get_target_global_batch_size(state.current_round()) as u32 * state.get_sequence_length()
 }

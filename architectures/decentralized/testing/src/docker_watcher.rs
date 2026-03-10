@@ -29,6 +29,7 @@ pub enum Response {
     SolanaSubscription(String, String),
     WitnessElected(String),
     Error(ObservedErrorKind, String),
+    RpcFallback(String, String),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -306,6 +307,22 @@ impl DockerWatcher {
                             message.to_string(),
                         );
 
+                        if log_sender.send(response).await.is_err() {
+                            println!("Probably the test ended so we drop the log sender");
+                        }
+                    }
+                    IntegrationTestLogMarker::RpcFallback => {
+                        let failed_rpc_index = parsed_log
+                            .get("failed_rpc_index")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0)
+                            .to_string();
+                        let error = parsed_log
+                            .get("error")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let response = Response::RpcFallback(failed_rpc_index, error);
                         if log_sender.send(response).await.is_err() {
                             println!("Probably the test ended so we drop the log sender");
                         }

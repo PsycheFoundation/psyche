@@ -436,7 +436,7 @@ class TorchtitanAuto(CausalLM):
                     ),
                 )
                 if num_logits_to_keep:
-                    pred = pred[:, -num_logits_to_keep, :]
+                    pred = pred[:, -num_logits_to_keep:, :]
                 loss = None
                 if labels is not None:
                     if labels.shape != pred.shape[:2]:

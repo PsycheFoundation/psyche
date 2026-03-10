@@ -65,8 +65,9 @@
                 pnpm
                 wasm-pack
 
-                # cargo stuff
+                # cargo devtools
                 cargo-watch
+                cargo-expand
                 cargo-nextest
 
                 self'.packages.solana-toolbox-cli

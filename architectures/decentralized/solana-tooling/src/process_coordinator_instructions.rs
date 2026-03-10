@@ -4,7 +4,7 @@ use anyhow::Result;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
 use psyche_coordinator::model::Model;
-use psyche_solana_coordinator::ClientId;
+use psyche_core::NodeIdentity;
 use psyche_solana_coordinator::RunMetadata;
 use psyche_solana_coordinator::accounts::FreeCoordinatorAccounts;
 use psyche_solana_coordinator::accounts::InitCoordinatorAccounts;
@@ -121,7 +121,7 @@ pub async fn process_coordinator_join_run(
     authorization: &Pubkey,
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
-    client_id: ClientId,
+    client_id: NodeIdentity,
 ) -> Result<()> {
     let accounts = JoinRunAccounts {
         user: user.pubkey(),

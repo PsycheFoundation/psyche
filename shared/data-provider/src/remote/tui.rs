@@ -1,5 +1,3 @@
-use psyche_core::NodeIdentity;
-use psyche_network::AuthenticatableIdentity;
 use psyche_tui::ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
@@ -48,11 +46,7 @@ impl psyche_tui::CustomWidget for DataServerTui {
                     state
                         .clients
                         .iter()
-                        .map(|c| {
-                            // let status = if c.2 { "⏳" } else { "✅" };
-                            // Line::from(format!("{status} [{}]: {:?}", c.0, c.1))
-                            Line::from(format!("[{}]: {}", c.0, c.1))
-                        })
+                        .map(|c| Line::from(format!("[{}]: {}", c.0, c.1)))
                         .collect::<Vec<Line>>(),
                 )
                 .block(Block::bordered().title("Clients"))
@@ -78,39 +72,24 @@ impl psyche_tui::CustomWidget for DataServerTui {
 #[derive(Default, Debug)]
 pub struct DataServerTuiState {
     pub height: u32,
-    //pub clients: Vec<(String, [u64; 2], bool)>,
     pub clients: Vec<(String, usize)>,
 
     pub total_samples: usize,
     pub given_samples: usize,
 }
 
-impl<T, A, D, W> From<&DataProviderTcpServer<T, A, D, W>> for DataServerTuiState
+impl<D, W> From<&DataProviderTcpServer<D, W>> for DataServerTuiState
 where
-    T: NodeIdentity,
-    A: AuthenticatableIdentity,
     D: TokenizedDataProvider + LengthKnownDataProvider,
-    W: Backend<T>,
+    W: Backend,
 {
-    fn from(v: &DataProviderTcpServer<T, A, D, W>) -> Self {
+    fn from(v: &DataProviderTcpServer<D, W>) -> Self {
         Self {
             height: v
                 .state
                 .current_round()
                 .map(|x| x.height)
                 .unwrap_or_default(),
-            // clients: v
-            //     .selected_data
-            //     .iter()
-            //     .map(|(data_ids, client_id)| {
-            //         let id = format!("{}", client_id);
-            //         let data_ids = [data_ids.start, data_ids.end];
-            //         let has_fetched =
-            //             (data_ids[0]..data_ids[1] + 1)
-            //                 .all(|val| *v.provided_sequences.get(&(val as usize)).unwrap_or(&false));
-            //         (id, data_ids, has_fetched)
-            //     })
-            //     .collect(),
             clients: v
                 .provided_sequences
                 .iter()

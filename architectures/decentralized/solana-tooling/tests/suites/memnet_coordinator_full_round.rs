@@ -11,9 +11,9 @@ use psyche_coordinator::model::LLMTrainingDataType;
 use psyche_coordinator::model::Model;
 use psyche_core::ConstantLR;
 use psyche_core::LearningRateSchedule;
+use psyche_core::NodeIdentity;
 use psyche_core::OptimizerDefinition;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
-use psyche_solana_coordinator::ClientId;
 use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::instruction::Witness;
 use psyche_solana_coordinator::logic::InitCoordinatorParams;
@@ -47,8 +47,8 @@ pub async fn run() {
     let join_authority = Keypair::new();
     let client = Keypair::new();
     let ticker = Keypair::new();
-    let warmup_time = 77;
-    let round_witness_time = 88;
+    let warmup_time = 10;
+    let round_witness_time = 10;
 
     // create the empty pre-allocated coordinator_account
     let coordinator_account = endpoint
@@ -97,7 +97,7 @@ pub async fn run() {
         Some(CoordinatorConfig {
             warmup_time,
             cooldown_time: 999,
-            max_round_train_time: 888,
+            max_round_train_time: 15,
             round_witness_time,
             min_clients: 1,
             init_min_clients: 1,
@@ -157,7 +157,8 @@ pub async fn run() {
     );
 
     // Generate the client key
-    let client_id = ClientId::new(client.pubkey(), Default::default());
+    let client_id =
+        NodeIdentity::new(client.pubkey().to_bytes(), Default::default());
 
     // Add client to whitelist
     let authorization = process_authorizer_authorization_create(

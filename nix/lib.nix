@@ -9,7 +9,7 @@ let
   util = import ./util.nix;
   system = pkgs.stdenv.hostPlatform.system;
 
-  rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+  rustToolchain = pkgs.rust-bin.nightly.latest.default.override {
     extensions = [ "rust-src" ];
     targets = [ "wasm32-unknown-unknown" ];
   };
@@ -38,6 +38,7 @@ let
       python312
       pkg-config
       perl
+      cargo-nextest
     ];
 
     buildInputs =
