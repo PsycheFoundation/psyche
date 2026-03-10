@@ -143,7 +143,7 @@ async fn test_two_clients_three_epochs_run() {
 #[serial]
 async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
     let mut watcher = SubprocessWatcher::new();
-    let _cleanup = e2e_testing_setup(&watcher, 1).await;
+    let mut cleanup = e2e_testing_setup(&watcher, 1).await;
 
     println!("Waiting for run to go on with the first client");
     tokio::time::sleep(Duration::from_secs(60)).await;
@@ -151,6 +151,7 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
     println!("Adding new clients");
     for i in 1..=n_new_clients {
         spawn_client(
+            &mut cleanup,
             (i + 1) as usize,
             None,
             &watcher,
@@ -198,11 +199,12 @@ async fn test_client_join_and_get_model_p2p(#[values(1, 2)] n_new_clients: u8) {
     }
 }
 
+#[ignore = "Delay chaos action not supported in subprocess mode (needs CAP_NET_ADMIN)"]
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 #[serial]
 async fn test_rejoining_client_delay() {
     let mut watcher = SubprocessWatcher::new();
-    let _cleanup = e2e_testing_setup(&watcher, 1).await;
+    let mut cleanup = e2e_testing_setup(&watcher, 1).await;
 
     let solana_client = Arc::new(SolanaTestClient::new("test".to_string(), None).await);
 
@@ -210,6 +212,7 @@ async fn test_rejoining_client_delay() {
 
     // Spawn second client
     spawn_client(
+        &mut cleanup,
         2,
         None,
         &watcher,
@@ -217,12 +220,6 @@ async fn test_rejoining_client_delay() {
     )
     .await
     .unwrap();
-
-    // Note: ChaosAction::Delay is not supported in subprocess mode (needs CAP_NET_ADMIN).
-    // This test will run without the delay chaos action.
-    println!(
-        "Warning: Delay chaos action not supported in subprocess mode, skipping delay injection"
-    );
 
     let mut interval = time::interval(Duration::from_secs(10));
     println!("Waiting for training to start");
@@ -262,7 +259,7 @@ async fn disconnect_client() {
     // Initialize a Solana run with 3 clients
     // Note: e2e_testing_setup spawns clients with StateChange + Loss filters.
     // We need more filters for this test, so we setup with 0 clients and spawn manually.
-    let _cleanup = e2e_testing_setup_with_min(&watcher, 0, 3, None).await;
+    let mut cleanup = e2e_testing_setup_with_min(&watcher, 0, 3, None).await;
 
     // Spawn 3 clients with the filters this test needs
     for i in 1..=3 {
@@ -281,7 +278,9 @@ async fn disconnect_client() {
                 IntegrationTestLogMarker::UntrainedBatches,
             ]
         };
-        spawn_client(i, None, &watcher, filters).await.unwrap();
+        spawn_client(&mut cleanup, i, None, &watcher, filters)
+            .await
+            .unwrap();
     }
 
     let solana_client = SolanaTestClient::new(run_id, None).await;
@@ -396,13 +395,14 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
     let mut watcher = SubprocessWatcher::new();
 
     // Setup with 0 init clients so we can spawn with custom filters
-    let _cleanup = e2e_testing_setup_with_min(&watcher, 0, 2, None).await;
+    let mut cleanup = e2e_testing_setup_with_min(&watcher, 0, 2, None).await;
 
     let solana_client = SolanaTestClient::new(run_id, None).await;
 
     // Spawn clients with the filters this test needs
     for i in 1..=n_clients {
         spawn_client(
+            &mut cleanup,
             i,
             None,
             &watcher,
@@ -470,6 +470,7 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
     // Test reconnection — spawn a new client (index 3 since 2 was killed)
     println!("Starting new client...");
     spawn_client(
+        &mut cleanup,
         3,
         None,
         &watcher,
@@ -498,7 +499,7 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
     let run_id = "test".to_string();
     let mut watcher = SubprocessWatcher::new();
 
-    let _cleanup = e2e_testing_setup(&watcher, 2).await;
+    let mut cleanup = e2e_testing_setup(&watcher, 2).await;
 
     let solana_client = SolanaTestClient::new(run_id, None).await;
     let mut has_spawned_new_client_yet = false;
@@ -539,6 +540,7 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
                     // Spawn new clients with monitoring
                     for _ in 0..2 {
                         let name = spawn_client(
+                            &mut cleanup,
                             next_client_index,
                             None,
                             &watcher,
@@ -604,7 +606,7 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
 #[serial]
 async fn test_everybody_leaves_in_warmup() {
     let mut watcher = SubprocessWatcher::new();
-    let _cleanup = e2e_testing_setup(&watcher, 1).await;
+    let mut cleanup = e2e_testing_setup(&watcher, 1).await;
 
     tokio::time::sleep(Duration::from_secs(20)).await;
 
@@ -630,6 +632,7 @@ async fn test_everybody_leaves_in_warmup() {
 
     println!("Starting new client...");
     spawn_client(
+        &mut cleanup,
         2,
         None,
         &watcher,
@@ -660,10 +663,11 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
     let mut watcher = SubprocessWatcher::new();
 
     // Initialize with 0 clients (we spawn manually with custom filters)
-    let _cleanup = e2e_testing_setup_with_min(&watcher, 0, 1, None).await;
+    let mut cleanup = e2e_testing_setup_with_min(&watcher, 0, 1, None).await;
 
     // Spawn client-1 with StateChange filter
     spawn_client(
+        &mut cleanup,
         1,
         None,
         &watcher,
@@ -699,6 +703,7 @@ async fn test_lost_only_peer_go_back_to_hub_checkpoint() {
                         if new_state == RunState::RoundTrain.to_string() && !spawned_second_client {
                             println!("Joining a second client to the run");
                             spawn_client(
+                                &mut cleanup,
                                 2,
                                 None,
                                 &watcher,
@@ -767,12 +772,13 @@ async fn test_pause_and_resume_run() {
     println!("Generated client keypair: {}", client_keypair.pubkey());
 
     // Setup with min_clients=1 but init_num_clients=0 (we spawn manually)
-    let _cleanup = e2e_testing_setup_with_min(&watcher, 0, 1, Some(owner_path.as_path())).await;
+    let mut cleanup = e2e_testing_setup_with_min(&watcher, 0, 1, Some(owner_path.as_path())).await;
 
     let solana_client = SolanaTestClient::new(run_id.clone(), Some(owner_keypair.clone())).await;
 
     // Spawn client with generated keypair
     let container = spawn_client(
+        &mut cleanup,
         1,
         Some(client_path.as_path()),
         &watcher,
@@ -831,6 +837,7 @@ async fn test_pause_and_resume_run() {
                     // Spawn new client with SAME keypair
                     println!("Rejoining with same client keypair...");
                     let new_name = spawn_client(
+                        &mut cleanup,
                         2,
                         Some(client_path.as_path()),
                         &watcher,

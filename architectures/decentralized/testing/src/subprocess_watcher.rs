@@ -360,6 +360,7 @@ impl SubprocessWatcher {
     }
 
     /// Check if a process is still alive by checking if the PID exists.
+    /// On failure, attempts to read /proc/<pid>/status for crash diagnostics.
     pub async fn check_process_health(&self, name: &str) -> Result<(), WatcherError> {
         let registry = self.registry.lock().await;
         let pid = registry.get_pid(name).ok_or_else(|| {
@@ -369,6 +370,37 @@ impl SubprocessWatcher {
         // signal 0 checks if process exists without sending a signal
         let result = unsafe { libc::kill(pid as i32, 0) };
         if result != 0 {
+            // Process is dead — try to gather diagnostics
+            eprintln!("--- CRASH DIAGNOSTICS for {name} (pid {pid}) ---");
+
+            // Check /proc/<pid>/status if it still exists (zombie)
+            let status_path = format!("/proc/{pid}/status");
+            if let Ok(status) = std::fs::read_to_string(&status_path) {
+                eprintln!("Process status:\n{status}");
+            } else {
+                eprintln!("Process {pid} has fully exited (no /proc entry)");
+            }
+
+            // Check dmesg for OOM kills or segfaults (best effort)
+            if let Ok(output) = std::process::Command::new("dmesg")
+                .args(["--time-format", "reltime", "-T"])
+                .output()
+            {
+                let dmesg = String::from_utf8_lossy(&output.stdout);
+                let pid_str = pid.to_string();
+                let relevant_lines: Vec<&str> = dmesg
+                    .lines()
+                    .filter(|l| l.contains(&pid_str) || l.contains("OOM") || l.contains("oom"))
+                    .collect();
+                if !relevant_lines.is_empty() {
+                    eprintln!("Relevant dmesg lines:");
+                    for line in relevant_lines {
+                        eprintln!("  {line}");
+                    }
+                }
+            }
+
+            eprintln!("--- END CRASH DIAGNOSTICS ---");
             return Err(WatcherError::ProcessCrashedError(name.to_string()));
         }
         Ok(())

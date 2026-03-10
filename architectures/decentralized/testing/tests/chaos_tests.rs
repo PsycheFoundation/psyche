@@ -27,8 +27,6 @@ async fn test_pause_solana_validator(
     let mut last_epoch_loss = f64::MAX;
 
     let mut watcher = SubprocessWatcher::new();
-    let watcher_arc = Arc::new(SubprocessWatcher::new());
-
     let _cleanup = e2e_testing_setup(&watcher, n_clients as usize).await;
 
     let solana_client = Arc::new(SolanaTestClient::new(run_id, None).await);
@@ -37,7 +35,7 @@ async fn test_pause_solana_validator(
 
     let chaos_targets = vec![VALIDATOR_PROCESS_NAME.to_string()];
 
-    let chaos_scheduler = ChaosScheduler::new(watcher_arc, solana_client);
+    let chaos_scheduler = ChaosScheduler::new(watcher.registry.clone(), solana_client);
     chaos_scheduler
         .schedule_chaos(
             ChaosAction::Pause {
@@ -94,8 +92,6 @@ async fn test_delay_solana_test_validator(
     let mut last_epoch_loss = f64::MAX;
 
     let mut watcher = SubprocessWatcher::new();
-    let watcher_arc = Arc::new(SubprocessWatcher::new());
-
     let _cleanup = e2e_testing_setup(&watcher, n_clients as usize).await;
 
     let solana_client = Arc::new(SolanaTestClient::new(run_id, None).await);
@@ -104,7 +100,7 @@ async fn test_delay_solana_test_validator(
 
     let chaos_targets = vec![VALIDATOR_PROCESS_NAME.to_string()];
 
-    let chaos_scheduler = ChaosScheduler::new(watcher_arc, solana_client);
+    let chaos_scheduler = ChaosScheduler::new(watcher.registry.clone(), solana_client);
     chaos_scheduler
         .schedule_chaos(
             ChaosAction::Delay {
@@ -158,8 +154,6 @@ async fn test_delay_solana_client(#[values(1, 2)] n_clients: u8, #[values(0, 10)
     let mut last_epoch_loss = f64::MAX;
 
     let mut watcher = SubprocessWatcher::new();
-    let watcher_arc = Arc::new(SubprocessWatcher::new());
-
     let _cleanup = e2e_testing_setup(&watcher, n_clients as usize).await;
 
     let solana_client = Arc::new(SolanaTestClient::new(run_id, None).await);
@@ -170,7 +164,7 @@ async fn test_delay_solana_client(#[values(1, 2)] n_clients: u8, #[values(0, 10)
         .map(|i| format!("{CLIENT_PROCESS_PREFIX}-{i}"))
         .collect::<Vec<String>>();
 
-    let chaos_scheduler = ChaosScheduler::new(watcher_arc, solana_client);
+    let chaos_scheduler = ChaosScheduler::new(watcher.registry.clone(), solana_client);
     chaos_scheduler
         .schedule_chaos(
             ChaosAction::Delay {

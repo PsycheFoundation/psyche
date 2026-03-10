@@ -14,7 +14,7 @@
         "test_one_clients_three_epochs_run"
         "test_two_clients_three_epochs_run"
         "test_client_join_and_get_model_p2p"
-        "test_rejoining_client_delay"
+        # test_rejoining_client_delay requires network delay (CAP_NET_ADMIN) — #[ignore]d
         "disconnect_client"
         "drop_a_client_waitingformembers_then_reconnect"
         "test_when_all_clients_disconnect_checkpoint_is_hub"

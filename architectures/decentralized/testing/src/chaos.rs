@@ -1,8 +1,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::subprocess_watcher::SubprocessWatcher;
+use crate::subprocess_watcher::ProcessRegistry;
 use crate::utils::SolanaTestClient;
+use tokio::sync::Mutex;
 
 #[derive(Clone, Debug)]
 pub enum ChaosAction {
@@ -28,14 +29,17 @@ pub enum ChaosAction {
 
 #[derive(Clone)]
 pub struct ChaosScheduler {
-    watcher: Arc<SubprocessWatcher>,
+    registry: Arc<Mutex<ProcessRegistry>>,
     solana_client: Arc<SolanaTestClient>,
 }
 
 impl ChaosScheduler {
-    pub fn new(watcher: Arc<SubprocessWatcher>, solana_client: Arc<SolanaTestClient>) -> Self {
+    pub fn new(
+        registry: Arc<Mutex<ProcessRegistry>>,
+        solana_client: Arc<SolanaTestClient>,
+    ) -> Self {
         Self {
-            watcher,
+            registry,
             solana_client,
         }
     }
@@ -72,7 +76,7 @@ impl ChaosScheduler {
                 targets,
             } => {
                 // SIGSTOP to pause, sleep, SIGCONT to resume
-                let registry = self.watcher.registry.lock().await;
+                let registry = self.registry.lock().await;
                 for target in targets {
                     if let Some(pid) = registry.get_pid(target) {
                         unsafe {
@@ -101,7 +105,7 @@ impl ChaosScheduler {
                 });
             }
             ChaosAction::Kill { targets } => {
-                let registry = self.watcher.registry.lock().await;
+                let registry = self.registry.lock().await;
                 for target in targets {
                     if let Some(pid) = registry.get_pid(target) {
                         unsafe {

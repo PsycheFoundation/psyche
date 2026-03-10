@@ -59,9 +59,6 @@ actions:
     run: solana-test-test_client_join_and_get_model_p2p
     withRepoContents: true
   - on: push
-    run: solana-test-test_rejoining_client_delay
-    withRepoContents: true
-  - on: push
     run: solana-test-disconnect_client
     withRepoContents: true
   - on: push

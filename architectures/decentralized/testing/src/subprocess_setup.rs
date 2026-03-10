@@ -14,16 +14,39 @@ pub const VALIDATOR_PROCESS_NAME: &str = "validator";
 const RPC_URL: &str = "http://127.0.0.1:8899";
 const WS_RPC_URL: &str = "ws://127.0.0.1:8900";
 
+/// Kill any stale test processes from prior runs to avoid port conflicts.
+fn kill_stale_processes() {
+    println!("[+] Cleaning up stale test processes...");
+    // Best-effort — if processes don't exist, that's fine
+    let _ = std::process::Command::new("pkill")
+        .args(["-f", "solana-test-validator"])
+        .output();
+    let _ = std::process::Command::new("pkill")
+        .args(["-f", "psyche-solana-client"])
+        .output();
+    // Brief pause to let ports be released
+    std::thread::sleep(std::time::Duration::from_millis(500));
+}
+
 /// Holds all child processes and cleans them up on drop.
+/// The Child handles MUST be stored here because kill_on_drop(true) will
+/// kill the process when the Child is dropped.
 pub struct SubprocessTestCleanup {
     validator: Option<Child>,
     clients: Vec<Child>,
 }
 
+impl SubprocessTestCleanup {
+    /// Store a client child process so it stays alive and gets cleaned up on drop.
+    pub fn add_client(&mut self, child: Child) {
+        self.clients.push(child);
+    }
+}
+
 impl Drop for SubprocessTestCleanup {
     fn drop(&mut self) {
         println!("\nCleaning up subprocesses...");
-        // Kill all client processes
+        // Kill all client processes via signal (kill_on_drop handles the rest)
         for child in &mut self.clients {
             if let Some(pid) = child.id() {
                 unsafe {
@@ -116,7 +139,8 @@ fn test_config_path() -> PathBuf {
 }
 
 /// Start solana-test-validator and wait for it to be ready.
-async fn start_validator() -> Child {
+/// Registers the validator PID in the watcher registry for chaos actions.
+async fn start_validator(watcher: &SubprocessWatcher) -> Child {
     println!("[+] Generating validator keypair...");
     run_cmd(
         "solana-keygen",
@@ -135,6 +159,13 @@ async fn start_validator() -> Child {
         .kill_on_drop(true)
         .spawn()
         .expect("Failed to start solana-test-validator");
+
+    // Register validator PID in the watcher registry (for chaos actions)
+    if let Some(pid) = child.id() {
+        let mut registry = watcher.registry.lock().await;
+        registry.register(VALIDATOR_PROCESS_NAME.to_string(), pid);
+        println!("[+] Validator started (pid {pid})");
+    }
 
     // Wait for validator to be ready
     println!("[+] Waiting for validator to be ready...");
@@ -352,9 +383,10 @@ async fn setup_test_run(_min_clients: usize, owner_keypair_path: Option<&Path>) 
     cleanup_path
 }
 
-/// Spawn a client process. Returns the child with stdout piped for monitoring.
-/// Each client gets its own wallet (generated or provided).
+/// Spawn a client process. The Child handle is stored in `cleanup` automatically
+/// so it stays alive and gets cleaned up on drop.
 pub async fn spawn_client(
+    cleanup: &mut SubprocessTestCleanup,
     client_index: usize,
     keypair_path: Option<&Path>,
     watcher: &SubprocessWatcher,
@@ -428,6 +460,7 @@ pub async fn spawn_client(
     watcher.monitor_process(&name, stdout, filters);
 
     println!("[+] Spawned client {name} (pid {pid})");
+    cleanup.add_client(child);
     Ok(name)
 }
 
@@ -460,8 +493,11 @@ pub async fn e2e_testing_setup_with_min(
         .with_batch_size(8 * std::cmp::max(init_num_clients, 1) as u32)
         .build();
 
+    // Kill any stale processes from prior runs
+    kill_stale_processes();
+
     // Start validator
-    let validator = start_validator().await;
+    let validator = start_validator(watcher).await;
 
     // Deploy programs
     deploy_programs().await;
@@ -469,10 +505,15 @@ pub async fn e2e_testing_setup_with_min(
     // Setup the run (wallet, airdrop, create-run, update-config, unpause)
     let _cleanup_wallet = setup_test_run(min_clients, owner_keypair_path).await;
 
+    let mut cleanup = SubprocessTestCleanup {
+        validator: Some(validator),
+        clients: Vec::new(),
+    };
+
     // Spawn initial clients
-    let clients = Vec::new();
     for i in 1..=init_num_clients {
         let name = spawn_client(
+            &mut cleanup,
             i,
             None,
             watcher,
@@ -488,10 +529,7 @@ pub async fn e2e_testing_setup_with_min(
 
     spawn_ctrl_c_task();
 
-    SubprocessTestCleanup {
-        validator: Some(validator),
-        clients,
-    }
+    cleanup
 }
 
 /// Kill all tracked client processes.
