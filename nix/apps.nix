@@ -33,6 +33,14 @@
         mkdir -p /etc/containers
         echo '{"default":[{"type":"insecureAcceptAnything"}]}' > /etc/containers/policy.json
 
+        # Use native overlay (not fuse-overlayfs, which needs /dev/fuse)
+        cat > /etc/containers/storage.conf <<STORAGEEOF
+        [storage]
+        driver = "overlay"
+        [storage.options.overlay]
+        mount_program = ""
+        STORAGEEOF
+
         export DOCKER_HOST="unix:///run/podman/podman.sock"
 
         mkdir -p /run/podman
