@@ -995,13 +995,8 @@ async fn run_gateway() -> Result<()> {
         tokio::spawn(async move {
             let mut task_set = tokio::task::JoinSet::new();
 
-<<<<<<< HEAD
             let mut cleanup_interval = tokio::time::interval(Duration::from_secs(15));
             cleanup_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-=======
-            let mut reconciliation_interval = tokio::time::interval(Duration::from_secs(60));
-            reconciliation_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
->>>>>>> c715933b (Adding target by node id for LoadModel messages, updating endpoint to display full node status and updating justfile)
 
             loop {
                 tokio::select! {
@@ -1012,7 +1007,6 @@ async fn run_gateway() -> Result<()> {
                         break;
                     }
 
-<<<<<<< HEAD
                     _ = cleanup_interval.tick() => {
                         let stale_threshold = Duration::from_secs(90);
                         let mut nodes = state.available_nodes.write().await;
@@ -1029,44 +1023,6 @@ async fn run_gateway() -> Result<()> {
                                 }
                             })
                             .collect();
-=======
-                    _ = reconciliation_interval.tick() => {
-                        use psyche_inference::ModelSource;
-
-                        let assignments = state.model_assignments.read().await;
-                        let nodes = state.available_nodes.read().await;
-
-                        for (node_id, assigned_model) in assignments.iter() {
-                            match nodes.get(node_id) {
-                                None => {
-                                    debug!("Node {} offline (assigned: {})", node_id.fmt_short(), assigned_model);
-                                }
-                                Some(node_info) => {
-                                    let needs_reload = match &node_info.model_name {
-                                        None => {
-                                            warn!("Node {} is idle, should be serving: {}", node_id.fmt_short(), assigned_model);
-                                            true
-                                        }
-                                        Some(current_model) if current_model != assigned_model => {
-                                            warn!("Node {} has {} but should have {}",
-                                                  node_id.fmt_short(), current_model, assigned_model);
-                                            true
-                                        }
-                                        _ => false, // all good
-                                    };
-
-                                    if needs_reload {
-                                        info!("Sending LoadModel to node {} for model {}",
-                                              node_id.fmt_short(), assigned_model);
-
-                                        // Re-send LoadModel
-                                        // TODO: store source_type with assignment
-                                        let load_msg = InferenceGossipMessage::LoadModel {
-                                            target_node_id: Some(*node_id),
-                                            model_name: assigned_model.clone(),
-                                            model_source: ModelSource::HuggingFace(assigned_model.clone()),
-                                        };
->>>>>>> c715933b (Adding target by node id for LoadModel messages, updating endpoint to display full node status and updating justfile)
 
                         for (node_id, age) in stale_nodes {
                             warn!("Removing stale node {} (no heartbeat for {:?})", node_id.fmt_short(), age);
