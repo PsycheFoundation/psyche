@@ -352,8 +352,10 @@ async fn disconnect_client() {
     let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
     let mut watcher = DockerWatcher::new(docker.clone());
 
-    // Initialize a Solana run with 3 clients
-    let _cleanup = e2e_testing_setup(docker.clone(), 3).await;
+    // Initialize a Solana run with 3 clients.
+    // Use round_witness_time=15 to give enough time for P2P gossip to deliver training
+    // results between peers before bloom filters are built.
+    let _cleanup = e2e_testing_setup_with_min(docker.clone(), 3, 3, None, None, Some(15)).await;
 
     let _monitor_client_1 = watcher
         .monitor_container(
@@ -480,12 +482,12 @@ async fn disconnect_client() {
         }
     }
 
-    // At least 1 healthcheck should be sent (an alive client detecting the killed one).
-    // We may get fewer than expected because bloom filter timing can cause an alive client
-    // to also be reported as unhealthy and get kicked before it can send its health check.
+    // Each alive client should detect the killed one and send a healthcheck.
+    // We expect at least 2 (one per alive client), but may see more across rounds.
     assert!(
-        !seen_health_checks.is_empty(),
-        "At least one healthcheck should have been sent, got 0",
+        seen_health_checks.len() >= 2,
+        "Expected at least 2 healthchecks, got {}",
+        seen_health_checks.len()
     );
 
     // check how many batches where lost due to the client shutdown
@@ -509,7 +511,8 @@ async fn drop_a_client_waitingformembers_then_reconnect() {
 
     // Use extra WFM time so we have a window to kill a client during WaitingForMembers
     let _cleanup =
-        e2e_testing_setup_with_min(docker.clone(), n_clients, n_clients, None, Some(30)).await;
+        e2e_testing_setup_with_min(docker.clone(), n_clients, n_clients, None, Some(30), None)
+            .await;
 
     let solana_client = SolanaTestClient::new(run_id, None).await;
     // Monitor clients
@@ -859,7 +862,8 @@ async fn test_pause_and_resume_run() {
     // Setup with min_clients=1 but init_num_clients=0 (we spawn manually)
     // Pass owner keypair to setup script
     let _cleanup =
-        e2e_testing_setup_with_min(docker.clone(), 0, 1, Some(owner_path.as_path()), None).await;
+        e2e_testing_setup_with_min(docker.clone(), 0, 1, Some(owner_path.as_path()), None, None)
+            .await;
 
     // Create SolanaTestClient with owner keypair for set_paused
     let solana_client = SolanaTestClient::new(run_id.clone(), Some(owner_keypair.clone())).await;

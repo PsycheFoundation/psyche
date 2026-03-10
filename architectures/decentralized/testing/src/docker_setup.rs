@@ -67,6 +67,7 @@ pub async fn e2e_testing_setup(
         init_num_clients,
         None,
         None,
+        None,
     )
     .await
 }
@@ -80,6 +81,7 @@ pub async fn e2e_testing_setup_with_min(
     min_clients: usize,
     owner_keypair_path: Option<&Path>,
     waiting_for_members_extra_time: Option<u32>,
+    round_witness_time: Option<u32>,
 ) -> DockerTestCleanup {
     remove_old_client_containers(docker_client).await;
 
@@ -88,6 +90,7 @@ pub async fn e2e_testing_setup_with_min(
         min_clients,
         owner_keypair_path,
         waiting_for_members_extra_time,
+        round_witness_time,
     )
     .unwrap();
 
@@ -284,7 +287,7 @@ pub async fn spawn_new_client_with_monitoring(
 
 // Updated spawn function
 pub fn spawn_psyche_network(init_num_clients: usize) -> Result<(), DockerWatcherError> {
-    spawn_psyche_network_with_min(init_num_clients, init_num_clients, None, None)
+    spawn_psyche_network_with_min(init_num_clients, init_num_clients, None, None, None)
 }
 
 /// Spawn the psyche network with explicit min_clients and optional owner keypair.
@@ -293,6 +296,7 @@ pub fn spawn_psyche_network_with_min(
     min_clients: usize,
     owner_keypair_path: Option<&Path>,
     waiting_for_members_extra_time: Option<u32>,
+    round_witness_time: Option<u32>,
 ) -> Result<(), DockerWatcherError> {
     #[cfg(not(feature = "python"))]
     let mut builder = ConfigBuilder::new()
@@ -307,6 +311,10 @@ pub fn spawn_psyche_network_with_min(
 
     if let Some(time) = waiting_for_members_extra_time {
         builder = builder.with_waiting_for_members_extra_time(time);
+    }
+
+    if let Some(time) = round_witness_time {
+        builder = builder.with_round_witness_time(time);
     }
 
     let config_file_path = builder.build();
