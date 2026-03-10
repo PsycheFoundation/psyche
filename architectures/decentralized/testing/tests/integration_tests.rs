@@ -445,10 +445,7 @@ async fn disconnect_client() {
                     killed_client = true;
                 }
 
-                if killed_client
-                    && seen_health_checks.len() >= 2
-                    && new_state == RunState::Cooldown.to_string()
-                {
+                if killed_client && new_state == RunState::Cooldown.to_string() {
                     let epoch_clients = solana_client.get_current_epoch_clients().await;
                     assert!(
                         epoch_clients.len() <= 2,
