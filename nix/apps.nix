@@ -109,22 +109,24 @@
         let
           script = pkgs.writeShellApplication {
             name = "probe-garnix-env";
-            runtimeInputs = podmanRuntimeInputs;
+            runtimeInputs = podmanRuntimeInputs ++ [ pkgs.util-linux ];
             text = ''
               ${podmanSetup}
 
               echo "=== PODMAN + COMPOSE TEST ==="
 
-              echo "--- kernel module tests ---"
-              modprobe fuse 2>&1 && echo "modprobe fuse: SUCCESS" || echo "modprobe fuse: FAILED"
+              echo "--- filesystem tests ---"
+              cat /proc/filesystems | grep -E "fuse|overlay" || true
               ls -la /dev/fuse 2>&1 || echo "no /dev/fuse"
-              modprobe overlay 2>&1 && echo "modprobe overlay: SUCCESS" || echo "modprobe overlay: FAILED"
-              cat /proc/filesystems 2>&1 | grep -E "fuse|overlay" || echo "no fuse/overlay in /proc/filesystems"
+
               # test native overlay mount
               mkdir -p /tmp/ov-test/{lower,upper,work,merged}
               echo test > /tmp/ov-test/lower/file
               mount -t overlay overlay -o "lowerdir=/tmp/ov-test/lower,upperdir=/tmp/ov-test/upper,workdir=/tmp/ov-test/work" /tmp/ov-test/merged 2>&1 && echo "native overlay mount: SUCCESS" || echo "native overlay mount: FAILED"
               umount /tmp/ov-test/merged 2>/dev/null; rm -rf /tmp/ov-test
+
+              # test mknod /dev/fuse
+              mknod /dev/fuse c 10 229 2>&1 && echo "mknod /dev/fuse: SUCCESS" || echo "mknod /dev/fuse: FAILED (no CAP_MKNOD)"
 
               echo "--- loading validator image ---"
               ${self'.packages.docker-psyche-solana-test-validator} | podman load
