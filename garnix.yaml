@@ -50,5 +50,36 @@ builds:
 
 actions:
   - on: push
-    run: probe-garnix-env
+    run: solana-test-test_one_clients_three_epochs_run
     withRepoContents: true
+  - on: push
+    run: solana-test-test_two_clients_three_epochs_run
+    withRepoContents: true
+  - on: push
+    run: solana-test-test_client_join_and_get_model_p2p
+    withRepoContents: true
+  - on: push
+    run: solana-test-test_rejoining_client_delay
+    withRepoContents: true
+  - on: push
+    run: solana-test-disconnect_client
+    withRepoContents: true
+  - on: push
+    run: solana-test-drop_a_client_waitingformembers_then_reconnect
+    withRepoContents: true
+  - on: push
+    run: solana-test-test_when_all_clients_disconnect_checkpoint_is_hub
+    withRepoContents: true
+  - on: push
+    run: solana-test-test_everybody_leaves_in_warmup
+    withRepoContents: true
+  - on: push
+    run: solana-test-test_lost_only_peer_go_back_to_hub_checkpoint
+    withRepoContents: true
+  - on: push
+    run: solana-test-test_pause_and_resume_run
+    withRepoContents: true
+  - on: push
+    run: push-docker-solana-client
+  - on: push
+    run: push-docker-gateway

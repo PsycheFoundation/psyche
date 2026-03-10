@@ -21,118 +21,41 @@
         "test_everybody_leaves_in_warmup"
         "test_lost_only_peer_go_back_to_hub_checkpoint"
         "test_pause_and_resume_run"
-        "test_solana_rpc_fallback"
-      ];
-
-      # Common podman setup for garnix actions:
-      # - creates containers policy.json
-      # - starts podman API service (for docker-compose / Bollard)
-      # - creates docker->podman symlink
-      # - sets DOCKER_HOST
-      podmanSetup = ''
-        mkdir -p /etc/containers
-        echo '{"default":[{"type":"insecureAcceptAnything"}]}' > /etc/containers/policy.json
-
-        # No /dev/fuse on garnix, so fuse-overlayfs won't work.
-        # Native overlay-on-overlay also fails. Use vfs driver.
-        printf '[storage]\ndriver = "vfs"\n' > /etc/containers/storage.conf
-
-        # Garnix VM: cgroup subtree_control is read-only, but we can't disable
-        # cgroups (requires private PID ns which needs CAP_SYS_ADMIN to mount /proc).
-        # Try to pre-enable the controllers crun needs, and if that fails,
-        # use cgroupfs manager with no-conmon to minimize cgroup operations.
-        echo "+cpu +io +memory +pids" > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null || true
-        printf '[engine]\ncgroup_manager = "cgroupfs"\n' > /etc/containers/containers.conf
-
-        export DOCKER_HOST="unix:///run/podman/podman.sock"
-
-        mkdir -p /run/podman
-        podman system service --time=0 "$DOCKER_HOST" &
-        PODMAN_PID=$!
-        trap 'kill "$PODMAN_PID" 2>/dev/null || true' EXIT
-        for _i in $(seq 1 10); do
-          if [ -S /run/podman/podman.sock ]; then
-            break
-          fi
-          sleep 1
-        done
-
-        mkdir -p /tmp/docker-compat/bin
-        ln -sf "$(command -v podman)" /tmp/docker-compat/bin/docker
-        export PATH="/tmp/docker-compat/bin:$PATH"
-      '';
-
-      podmanRuntimeInputs = with pkgs; [
-        podman
-        docker-compose
-        coreutils
+        # test_solana_rpc_fallback requires nginx proxies — not yet ported to subprocess mode
       ];
 
       mkTestApp =
         testName:
         let
           testBinary = self'.packages."test-psyche-decentralized-testing-integration_tests";
-          validatorImage = self'.packages.docker-psyche-solana-test-validator;
-          clientImage = self'.packages.docker-psyche-solana-test-client-no-python;
+          coordinatorProgram = self'.packages.solana-coordinator-program;
+          authorizerProgram = self'.packages.solana-authorizer-program;
+          solana = inputs.solana-pkgs.packages.${system}.solana;
+          anchor = inputs.solana-pkgs.packages.${system}.anchor;
+          testConfig = ../../config/solana-test;
 
           script = pkgs.writeShellApplication {
             name = "solana-test-${testName}";
-            runtimeInputs =
-              podmanRuntimeInputs
-              ++ (with pkgs; [
-                inputs.solana-pkgs.packages.${system}.solana
-                self'.packages.run-manager
-                testBinary
-                gnugrep
-              ]);
+            runtimeInputs = [
+              solana
+              anchor
+              self'.packages.run-manager
+              self'.packages.psyche-solana-client
+              testBinary
+              pkgs.coreutils
+              pkgs.gnugrep
+            ];
             text = ''
-              ${podmanSetup}
+              # Point to nix-built program artifacts
+              export SOLANA_PROGRAMS_DIR="${coordinatorProgram}"
+              export SOLANA_AUTHORIZER_DIR="${authorizerProgram}"
+              export TEST_CONFIG_PATH="${testConfig}/test-config.toml"
+              export HOME="''${HOME:-/tmp/test-home}"
+              mkdir -p "$HOME"
 
-              echo "loading images"
-              ${validatorImage} | podman load
-              ${clientImage} | podman load
-
-              # Use host networking (garnix lacks CAP_NET_ADMIN for bridges)
-              export DOCKER_NETWORK=host
-
-              echo "running test from repo root"
+              echo "running test: ${testName}"
               cd architectures/decentralized/testing
               test-psyche-decentralized-testing-integration_tests --nocapture "${testName}"
-            '';
-          };
-        in
-        {
-          type = "app";
-          program = lib.getExe script;
-        };
-
-      # Debug/probe action to test podman + compose on garnix
-      probeApp =
-        let
-          script = pkgs.writeShellApplication {
-            name = "probe-garnix-env";
-            runtimeInputs = podmanRuntimeInputs ++ [ pkgs.util-linux ];
-            text = ''
-              ${podmanSetup}
-
-              echo "=== PODMAN + COMPOSE TEST ==="
-
-              echo "--- loading validator image ---"
-              ${self'.packages.docker-psyche-solana-test-validator} | podman load
-              podman images
-
-              echo "--- loading client image ---"
-              ${self'.packages.docker-psyche-solana-test-client-no-python} | podman load
-              podman images
-
-              echo "--- testing compose up (validator only, host network) ---"
-              cd docker/test
-              podman compose -f docker-compose.host-network.yml up -d --wait psyche-solana-test-validator 2>&1
-              podman compose -f docker-compose.host-network.yml ps 2>&1
-              podman compose -f docker-compose.host-network.yml logs psyche-solana-test-validator 2>&1 | tail -30
-              podman compose -f docker-compose.host-network.yml down 2>&1
-
-              echo "=== END ==="
             '';
           };
         in
@@ -202,6 +125,6 @@
       };
     in
     lib.optionalAttrs (system == "x86_64-linux") {
-      apps = testApps // pushApps // { probe-garnix-env = probeApp; };
+      apps = testApps // pushApps;
     };
 }

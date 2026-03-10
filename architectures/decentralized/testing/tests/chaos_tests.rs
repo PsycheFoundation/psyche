@@ -1,12 +1,10 @@
 use std::{sync::Arc, time::Duration};
 
-use bollard::Docker;
-use psyche_core::IntegrationTestLogMarker;
 use psyche_decentralized_testing::{
-    CLIENT_CONTAINER_PREFIX, VALIDATOR_CONTAINER_PREFIX,
+    CLIENT_PROCESS_PREFIX, VALIDATOR_PROCESS_NAME,
     chaos::{ChaosAction, ChaosScheduler},
-    docker_setup::e2e_testing_setup,
-    docker_watcher::{DockerWatcher, Response},
+    subprocess_setup::e2e_testing_setup,
+    subprocess_watcher::{Response, SubprocessWatcher},
     utils::SolanaTestClient,
 };
 
@@ -23,43 +21,23 @@ async fn test_pause_solana_validator(
     #[values(1, 2)] n_clients: u8,
     #[values(0, 10)] pause_step: u64,
 ) {
-    // Test variables
-
     let run_id = "test".to_string();
     let num_of_epochs_to_run = 2;
     let mut current_epoch = -1;
     let mut last_epoch_loss = f64::MAX;
 
-    // Initialize docker watcher
-    let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
-    let mut watcher = DockerWatcher::new(docker.clone());
+    let mut watcher = SubprocessWatcher::new();
+    let watcher_arc = Arc::new(SubprocessWatcher::new());
 
-    // Initialize a Solana run with n_clients clients
-    let _cleanup = if n_clients == 1 {
-        e2e_testing_setup(docker.clone(), 1).await
-    } else {
-        e2e_testing_setup(docker.clone(), 2).await
-    };
+    let _cleanup = e2e_testing_setup(&watcher, n_clients as usize).await;
 
-    // Solana client
     let solana_client = Arc::new(SolanaTestClient::new(run_id, None).await);
 
-    // Monitor clients
-    for i in 1..=n_clients {
-        let _monitor_client = watcher
-            .monitor_container(
-                &format!("{CLIENT_CONTAINER_PREFIX}-{i}"),
-                vec![IntegrationTestLogMarker::Loss],
-            )
-            .unwrap();
-    }
-
-    // Sleep to let the coordinator to be deployed and run to be configured
     tokio::time::sleep(Duration::from_secs(10)).await;
 
-    let chaos_targets = vec![format!("{VALIDATOR_CONTAINER_PREFIX}-1")];
+    let chaos_targets = vec![VALIDATOR_PROCESS_NAME.to_string()];
 
-    let chaos_scheduler = ChaosScheduler::new(docker.clone(), solana_client);
+    let chaos_scheduler = ChaosScheduler::new(watcher_arc, solana_client);
     chaos_scheduler
         .schedule_chaos(
             ChaosAction::Pause {
@@ -70,7 +48,6 @@ async fn test_pause_solana_validator(
         )
         .await;
 
-    // let mut chaos_already_executed = false;
     let mut liveness_check_interval = time::interval(Duration::from_secs(10));
     println!("Train starting");
 
@@ -101,7 +78,7 @@ async fn test_pause_solana_validator(
     }
 }
 
-#[ignore = "These tests are a bit flaky, so we need to make sure they work properly."]
+#[ignore = "Delay chaos action not supported in subprocess mode (needs CAP_NET_ADMIN)"]
 #[rstest]
 #[trace]
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
@@ -111,43 +88,23 @@ async fn test_delay_solana_test_validator(
     #[values(0, 10)] delay_step: u64,
     #[values(1000, 5000)] delay_milis: i64,
 ) {
-    // Test variables
-
     let run_id = "test".to_string();
     let num_of_epochs_to_run = 2;
     let mut current_epoch = -1;
     let mut last_epoch_loss = f64::MAX;
 
-    // Initialize docker watcher
-    let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
-    let mut watcher = DockerWatcher::new(docker.clone());
+    let mut watcher = SubprocessWatcher::new();
+    let watcher_arc = Arc::new(SubprocessWatcher::new());
 
-    // Initialize a Solana run with n_clients clients
-    let _cleanup = if n_clients == 1 {
-        e2e_testing_setup(docker.clone(), 1).await
-    } else {
-        e2e_testing_setup(docker.clone(), 2).await
-    };
+    let _cleanup = e2e_testing_setup(&watcher, n_clients as usize).await;
 
-    // Solana client
     let solana_client = Arc::new(SolanaTestClient::new(run_id, None).await);
 
-    // Monitor clients
-    for i in 1..=n_clients {
-        let _monitor_client = watcher
-            .monitor_container(
-                &format!("{CLIENT_CONTAINER_PREFIX}-{i}"),
-                vec![IntegrationTestLogMarker::Loss],
-            )
-            .unwrap();
-    }
-
-    // Sleep to let the coordinator to be deployed and run to be configured
     tokio::time::sleep(Duration::from_secs(10)).await;
 
-    let chaos_targets = vec![format!("{VALIDATOR_CONTAINER_PREFIX}-1")];
+    let chaos_targets = vec![VALIDATOR_PROCESS_NAME.to_string()];
 
-    let chaos_scheduler = ChaosScheduler::new(docker.clone(), solana_client);
+    let chaos_scheduler = ChaosScheduler::new(watcher_arc, solana_client);
     chaos_scheduler
         .schedule_chaos(
             ChaosAction::Delay {
@@ -189,51 +146,31 @@ async fn test_delay_solana_test_validator(
     }
 }
 
-#[ignore = "These tests are a bit flaky, so we need to make sure they work properly."]
+#[ignore = "Delay chaos action not supported in subprocess mode (needs CAP_NET_ADMIN)"]
 #[rstest]
 #[trace]
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 #[serial]
 async fn test_delay_solana_client(#[values(1, 2)] n_clients: u8, #[values(0, 10)] delay_step: u64) {
-    // Test variables
-
     let run_id = "test".to_string();
     let num_of_epochs_to_run = 2;
     let mut current_epoch = -1;
     let mut last_epoch_loss = f64::MAX;
 
-    // Initialize docker watcher
-    let docker = Arc::new(Docker::connect_with_socket_defaults().unwrap());
-    let mut watcher = DockerWatcher::new(docker.clone());
+    let mut watcher = SubprocessWatcher::new();
+    let watcher_arc = Arc::new(SubprocessWatcher::new());
 
-    // Initialize a Solana run with n_clients clients
-    let _cleanup = if n_clients == 1 {
-        e2e_testing_setup(docker.clone(), 1).await
-    } else {
-        e2e_testing_setup(docker.clone(), 2).await
-    };
+    let _cleanup = e2e_testing_setup(&watcher, n_clients as usize).await;
 
-    // Solana client
     let solana_client = Arc::new(SolanaTestClient::new(run_id, None).await);
 
-    // Monitor clients
-    for i in 1..=n_clients {
-        let _monitor_client = watcher
-            .monitor_container(
-                &format!("{CLIENT_CONTAINER_PREFIX}-{i}"),
-                vec![IntegrationTestLogMarker::Loss],
-            )
-            .unwrap();
-    }
-
-    // Sleep to let the coordinator to be deployed and run to be configured
     tokio::time::sleep(Duration::from_secs(10)).await;
 
     let chaos_targets = (1..=n_clients)
-        .map(|i| format!("{CLIENT_CONTAINER_PREFIX}-{i}"))
+        .map(|i| format!("{CLIENT_PROCESS_PREFIX}-{i}"))
         .collect::<Vec<String>>();
 
-    let chaos_scheduler = ChaosScheduler::new(docker.clone(), solana_client);
+    let chaos_scheduler = ChaosScheduler::new(watcher_arc, solana_client);
     chaos_scheduler
         .schedule_chaos(
             ChaosAction::Delay {
