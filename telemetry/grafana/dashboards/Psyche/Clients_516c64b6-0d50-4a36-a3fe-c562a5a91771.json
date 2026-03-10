@@ -534,16 +534,8 @@
 				}
 			],
 			"title": "Training round duration",
-			"transformations": [
-				{
-					"id": "concatenate",
-					"options": {
-						"frameNameLabel": "Hola",
-						"frameNameMode": "field"
-					}
-				}
-			],
-			"type": "xychart"
+			"transformations": [],
+			"type": "timeseries"
 		},
 		{
 			"collapsed": false,
