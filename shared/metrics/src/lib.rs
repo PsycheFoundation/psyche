@@ -530,8 +530,6 @@ impl ClientMetrics {
     pub fn update_round_state(&self, step: u32, role: ClientRoleInRound) {
         self.round_step_gauge.record(step as u64, &[]);
 
-        let participating = !matches!(role, ClientRoleInRound::NotInRound) as u64;
-
         {
             let mut metrics = self.tcp_metrics.lock().unwrap();
             metrics.round_step = step;
@@ -539,15 +537,12 @@ impl ClientMetrics {
         }
 
         self.participating_in_round.record(
-            participating,
-            &[KeyValue::new(
-                "role",
-                match role {
-                    ClientRoleInRound::NotInRound => "not_in_round",
-                    ClientRoleInRound::Trainer => "trainer",
-                    ClientRoleInRound::Witness => "witness",
-                },
-            )],
+            match role {
+                ClientRoleInRound::NotInRound => 0,
+                ClientRoleInRound::Trainer => 1,
+                ClientRoleInRound::Witness => 2,
+            },
+            &[],
         );
     }
 

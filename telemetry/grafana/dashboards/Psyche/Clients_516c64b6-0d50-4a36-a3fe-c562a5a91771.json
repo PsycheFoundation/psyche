@@ -29,52 +29,53 @@
 			"fieldConfig": {
 				"defaults": {
 					"color": {
-						"mode": "palette-classic"
+						"mode": "thresholds"
 					},
 					"custom": {
-						"axisBorderShow": false,
-						"axisCenteredZero": false,
-						"axisColorMode": "text",
-						"axisLabel": "",
-						"axisPlacement": "auto",
-						"barAlignment": 0,
-						"barWidthFactor": 0.6,
-						"drawStyle": "line",
-						"fillOpacity": 0,
-						"gradientMode": "none",
+						"fillOpacity": 80,
 						"hideFrom": {
 							"legend": false,
 							"tooltip": false,
 							"viz": false
 						},
-						"insertNulls": false,
-						"lineInterpolation": "linear",
-						"lineWidth": 1,
-						"pointSize": 5,
-						"scaleDistribution": {
-							"type": "linear"
-						},
-						"showPoints": "auto",
-						"spanNulls": false,
-						"stacking": {
-							"group": "A",
-							"mode": "none"
-						},
-						"thresholdsStyle": {
-							"mode": "off"
-						}
+						"lineWidth": 0
 					},
-					"mappings": [],
+					"mappings": [
+						{
+							"options": {
+								"0": {
+									"color": "red",
+									"index": 0,
+									"text": "Not in Round"
+								},
+								"1": {
+									"color": "green",
+									"index": 1,
+									"text": "Trainer"
+								},
+								"2": {
+									"color": "blue",
+									"index": 2,
+									"text": "Witness"
+								}
+							},
+							"type": "value"
+						}
+					],
 					"thresholds": {
 						"mode": "absolute",
 						"steps": [
 							{
-								"color": "green",
-								"value": 0
+								"color": "red",
+								"value": null
 							},
 							{
-								"color": "red",
-								"value": 80
+								"color": "green",
+								"value": 1
+							},
+							{
+								"color": "blue",
+								"value": 2
 							}
 						]
 					}
@@ -89,12 +90,15 @@
 			},
 			"id": 11,
 			"options": {
+				"alignValue": "center",
 				"legend": {
-					"calcs": [],
 					"displayMode": "list",
 					"placement": "bottom",
 					"showLegend": true
 				},
+				"mergeValues": true,
+				"rowHeight": 0.8,
+				"showValue": "auto",
 				"tooltip": {
 					"hideZeros": false,
 					"mode": "single",
@@ -115,7 +119,7 @@
 					"useBackend": false
 				}
 			],
-			"title": "New panel",
+			"title": "Participating in Round",
 			"type": "timeseries"
 		},
 		{
@@ -183,7 +187,7 @@
 				{
 					"datasource": {
 						"type": "prometheus",
-						"uid": "PBFA97CFB590B2093"
+						"uid": "grafanacloud-prom"
 					},
 					"disableTextWrap": false,
 					"editorMode": "builder",
@@ -284,7 +288,7 @@
 				{
 					"datasource": {
 						"type": "prometheus",
-						"uid": "PBFA97CFB590B2093"
+						"uid": "grafanacloud-prom"
 					},
 					"disableTextWrap": false,
 					"editorMode": "builder",
@@ -302,8 +306,8 @@
 		},
 		{
 			"datasource": {
-				"type": "prometheus",
-				"uid": "grafanacloud-prom"
+				"type": "loki",
+				"uid": "grafanacloud-logs"
 			},
 			"fieldConfig": {
 				"defaults": {
@@ -385,12 +389,12 @@
 				{
 					"datasource": {
 						"type": "loki",
-						"uid": "P8E80F9AEF21F6940"
+						"uid": "grafanacloud-logs"
 					},
 					"direction": "backward",
 					"disableTextWrap": false,
-					"editorMode": "builder",
-					"expr": "{instance=\"$clients\"}",
+					"editorMode": "code",
+					"expr": "{level=~\".+\"} |= `` | json | resources_service_instance_id=\"$clients\"",
 					"fullMetaSearch": false,
 					"hide": false,
 					"includeNullMetadata": true,
@@ -461,22 +465,33 @@
 						"axisCenteredZero": false,
 						"axisColorMode": "text",
 						"axisLabel": "",
-						"axisPlacement": "left",
-						"fillOpacity": 50,
+						"axisPlacement": "auto",
+						"barAlignment": 0,
+						"barWidthFactor": 0.6,
+						"drawStyle": "line",
+						"fillOpacity": 0,
+						"gradientMode": "none",
 						"hideFrom": {
 							"legend": false,
 							"tooltip": false,
 							"viz": false
 						},
-						"pointShape": "circle",
-						"pointSize": {
-							"fixed": 5
-						},
-						"pointStrokeWidth": 3,
+						"insertNulls": false,
+						"lineInterpolation": "linear",
+						"lineWidth": 1,
+						"pointSize": 5,
 						"scaleDistribution": {
 							"type": "linear"
 						},
-						"show": "points+lines"
+						"showPoints": "auto",
+						"spanNulls": false,
+						"stacking": {
+							"group": "A",
+							"mode": "none"
+						},
+						"thresholdsStyle": {
+							"mode": "off"
+						}
 					},
 					"mappings": [],
 					"thresholds": {
@@ -484,10 +499,11 @@
 						"steps": [
 							{
 								"color": "green",
-								"value": 0
+								"value": null
 							}
 						]
-					}
+					},
+					"unit": "s"
 				},
 				"overrides": []
 			},
@@ -503,10 +519,8 @@
 					"calcs": [],
 					"displayMode": "list",
 					"placement": "bottom",
-					"showLegend": false
+					"showLegend": true
 				},
-				"mapping": "auto",
-				"series": [{}],
 				"tooltip": {
 					"hideZeros": false,
 					"mode": "single",
@@ -518,7 +532,7 @@
 				{
 					"datasource": {
 						"type": "prometheus",
-						"uid": "PBFA97CFB590B2093"
+						"uid": "grafanacloud-prom"
 					},
 					"disableTextWrap": false,
 					"editorMode": "builder",
@@ -527,23 +541,15 @@
 					"hide": false,
 					"includeNullMetadata": true,
 					"instant": false,
-					"legendFormat": "time",
+					"legendFormat": "{{instance}}",
 					"range": true,
 					"refId": "B",
 					"useBackend": false
 				}
 			],
 			"title": "Training round duration",
-			"transformations": [
-				{
-					"id": "concatenate",
-					"options": {
-						"frameNameLabel": "Hola",
-						"frameNameMode": "field"
-					}
-				}
-			],
-			"type": "xychart"
+			"transformations": [],
+			"type": "timeseries"
 		},
 		{
 			"collapsed": false,
@@ -645,7 +651,7 @@
 				{
 					"datasource": {
 						"type": "prometheus",
-						"uid": "PBFA97CFB590B2093"
+						"uid": "grafanacloud-prom"
 					},
 					"disableTextWrap": false,
 					"editorMode": "builder",
@@ -746,7 +752,7 @@
 				{
 					"datasource": {
 						"type": "prometheus",
-						"uid": "PBFA97CFB590B2093"
+						"uid": "grafanacloud-prom"
 					},
 					"disableTextWrap": false,
 					"editorMode": "builder",
@@ -813,7 +819,7 @@
 					},
 					"direction": "backward",
 					"editorMode": "code",
-					"expr": "{instance=\"$clients\"}",
+					"expr": "{level=~\".+\"} |= `` | json | resources_service_instance_id=\"$clients\"",
 					"queryType": "range",
 					"refId": "A"
 				}
@@ -833,12 +839,12 @@
 					"text": "dd69b8c8755d8e900991b724cbd334d95665e2455cb3f9d3ba29fe6e1f59f00f",
 					"value": "dd69b8c8755d8e900991b724cbd334d95665e2455cb3f9d3ba29fe6e1f59f00f"
 				},
-				"definition": "label_values(psyche_gossip_neighbors,instance)",
+				"definition": "label_values(psyche_cpu_usage_percent,instance)",
 				"name": "clients",
 				"options": [],
 				"query": {
 					"qryType": 1,
-					"query": "label_values(psyche_gossip_neighbors,instance)",
+					"query": "label_values(psyche_cpu_usage_percent,instance)",
 					"refId": "PrometheusVariableQueryEditor-VariableQuery"
 				},
 				"refresh": 1,
