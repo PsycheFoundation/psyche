@@ -57,6 +57,10 @@ struct CliArgs {
     /// Bandwidth limit for slow sharers in KB/s
     #[clap(long, default_value_t = 100)]
     slow_sharer_rate_kb: u64,
+
+    /// Force all blob downloads to go through the relay (strip direct IP addresses from tickets)
+    #[clap(long, default_value_t = false)]
+    relay_only: bool,
 }
 
 /// Required by NetworkConnection generics but unused in this example.
@@ -78,6 +82,7 @@ async fn create_peer(
     discovery_mode: DiscoveryMode,
     relay_kind: RelayKind,
     fake_store: Option<&FakeStore>,
+    relay_only: bool,
 ) -> Result<NC> {
     let metrics = Arc::new(ClientMetrics::new(None, None));
     let network = if let Some(store) = fake_store {
@@ -94,6 +99,7 @@ async fn create_peer(
             metrics,
             None,
             store,
+            relay_only,
         )
         .await?
     } else {
@@ -147,6 +153,7 @@ async fn run_sharer(
     fake_store: FakeStore,
     param_names: Vec<String>,
     param_size_bytes: usize,
+    relay_only: bool,
     cancel: CancellationToken,
 ) -> Result<()> {
     let endpoint_id = network.endpoint_id();
@@ -156,7 +163,14 @@ async fn run_sharer(
         param_size_bytes / (1024 * 1024)
     );
 
-    let endpoint_addr = network.endpoint_addr().await;
+    let mut endpoint_addr = network.endpoint_addr().await;
+    if relay_only {
+        // Strip direct IP addresses so downloaders must connect via relay
+        endpoint_addr.addrs.retain(|a| a.is_relay());
+        info!(
+            "Sharer {endpoint_id}: relay-only mode, stripped direct addresses. Addr: {endpoint_addr:?}"
+        );
+    }
     let fake_hashes = fake_store.blobs().list().hashes().await?;
     let param_tickets: HashMap<String, BlobTicket> = param_names
         .iter()
@@ -476,16 +490,36 @@ async fn run_downloader(
                                 let _ = flight.done_tx.send(true);
                             } else {
                                 // Deserialization error — transfer succeeded (FakeStore data can't deserialize).
-                                // Restore bandwidth since the core sets it to 0 on any DownloadFailed.
+                                // The core sets bandwidth to 0 on any DownloadFailed, but the
+                                // BandwidthTracker had the real value from Progress events.
+                                // Restore it using the tracker's last reading.
                                 let peer_id = f.blob_ticket.addr().id;
+                                let tracker_bw = network.bandwidth_tracker_peer_bandwidth(&peer_id);
                                 let elapsed = flight.start_time.elapsed().as_secs_f64();
-                                if elapsed > 0.0 {
-                                    let bw = param_size_bytes as f64 / elapsed;
-                                    network.connection_monitor().update_peer_bandwidth(
-                                        &peer_id,
-                                        PeerBandwidth::Measured(bw),
-                                    );
-                                }
+                                let manual_bw = if elapsed > 0.0 {
+                                    param_size_bytes as f64 / elapsed
+                                } else {
+                                    0.0
+                                };
+                                info!(
+                                    "Bandwidth for '{}' from {}: tracker={}, manual={:.1} KB/s",
+                                    flight.name,
+                                    peer_id.fmt_short(),
+                                    format_bandwidth(&tracker_bw),
+                                    manual_bw / 1024.0,
+                                );
+                                // Restore from tracker (preferred), fallback to manual
+                                let restore_bw = match tracker_bw {
+                                    PeerBandwidth::Measured(bw) => PeerBandwidth::Measured(bw),
+                                    PeerBandwidth::NotMeasured if manual_bw > 0.0 => {
+                                        PeerBandwidth::Measured(manual_bw)
+                                    }
+                                    _ => PeerBandwidth::NotMeasured,
+                                };
+                                network.connection_monitor().update_peer_bandwidth(
+                                    &peer_id,
+                                    restore_bw,
+                                );
                                 record_completion(
                                     flight, endpoint_id,
                                     &mut completed, &mut param_reports,
@@ -634,6 +668,13 @@ async fn main() -> Result<()> {
     );
     println!();
 
+    let relay_only = args.relay_only;
+    if relay_only {
+        println!(
+            "  Relay-only mode:      ENABLED (direct IP transports disabled, all traffic via relay)"
+        );
+    }
+
     let cancel = CancellationToken::new();
     let num_fast = args.num_sharers.saturating_sub(args.slow_sharers);
 
@@ -662,13 +703,22 @@ async fn main() -> Result<()> {
         } else {
             format!("Sharer-{i}")
         };
-        let network = create_peer(&label, discovery_mode, relay_kind, Some(&store)).await?;
+        let network =
+            create_peer(&label, discovery_mode, relay_kind, Some(&store), relay_only).await?;
         sharer_ids.push(network.endpoint_id());
 
         let param_names = param_names.clone();
         let cancel = cancel.clone();
         sharer_handles.push(tokio::spawn(async move {
-            run_sharer(network, store, param_names, param_size_bytes, cancel).await
+            run_sharer(
+                network,
+                store,
+                param_names,
+                param_size_bytes,
+                relay_only,
+                cancel,
+            )
+            .await
         }));
     }
 
@@ -676,8 +726,14 @@ async fn main() -> Result<()> {
 
     let mut downloader_handles = Vec::new();
     for i in 0..args.num_downloaders {
-        let network =
-            create_peer(&format!("Downloader-{i}"), discovery_mode, relay_kind, None).await?;
+        let network = create_peer(
+            &format!("Downloader-{i}"),
+            discovery_mode,
+            relay_kind,
+            None,
+            relay_only,
+        )
+        .await?;
         let sharer_ids = sharer_ids.clone();
         let cancel = cancel.clone();
         let expected = args.num_parameters;
