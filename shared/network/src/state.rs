@@ -110,10 +110,7 @@ impl BandwidthTracker {
     }
 }
 
-/// Compute bandwidth in bytes/sec using the time span between the first and
-/// last event, not `now`. This prevents idle time after a download from
-/// diluting the measurement — the reading freezes at the last observed rate
-/// until the events expire from the window.
+/// Compute bandwidth in bytes/sec for events within the time window.
 fn endpoint_bandwidth(val: &VecDeque<DownloadEvent>, now: Instant, max_age: Duration) -> f64 {
     // Need at least 2 events to compute a rate between them
     if val.len() < 2 {
@@ -122,23 +119,24 @@ fn endpoint_bandwidth(val: &VecDeque<DownloadEvent>, now: Instant, max_age: Dura
 
     // Only consider events within the window
     let cutoff = now - max_age;
-    let total_bytes: u64 = val
-        .iter()
-        .filter(|e| e.timestamp >= cutoff)
-        .map(|e| e.num_bytes)
-        .sum();
-    let first_in_window = match val.iter().find(|e| e.timestamp >= cutoff) {
-        Some(e) => e,
+    let mut in_window = val.iter().filter(|e| e.timestamp >= cutoff).peekable();
+
+    let first_in_window = match in_window.peek() {
+        Some(e) => *e,
         None => return 0.0,
     };
-    let last = val.back().unwrap();
-    let seconds = last
-        .timestamp
-        .duration_since(first_in_window.timestamp)
-        .as_secs_f64();
+
+    let first_timestamp = first_in_window.timestamp;
+    let bytes_after_first: u64 = in_window.skip(1).map(|e| e.num_bytes).sum();
+
+    if bytes_after_first == 0 {
+        return 0.0;
+    }
+
+    let seconds = now.duration_since(first_timestamp).as_secs_f64();
 
     if seconds > 0.0 {
-        total_bytes as f64 / seconds
+        bytes_after_first as f64 / seconds
     } else {
         0.0
     }
