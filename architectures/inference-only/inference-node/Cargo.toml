@@ -36,6 +36,7 @@ iroh.workspace = true
 iroh-blobs.workspace = true
 iroh-gossip.workspace = true
 
+reqwest = { version = "0.12", features = ["json"] }
 serde_json.workspace = true
 serde.workspace = true
 uuid = { version = "1", features = ["v4"] }

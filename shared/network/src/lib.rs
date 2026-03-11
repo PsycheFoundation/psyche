@@ -17,7 +17,8 @@ use iroh_gossip::{
     net::Gossip,
     proto::{HyparviewConfig, PlumtreeConfig},
 };
-use iroh_n0des::ApiSecret;
+use iroh_services::{API_SECRET_ENV_VAR_NAME, ApiSecret, caps::NetDiagnosticsCap};
+use n0_future::task::AbortOnDropHandle;
 pub use p2p_model_sharing::{
     MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
     PeerManagerHandle,
@@ -37,12 +38,10 @@ use std::{
 use tokio::{
     io::AsyncReadExt,
     select,
+    sync::mpsc,
     sync::{mpsc::UnboundedReceiver, oneshot},
     task::JoinError,
     time::timeout,
-};
-use tokio::{
-    sync::mpsc,
     time::{Interval, interval},
 };
 use tokio_util::sync::CancellationToken;
@@ -194,7 +193,8 @@ where
     metrics: Arc<ClientMetrics>,
     endpoint: Endpoint,
     connection_monitor: ConnectionMonitor,
-    _iroh_metrics: Option<iroh_n0des::Client>,
+    _iroh_services_client: Option<iroh_services::Client>,
+    _iroh_diagnostics_task: Option<AbortOnDropHandle<()>>,
 }
 
 impl<B, D> Debug for NetworkConnection<B, D>
@@ -433,25 +433,34 @@ where
 
         info!("Our endpoint ID: {}", endpoint_addr.id);
 
-        let iroh_metrics = {
-            let builder = iroh_n0des::Client::builder(&endpoint);
+        let iroh_services_client = {
+            let builder = iroh_services::Client::builder(&endpoint);
             let allowlist = allowlist.clone();
-            (async move {
-                let client = builder.api_secret_from_env()?.build().await?;
-                const API_SECRET_ENV_VAR_NAME: &str = "N0DES_API_SECRET";
 
-                match std::env::var(API_SECRET_ENV_VAR_NAME) {
-                    Ok(ticket_string) => {
-                        let ticket = ApiSecret::from_str(&ticket_string)
-                            .context(format!("invalid {API_SECRET_ENV_VAR_NAME}"))?;
-                        let endpoint_id = ticket.remote.id;
-                        allowlist.force_allow(endpoint_id);
-                    }
-                    Err(e) => unreachable!("{e:?}"),
-                }
+            (async move {
+                let secret = ApiSecret::from_env_var(API_SECRET_ENV_VAR_NAME)
+                    .context("failed to get API secret")?;
+
+                let remote_id = secret.addr().id;
+                allowlist.force_allow(remote_id);
+
+                let client = builder
+                    .api_secret(secret)?
+                    .build()
+                    .await
+                    .context("failed to build metrics client")?;
+
+                timeout(
+                    Duration::from_secs(10),
+                    client.grant_capability(remote_id, vec![NetDiagnosticsCap::GetAny]),
+                )
+                .await
+                .context("timed out while granting capability")?
+                .context("failed to grant capability")?;
+
                 Ok(client)
             })
-            .await as anyhow::Result<iroh_n0des::Client>
+            .await as anyhow::Result<iroh_services::Client>
         }
         .map_or_else(
             |e| {
@@ -511,8 +520,15 @@ where
             endpoint.clone(),
             SupportedProtocols::new(gossip.clone(), blobs_protocol, model_parameter_sharing),
             additional_protocol,
+            iroh_services_client
+                .as_ref()
+                .map(|_| iroh_services::ClientHost::new(&endpoint)),
         )?;
         trace!("router created!");
+
+        let iroh_diagnostics_task = iroh_services_client
+            .as_ref()
+            .map(|client| spawn_network_diagnostics_loop(client.clone()));
 
         let (gossip_tx, gossip_rx) = gossip
             .subscribe(gossip_topic(run_id), bootstrap_endpoint_ids)
@@ -541,7 +557,8 @@ where
             _download: Default::default(),
             endpoint,
             connection_monitor,
-            _iroh_metrics: iroh_metrics,
+            _iroh_services_client: iroh_services_client,
+            _iroh_diagnostics_task: iroh_diagnostics_task,
         })
     }
 
@@ -1012,6 +1029,23 @@ fn hash_bytes(bytes: &Bytes) -> u64 {
     let mut hasher = DefaultHasher::new();
     bytes.hash(&mut hasher);
     hasher.finish()
+}
+
+fn spawn_network_diagnostics_loop(client: iroh_services::Client) -> AbortOnDropHandle<()> {
+    AbortOnDropHandle::new(tokio::spawn(async move {
+        let mut diagnostics_interval = tokio::time::interval(Duration::from_secs(60 * 60));
+        diagnostics_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        loop {
+            diagnostics_interval.tick().await;
+
+            match timeout(Duration::from_secs(10), client.net_diagnostics(true)).await {
+                Ok(Ok(report)) => info!("Network diagnostics report: {report:?}"),
+                Ok(Err(e)) => warn!("Failed to run network diagnostics: {e:#}"),
+                Err(_) => warn!("Timed out while running network diagnostics"),
+            }
+        }
+    }))
 }
 
 // Simplified param_request_task
