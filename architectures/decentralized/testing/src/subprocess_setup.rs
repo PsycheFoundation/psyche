@@ -67,8 +67,17 @@ impl Drop for SubprocessTestCleanup {
 
 /// Run a command and panic if it fails. Returns stdout as string.
 async fn run_cmd(program: &str, args: &[&str]) -> String {
-    let output = Command::new(program)
-        .args(args)
+    run_cmd_in(program, args, None).await
+}
+
+/// Run a command in an optional working directory. Panics on failure.
+async fn run_cmd_in(program: &str, args: &[&str], cwd: Option<&Path>) -> String {
+    let mut cmd = Command::new(program);
+    cmd.args(args);
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
+    let output = cmd
         .output()
         .await
         .unwrap_or_else(|e| panic!("Failed to run {program}: {e}"));
@@ -219,9 +228,17 @@ async fn deploy_programs() {
     let auth_id = auth_id.trim();
     println!("[+] Authorizer program ID: {auth_id}");
 
-    // IDL init
+    // IDL init — anchor requires an Anchor.toml in the cwd, so create a
+    // minimal dummy workspace in a temp dir.
     println!("[+] Initializing Authorizer IDL...");
-    run_cmd(
+    let anchor_workspace = PathBuf::from(format!("/tmp/anchor-workspace-{}", std::process::id()));
+    std::fs::create_dir_all(&anchor_workspace).expect("Failed to create anchor workspace dir");
+    std::fs::write(
+        anchor_workspace.join("Anchor.toml"),
+        format!("[provider]\ncluster = \"{RPC_URL}\"\n"),
+    )
+    .expect("Failed to write dummy Anchor.toml");
+    run_cmd_in(
         "anchor",
         &[
             "idl",
@@ -237,6 +254,7 @@ async fn deploy_programs() {
             &auth_idl.to_string_lossy(),
             auth_id,
         ],
+        Some(&anchor_workspace),
     )
     .await;
 
