@@ -111,6 +111,16 @@ impl BandwidthTracker {
 }
 
 /// Compute bandwidth in bytes/sec for events within the time window.
+///
+/// Uses bytes transferred *after* the first event divided by the elapsed time
+/// from the first event to `now`. The first event's bytes are excluded from the
+/// numerator because no time has elapsed when it arrives (fencepost correction).
+///
+/// Using `now` (instead of the last event's timestamp) as the time endpoint
+/// ensures that congestion pauses between bursts are reflected in the
+/// measurement. Without this, bursty relay traffic would report burst-rate
+/// bandwidth (e.g. 8 MB/s) even when effective sustained throughput is far
+/// lower (e.g. 500 KB/s).
 fn endpoint_bandwidth(val: &VecDeque<DownloadEvent>, now: Instant, max_age: Duration) -> f64 {
     // Need at least 2 events to compute a rate between them
     if val.len() < 2 {
@@ -126,6 +136,7 @@ fn endpoint_bandwidth(val: &VecDeque<DownloadEvent>, now: Instant, max_age: Dura
         None => return 0.0,
     };
 
+    // Sum bytes from all events AFTER the first (exclude the first event's bytes)
     let first_timestamp = first_in_window.timestamp;
     let bytes_after_first: u64 = in_window.skip(1).map(|e| e.num_bytes).sum();
 
@@ -133,6 +144,7 @@ fn endpoint_bandwidth(val: &VecDeque<DownloadEvent>, now: Instant, max_age: Dura
         return 0.0;
     }
 
+    // Use `now` as the end point so congestion pauses dilute the measurement
     let seconds = now.duration_since(first_timestamp).as_secs_f64();
 
     if seconds > 0.0 {

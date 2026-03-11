@@ -246,6 +246,7 @@ where
             cancel,
             None,
             None,
+            false,
         )
         .await
     }
@@ -280,6 +281,7 @@ where
             cancel,
             Some(additional_protocol),
             None,
+            false,
         )
         .await
     }
@@ -300,6 +302,7 @@ where
         metrics: Arc<ClientMetrics>,
         cancel: Option<CancellationToken>,
         external_blobs_store: iroh_blobs::api::Store,
+        relay_only: bool,
     ) -> Result<Self> {
         Self::init_internal::<A, iroh_gossip::net::Gossip>(
             run_id,
@@ -314,6 +317,7 @@ where
             cancel,
             None,
             Some(external_blobs_store),
+            relay_only,
         )
         .await
     }
@@ -335,6 +339,7 @@ where
         cancel: Option<CancellationToken>,
         additional_protocol: Option<(&'static [u8], P)>,
         external_blobs_store: Option<iroh_blobs::api::Store>,
+        relay_only: bool,
     ) -> Result<Self> {
         let secret_key = match secret_key {
             None => SecretKey::generate(&mut rand::rng()),
@@ -390,7 +395,7 @@ where
             };
             debug!("Using relay servers: {}", fmt_relay_mode(&relay_mode));
 
-            let endpoint = Endpoint::builder()
+            let mut endpoint = Endpoint::builder()
                 .secret_key(secret_key)
                 .relay_mode(relay_mode)
                 .transport_config(transport_config)
@@ -398,6 +403,11 @@ where
                 .clear_address_lookup()
                 .hooks(allowlist_hook.clone())
                 .hooks(connection_monitor.clone());
+
+            if relay_only {
+                info!("Relay-only mode: disabling direct IP transports");
+                endpoint = endpoint.clear_ip_transports();
+            }
 
             let endpoint = match discovery_mode {
                 DiscoveryMode::Local => {
