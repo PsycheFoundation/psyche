@@ -29,52 +29,53 @@
 			"fieldConfig": {
 				"defaults": {
 					"color": {
-						"mode": "palette-classic"
+						"mode": "thresholds"
 					},
 					"custom": {
-						"axisBorderShow": false,
-						"axisCenteredZero": false,
-						"axisColorMode": "text",
-						"axisLabel": "",
-						"axisPlacement": "auto",
-						"barAlignment": 0,
-						"barWidthFactor": 0.6,
-						"drawStyle": "line",
-						"fillOpacity": 0,
-						"gradientMode": "none",
+						"fillOpacity": 80,
 						"hideFrom": {
 							"legend": false,
 							"tooltip": false,
 							"viz": false
 						},
-						"insertNulls": false,
-						"lineInterpolation": "linear",
-						"lineWidth": 1,
-						"pointSize": 5,
-						"scaleDistribution": {
-							"type": "linear"
-						},
-						"showPoints": "auto",
-						"spanNulls": false,
-						"stacking": {
-							"group": "A",
-							"mode": "none"
-						},
-						"thresholdsStyle": {
-							"mode": "off"
-						}
+						"lineWidth": 0
 					},
-					"mappings": [],
+					"mappings": [
+						{
+							"options": {
+								"0": {
+									"color": "red",
+									"index": 0,
+									"text": "Not in Round"
+								},
+								"1": {
+									"color": "green",
+									"index": 1,
+									"text": "Trainer"
+								},
+								"2": {
+									"color": "blue",
+									"index": 2,
+									"text": "Witness"
+								}
+							},
+							"type": "value"
+						}
+					],
 					"thresholds": {
 						"mode": "absolute",
 						"steps": [
 							{
-								"color": "green",
-								"value": 0
+								"color": "red",
+								"value": null
 							},
 							{
-								"color": "red",
-								"value": 80
+								"color": "green",
+								"value": 1
+							},
+							{
+								"color": "blue",
+								"value": 2
 							}
 						]
 					}
@@ -89,12 +90,15 @@
 			},
 			"id": 11,
 			"options": {
+				"alignValue": "center",
 				"legend": {
-					"calcs": [],
 					"displayMode": "list",
 					"placement": "bottom",
 					"showLegend": true
 				},
+				"mergeValues": true,
+				"rowHeight": 0.8,
+				"showValue": "auto",
 				"tooltip": {
 					"hideZeros": false,
 					"mode": "single",
