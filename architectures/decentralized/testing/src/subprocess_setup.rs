@@ -130,14 +130,6 @@ fn authorizer_idl_path() -> PathBuf {
     )
 }
 
-fn test_config_path() -> PathBuf {
-    if let Ok(path) = std::env::var("TEST_CONFIG_PATH") {
-        PathBuf::from(path)
-    } else {
-        PathBuf::from("../../../config/solana-test/test-config.toml")
-    }
-}
-
 /// Start solana-test-validator and wait for it to be ready.
 /// Registers the validator PID in the watcher registry for chaos actions.
 async fn start_validator(watcher: &SubprocessWatcher) -> Child {
@@ -279,7 +271,7 @@ async fn deploy_programs() {
 
 /// Run the setup-test-run logic: wallet, airdrop, create-run, update-config, unpause.
 /// This replaces scripts/setup-test-run.sh.
-async fn setup_test_run(_min_clients: usize, owner_keypair_path: Option<&Path>) -> Option<PathBuf> {
+async fn setup_test_run(config_path: &Path, owner_keypair_path: Option<&Path>) -> Option<PathBuf> {
     let (wallet_path, cleanup_path) = if let Some(path) = owner_keypair_path {
         (path.to_path_buf(), None)
     } else {
@@ -341,7 +333,6 @@ async fn setup_test_run(_min_clients: usize, owner_keypair_path: Option<&Path>) 
     )
     .await;
 
-    let config_path = test_config_path();
     println!("[+] Updating config from {}...", config_path.display());
     run_cmd(
         "run-manager",
@@ -481,12 +472,12 @@ pub async fn e2e_testing_setup_with_min(
 ) -> SubprocessTestCleanup {
     // Write the test config
     #[cfg(not(feature = "python"))]
-    let _config_file_path = ConfigBuilder::new()
+    let config_file_path = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
         .with_min_clients(min_clients)
         .build();
     #[cfg(feature = "python")]
-    let _config_file_path = ConfigBuilder::new()
+    let config_file_path = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
         .with_min_clients(min_clients)
         .with_architecture("HfAuto")
@@ -503,7 +494,7 @@ pub async fn e2e_testing_setup_with_min(
     deploy_programs().await;
 
     // Setup the run (wallet, airdrop, create-run, update-config, unpause)
-    let _cleanup_wallet = setup_test_run(min_clients, owner_keypair_path).await;
+    let _cleanup_wallet = setup_test_run(&config_file_path, owner_keypair_path).await;
 
     let mut cleanup = SubprocessTestCleanup {
         validator: Some(validator),

@@ -32,7 +32,7 @@
           authorizerProgram = self'.packages.solana-authorizer-program;
           solana = inputs.solana-pkgs.packages.${system}.solana;
           anchor = inputs.solana-pkgs.packages.${system}.anchor;
-          testConfig = ../../config/solana-test;
+          baseConfig = ../config/solana-test/nano-config.toml;
 
           script = pkgs.writeShellApplication {
             name = "solana-test-${testName}";
@@ -46,15 +46,13 @@
               pkgs.gnugrep
             ];
             text = ''
-              # Point to nix-built program artifacts
               export SOLANA_PROGRAMS_DIR="${coordinatorProgram}"
               export SOLANA_AUTHORIZER_DIR="${authorizerProgram}"
-              export TEST_CONFIG_PATH="${testConfig}/test-config.toml"
+              export TEST_BASE_CONFIG_PATH="${baseConfig}"
               export HOME="''${HOME:-/tmp/test-home}"
               mkdir -p "$HOME"
 
               echo "running test: ${testName}"
-              cd architectures/decentralized/testing
               test-psyche-decentralized-testing-integration_tests --nocapture "${testName}"
             '';
           };

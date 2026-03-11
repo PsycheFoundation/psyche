@@ -139,8 +139,10 @@ setup_python_test_infra:
 
 # The test binary handles starting the validator, deploying programs, and spawning clients.
 run_solana_test test_name:
-    cd architectures/decentralized/testing && \
-    cargo test --test integration_tests {{ test_name }} -- --nocapture
+    SOLANA_PROGRAMS_DIR=architectures/decentralized/solana-coordinator/target/deploy \
+    SOLANA_AUTHORIZER_DIR=architectures/decentralized/solana-authorizer/target/deploy \
+    TEST_BASE_CONFIG_PATH=config/solana-test/nano-config.toml \
+    cargo test -p psyche-decentralized-testing --test integration_tests {{ test_name }} -- --nocapture
 
 # Kill any leftover test processes (validator, clients)
 stop_test_infra:

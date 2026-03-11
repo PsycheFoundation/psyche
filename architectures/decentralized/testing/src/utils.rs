@@ -169,15 +169,16 @@ impl Default for ConfigBuilder {
 
 impl ConfigBuilder {
     pub fn new() -> Self {
-        let path = env::current_dir().unwrap();
-        println!("The current directory is {}", path.display());
         #[cfg(not(feature = "python"))]
-        let base_path = "../../../config/solana-test/nano-config.toml";
+        let default_path = "../../../config/solana-test/nano-config.toml";
         #[cfg(feature = "python")]
-        let base_path = "../../../config/solana-test/light-config.toml";
+        let default_path = "../../../config/solana-test/light-config.toml";
 
-        let base_config: toml::Value = fs::read_to_string(base_path)
-            .expect("Failed to read base config")
+        let base_path =
+            env::var("TEST_BASE_CONFIG_PATH").unwrap_or_else(|_| default_path.to_string());
+
+        let base_config: toml::Value = fs::read_to_string(&base_path)
+            .unwrap_or_else(|e| panic!("Failed to read base config at {base_path}: {e}"))
             .parse()
             .expect("Failed to parse TOML");
 
@@ -230,7 +231,8 @@ impl ConfigBuilder {
         self.set_value("config.warmup_time", 100);
 
         let config_content = toml::to_string(&self.base_config).unwrap();
-        let config_file_path = PathBuf::from("../../../config/solana-test/test-config.toml");
+        let config_file_path =
+            PathBuf::from(format!("/tmp/test-config-{}.toml", std::process::id()));
         fs::write(&config_file_path, config_content).unwrap();
 
         config_file_path
