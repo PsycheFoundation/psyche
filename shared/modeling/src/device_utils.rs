@@ -237,6 +237,14 @@ impl DevicePytorchStr for Device {
 /// The causal SDPA with a large sequence length is designed to trigger cuDNN's
 /// runtime kernel compilation
 fn ensure_cuda_device_usable(device_idx: usize) -> anyhow::Result<()> {
+    let (cc_major, cc_minor) =
+        tch::Cuda::get_device_capability(device_idx).context("failed to get compute capability")?;
+    if cc_major < 8 {
+        bail!(
+        "CUDA device {device_idx} has a compute capability version of {cc_major}.{cc_minor}, which is too low. Minimum required is 8.0"
+    );
+    }
+
     let device = Device::Cuda(device_idx);
 
     let batch: i64 = 2;
