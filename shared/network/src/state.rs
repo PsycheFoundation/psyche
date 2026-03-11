@@ -50,20 +50,18 @@ impl BandwidthTracker {
     }
 
     pub fn add_event(&mut self, from: EndpointId, num_bytes: u64) {
+        // Only track events with actual bytes transferred.
+        // Zero-byte events (TryProvider, PartComplete, ProviderFailed) are noise.
+        if num_bytes == 0 {
+            return;
+        }
         let now = Instant::now();
         let events = self.events.entry(from).or_default();
         events.push_back(DownloadEvent {
             timestamp: now,
             num_bytes,
         });
-
-        while let Some(event) = events.front() {
-            if now.duration_since(event.timestamp) > Duration::from_secs(self.average_period_secs) {
-                events.pop_front();
-            } else {
-                break;
-            }
-        }
+        Self::prune_stale(events, now, self.average_period_secs);
     }
 
     pub fn clear(&mut self) {
@@ -71,25 +69,73 @@ impl BandwidthTracker {
     }
 
     pub fn get_total_bandwidth(&self) -> f64 {
-        self.events.values().map(endpoint_bandwidth).sum()
+        let max_age = Duration::from_secs(self.average_period_secs);
+        let now = Instant::now();
+        self.events
+            .values()
+            .map(|events| endpoint_bandwidth(events, now, max_age))
+            .sum()
     }
 
     pub fn get_peer_bandwidth(&self, peer: &EndpointId) -> PeerBandwidth {
+        let max_age = Duration::from_secs(self.average_period_secs);
+        let now = Instant::now();
         match self.events.get(peer) {
             None => PeerBandwidth::NotMeasured,
             Some(events) if events.is_empty() => PeerBandwidth::NotMeasured,
-            Some(events) => PeerBandwidth::Measured(endpoint_bandwidth(events)),
+            Some(events) => {
+                // If the newest event is older than the window, all data is stale
+                if now.duration_since(events.back().unwrap().timestamp) > max_age {
+                    return PeerBandwidth::NotMeasured;
+                }
+                let bw = endpoint_bandwidth(events, now, max_age);
+                if bw > 0.0 {
+                    PeerBandwidth::Measured(bw)
+                } else {
+                    PeerBandwidth::NotMeasured
+                }
+            }
+        }
+    }
+
+    fn prune_stale(events: &mut VecDeque<DownloadEvent>, now: Instant, max_age_secs: u64) {
+        let max_age = Duration::from_secs(max_age_secs);
+        while let Some(event) = events.front() {
+            if now.duration_since(event.timestamp) > max_age {
+                events.pop_front();
+            } else {
+                break;
+            }
         }
     }
 }
 
-fn endpoint_bandwidth(val: &VecDeque<DownloadEvent>) -> f64 {
-    if val.is_empty() {
+/// Compute bandwidth in bytes/sec using the time span between the first and
+/// last event, not `now`. This prevents idle time after a download from
+/// diluting the measurement — the reading freezes at the last observed rate
+/// until the events expire from the window.
+fn endpoint_bandwidth(val: &VecDeque<DownloadEvent>, now: Instant, max_age: Duration) -> f64 {
+    // Need at least 2 events to compute a rate between them
+    if val.len() < 2 {
         return 0.0;
     }
-    let duration = Instant::now().duration_since(val.front().unwrap().timestamp);
-    let total_bytes: u64 = val.iter().map(|v| v.num_bytes).sum();
-    let seconds = duration.as_secs_f64();
+
+    // Only consider events within the window
+    let cutoff = now - max_age;
+    let total_bytes: u64 = val
+        .iter()
+        .filter(|e| e.timestamp >= cutoff)
+        .map(|e| e.num_bytes)
+        .sum();
+    let first_in_window = match val.iter().find(|e| e.timestamp >= cutoff) {
+        Some(e) => e,
+        None => return 0.0,
+    };
+    let last = val.back().unwrap();
+    let seconds = last
+        .timestamp
+        .duration_since(first_in_window.timestamp)
+        .as_secs_f64();
 
     if seconds > 0.0 {
         total_bytes as f64 / seconds
