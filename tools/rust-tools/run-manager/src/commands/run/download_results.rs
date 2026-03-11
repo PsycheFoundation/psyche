@@ -71,14 +71,21 @@ impl Command for CommandDownloadResults {
         let nonce: u64 = rand::random();
 
         // Generate signature for the run-down service
-        let signature_b58 =
-            run_down_service::generate_signature(&backend, &run_id, expires_in_seconds, nonce);
+        let wallet_address = backend.get_payer().to_string();
+        let signature_b58 = run_down_service::generate_signature(
+            &backend,
+            &run_id,
+            &wallet_address,
+            expires_in_seconds,
+            nonce,
+        );
 
         // Make POST request to the API
         let client = reqwest::Client::new();
         let urls_response = run_down_service::get_download_urls(
             &client,
             &run_id,
+            &wallet_address,
             &signature_b58,
             expires_in_seconds,
             nonce,

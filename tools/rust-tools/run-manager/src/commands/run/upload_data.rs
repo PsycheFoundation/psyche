@@ -86,13 +86,20 @@ impl Command for CommandUploadData {
             let nonce: u64 = rand::random();
 
             // Generate signature for the run-down service
-            let signature_b58 =
-                run_down_service::generate_signature(&backend, &run_id, expires_in_seconds, nonce);
+            let wallet_address = backend.get_payer().to_string();
+            let signature_b58 = run_down_service::generate_signature(
+                &backend,
+                &run_id,
+                &wallet_address,
+                expires_in_seconds,
+                nonce,
+            );
 
             // Make POST request to get upload URL
             let upload_response = run_down_service::get_upload_url(
                 &client,
                 &run_id,
+                &wallet_address,
                 &signature_b58,
                 relative_path,
                 expires_in_seconds,
