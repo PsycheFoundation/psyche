@@ -1,6 +1,6 @@
 use std::{fmt, str::FromStr};
 
-use anyhow::Context;
+use anyhow::{bail, Context};
 use itertools::Itertools;
 use tch::{utils::has_mps, Device, Kind, Tensor};
 use thiserror::Error;
