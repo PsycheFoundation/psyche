@@ -1,6 +1,5 @@
 use anyhow::Result;
 use psyche_coordinator::{Coordinator, HealthChecks, Witness, WitnessMetadata, model};
-use psyche_core::NodeIdentity;
 use serde::{Deserialize, Serialize};
 
 #[allow(clippy::large_enum_variant)]
@@ -20,12 +19,12 @@ impl OpportunisticData {
 }
 
 #[async_trait::async_trait]
-pub trait Backend<T: NodeIdentity>: Send + Sync {
+pub trait Backend: Send + Sync {
     /// # Cancel safety
     ///
     /// This method must be cancel safe.
-    async fn wait_for_new_state(&mut self) -> Result<Coordinator<T>>;
+    async fn wait_for_new_state(&mut self) -> Result<Coordinator>;
     async fn send_witness(&mut self, opportunistic_data: OpportunisticData) -> Result<()>;
-    async fn send_health_check(&mut self, health_check: HealthChecks<T>) -> Result<()>;
+    async fn send_health_check(&mut self, health_check: HealthChecks) -> Result<()>;
     async fn send_checkpoint(&mut self, checkpoint: model::Checkpoint) -> Result<()>;
 }
