@@ -841,6 +841,25 @@ where
         self.connection_monitor
             .update_peer_bandwidth(&peer_id, peer_bw);
 
+        // Log bandwidth every ~10 MB to track mid-download evolution without being noisy.
+        if update.downloaded_size_delta > 0 {
+            let prev = update.downloaded_size - update.downloaded_size_delta;
+            let interval = 10 * 1024 * 1024; // 10 MB
+            if update.downloaded_size / interval > prev / interval || update.all_done {
+                let bw_str = match &peer_bw {
+                    PeerBandwidth::Measured(bw) => format!("{:.2} MB/s", bw / (1024.0 * 1024.0)),
+                    PeerBandwidth::NotMeasured => "not measured".to_string(),
+                };
+                info!(
+                    "Download progress: {} bytes from {} | bandwidth: {} | {:?}",
+                    update.downloaded_size,
+                    peer_id.fmt_short(),
+                    bw_str,
+                    update.download_type,
+                );
+            }
+        }
+
         let hash = update.blob_ticket.hash();
 
         if update.all_done {
@@ -874,6 +893,10 @@ where
     pub fn clear_bandwidth_tracking(&mut self) {
         self.state.bandwidth_tracker.clear();
         self.connection_monitor.clear_all_bandwidth();
+    }
+
+    pub fn bandwidth_tracker_peer_bandwidth(&self, peer: &EndpointId) -> PeerBandwidth {
+        self.state.bandwidth_tracker.get_peer_bandwidth(peer)
     }
 
     pub fn connection_monitor(&self) -> ConnectionMonitor {
