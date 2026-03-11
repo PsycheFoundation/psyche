@@ -168,6 +168,7 @@ pub struct Witness {
     AnchorDeserialize,
     Serialize,
     Deserialize,
+    PartialEq,
     TS,
     Default,
     Debug,
@@ -192,6 +193,7 @@ pub struct WitnessMetadata {
     AnchorDeserialize,
     Serialize,
     Deserialize,
+    PartialEq,
     TS,
     Default,
     Debug,
@@ -237,7 +239,16 @@ pub type HealthChecks = Vec<(NodeIdentity, CommitteeProof)>;
 pub const NUM_STORED_ROUNDS: usize = 4;
 
 #[derive(
-    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorDeserialize, AnchorSerialize, TS,
+    Clone,
+    Debug,
+    Zeroable,
+    Copy,
+    Serialize,
+    Deserialize,
+    AnchorDeserialize,
+    AnchorSerialize,
+    PartialEq,
+    TS,
 )]
 #[repr(C)]
 pub struct CoordinatorConfig {
@@ -263,7 +274,16 @@ pub struct CoordinatorConfig {
 }
 
 #[derive(
-    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorSerialize, AnchorDeserialize, TS,
+    Clone,
+    Debug,
+    Zeroable,
+    Copy,
+    Serialize,
+    Deserialize,
+    AnchorSerialize,
+    AnchorDeserialize,
+    PartialEq,
+    TS,
 )]
 #[repr(C)]
 pub struct CoordinatorEpochState {
@@ -285,7 +305,16 @@ pub struct CoordinatorEpochState {
 }
 
 #[derive(
-    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorSerialize, AnchorDeserialize, TS,
+    Clone,
+    Debug,
+    Zeroable,
+    Copy,
+    Serialize,
+    Deserialize,
+    AnchorSerialize,
+    AnchorDeserialize,
+    PartialEq,
+    TS,
 )]
 #[repr(C)]
 pub struct CoordinatorProgress {
@@ -295,7 +324,16 @@ pub struct CoordinatorProgress {
 }
 
 #[derive(
-    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorSerialize, AnchorDeserialize, TS,
+    Clone,
+    Debug,
+    Zeroable,
+    Copy,
+    Serialize,
+    Deserialize,
+    AnchorSerialize,
+    AnchorDeserialize,
+    PartialEq,
+    TS,
 )]
 #[repr(C)]
 pub struct Coordinator {

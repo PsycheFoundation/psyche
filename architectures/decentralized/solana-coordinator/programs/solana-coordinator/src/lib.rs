@@ -7,7 +7,10 @@ mod program_error;
 
 use anchor_lang::prelude::*;
 pub use client::Client;
+pub use clients_state::ClientsEpochRates;
+pub use clients_state::ClientsState;
 pub use instance_state::CoordinatorInstanceState;
+pub use instance_state::RunMetadata;
 use logic::*;
 pub use program_error::ProgramError;
 use psyche_coordinator::Committee;
@@ -26,8 +29,6 @@ use psyche_core::NodeIdentity;
 use serde::Deserialize;
 use serde::Serialize;
 use ts_rs::TS;
-
-pub use crate::instance_state::RunMetadata;
 
 declare_id!("4SHugWqSXwKE5fqDchkJcPEqnoZE22VYKtSTVm7axbT7");
 
@@ -125,7 +126,7 @@ pub fn coordinator_account_from_bytes_mut(
 
 #[account(zero_copy)]
 #[repr(C)]
-#[derive(Serialize, Deserialize, TS)]
+#[derive(Serialize, Deserialize, PartialEq, TS)]
 pub struct CoordinatorAccount {
     pub version: u64,
     pub state: CoordinatorInstanceState,
@@ -133,7 +134,7 @@ pub struct CoordinatorAccount {
 }
 
 impl CoordinatorAccount {
-    pub const VERSION: u64 = 1;
+    pub const VERSION: u64 = 2;
 
     pub fn space_with_discriminator() -> usize {
         CoordinatorAccount::DISCRIMINATOR.len()
