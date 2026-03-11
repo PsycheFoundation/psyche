@@ -2,6 +2,7 @@ use psyche_coordinator::CoordinatorConfig;
 use psyche_core::NodeIdentity;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
 use psyche_solana_coordinator::CoordinatorAccount;
+use psyche_solana_coordinator::logic::InitCoordinatorParams;
 use psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
 use psyche_solana_tooling::process_authorizer_instructions::process_authorizer_authorization_create;
@@ -70,14 +71,16 @@ pub async fn run() {
     let (run1, coordinator1_instance) = process_treasurer_run_create(
         &mut endpoint,
         &payer,
+        &main_authority,
         &collateral1_mint,
         &coordinator1_account,
         RunCreateParams {
             index: 41,
-            run_id: "This is my run's dummy run_id1".to_string(),
-            main_authority: main_authority.pubkey(),
-            join_authority: join_authority.pubkey(),
-            client_version: "latest".to_string(),
+            init: InitCoordinatorParams {
+                run_id: "This is my run's dummy run_id1".to_string(),
+                join_authority: join_authority.pubkey(),
+                client_version: "latest".to_string(),
+            },
         },
     )
     .await
@@ -85,14 +88,16 @@ pub async fn run() {
     let (run2, coordinator2_instance) = process_treasurer_run_create(
         &mut endpoint,
         &payer,
+        &main_authority,
         &collateral2_mint,
         &coordinator2_account,
         RunCreateParams {
             index: 42,
-            run_id: "This is my run's dummy run_id2".to_string(),
-            main_authority: main_authority.pubkey(),
-            join_authority: join_authority.pubkey(),
-            client_version: "latest".to_string(),
+            init: InitCoordinatorParams {
+                run_id: "This is my run's dummy run_id2".to_string(),
+                join_authority: join_authority.pubkey(),
+                client_version: "latest".to_string(),
+            },
         },
     )
     .await
@@ -123,6 +128,7 @@ pub async fn run() {
         &coordinator1_instance,
         &coordinator1_account,
         RunUpdateParams {
+            join_authority: None,
             metadata: None,
             config: Some(dummy_config),
             model: None,
@@ -143,6 +149,7 @@ pub async fn run() {
         &coordinator2_instance,
         &coordinator2_account,
         RunUpdateParams {
+            join_authority: None,
             metadata: None,
             config: Some(dummy_config),
             model: None,

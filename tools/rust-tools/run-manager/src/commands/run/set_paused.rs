@@ -45,6 +45,7 @@ impl Command for CommandSetPaused {
                 &coordinator_account,
                 &main_authority,
                 RunUpdateParams {
+                    join_authority: None,
                     metadata: None,
                     config: None,
                     model: None,

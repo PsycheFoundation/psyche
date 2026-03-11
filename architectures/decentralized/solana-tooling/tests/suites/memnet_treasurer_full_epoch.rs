@@ -19,6 +19,7 @@ use psyche_solana_authorizer::logic::AuthorizationGranteeUpdateParams;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
 use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::instruction::Witness;
+use psyche_solana_coordinator::logic::InitCoordinatorParams;
 use psyche_solana_coordinator::logic::JOIN_RUN_AUTHORIZATION_SCOPE;
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
 use psyche_solana_tooling::get_accounts::get_coordinator_account_state;
@@ -34,6 +35,7 @@ use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_run
 use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_run_update;
 use psyche_solana_treasurer::logic::RunCreateParams;
 use psyche_solana_treasurer::logic::RunUpdateParams;
+use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
 
@@ -93,14 +95,16 @@ pub async fn run() {
     let (run, coordinator_instance) = process_treasurer_run_create(
         &mut endpoint,
         &payer,
+        &main_authority,
         &collateral_mint,
         &coordinator_account,
         RunCreateParams {
             index: 42,
-            run_id: "This is my run's dummy run_id".to_string(),
-            main_authority: main_authority.pubkey(),
-            join_authority: join_authority.pubkey(),
-            client_version: "latest".to_string(),
+            init: InitCoordinatorParams {
+                run_id: "This is my run's dummy run_id".to_string(),
+                join_authority: Pubkey::new_unique(),
+                client_version: "latest".to_string(),
+            },
         },
     )
     .await
@@ -169,6 +173,7 @@ pub async fn run() {
         &coordinator_instance,
         &coordinator_account,
         RunUpdateParams {
+            join_authority: Some(join_authority.pubkey()),
             metadata: None,
             config: Some(CoordinatorConfig {
                 warmup_time,

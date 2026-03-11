@@ -19,15 +19,15 @@ pub fn coordinator_init_coordinator(
         psyche_solana_coordinator::ID,
         psyche_solana_coordinator::accounts::InitCoordinatorAccounts {
             payer: *payer,
+            authority: *main_authority,
             coordinator_instance,
             coordinator_account: *coordinator_account,
             system_program: system_program::ID,
         },
         psyche_solana_coordinator::instruction::InitCoordinator {
             params: psyche_solana_coordinator::logic::InitCoordinatorParams {
-                main_authority: *main_authority,
-                join_authority: *join_authority,
                 run_id: run_id.to_string(),
+                join_authority: *join_authority,
                 client_version: client_version.to_string(),
             },
         },
@@ -223,6 +223,26 @@ pub fn coordinator_checkpoint(
     )
 }
 
+pub fn coordinator_set_join_authority(
+    run_id: &str,
+    coordinator_account: &Pubkey,
+    main_authority: &Pubkey,
+    join_authority: &Pubkey,
+) -> Instruction {
+    let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(run_id);
+    anchor_instruction(
+        psyche_solana_coordinator::ID,
+        psyche_solana_coordinator::accounts::OwnerCoordinatorAccounts {
+            authority: *main_authority,
+            coordinator_instance,
+            coordinator_account: *coordinator_account,
+        },
+        psyche_solana_coordinator::instruction::SetJoinAuthority {
+            join_authority: *join_authority,
+        },
+    )
+}
+
 pub fn coordinator_update_client_version(
     run_id: &str,
     coordinator_account: &Pubkey,
@@ -261,6 +281,7 @@ pub fn treasurer_run_create(
         psyche_solana_treasurer::ID,
         psyche_solana_treasurer::accounts::RunCreateAccounts {
             payer: *payer,
+            authority: *main_authority,
             run,
             run_collateral,
             collateral_mint: *collateral_mint,
@@ -274,10 +295,11 @@ pub fn treasurer_run_create(
         psyche_solana_treasurer::instruction::RunCreate {
             params: psyche_solana_treasurer::logic::RunCreateParams {
                 index: treasurer_index,
-                main_authority: *main_authority,
-                join_authority: *join_authority,
-                run_id: run_id.to_string(),
-                client_version: client_version.to_string(),
+                init: psyche_solana_coordinator::logic::InitCoordinatorParams {
+                    run_id: run_id.to_string(),
+                    join_authority: *join_authority,
+                    client_version: client_version.to_string(),
+                },
             },
         },
     )

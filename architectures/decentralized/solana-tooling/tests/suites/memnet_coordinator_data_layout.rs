@@ -190,7 +190,7 @@ pub async fn run() {
 }
 
 fn fixed_str<const L: usize>(value: &str) -> FixedString<L> {
-    FixedString::from_str_truncated(value)
+    FixedString::try_from(value).unwrap()
 }
 
 fn fixed_vec_repeat<const N: usize, T: Default + Copy>(

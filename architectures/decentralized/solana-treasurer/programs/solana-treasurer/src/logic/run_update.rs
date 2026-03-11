@@ -2,11 +2,10 @@ use anchor_lang::prelude::*;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
 use psyche_coordinator::model::Model;
-use psyche_solana_coordinator::CoordinatorAccount;
-use psyche_solana_coordinator::CoordinatorInstance;
 use psyche_solana_coordinator::RunMetadata;
 use psyche_solana_coordinator::cpi::accounts::OwnerCoordinatorAccounts;
 use psyche_solana_coordinator::cpi::set_future_epoch_rates;
+use psyche_solana_coordinator::cpi::set_join_authority;
 use psyche_solana_coordinator::cpi::set_paused;
 use psyche_solana_coordinator::cpi::update;
 use psyche_solana_coordinator::cpi::update_client_version;
@@ -21,17 +20,19 @@ pub struct RunUpdateAccounts<'info> {
     pub authority: Signer<'info>,
 
     #[account(
-        constraint = run.main_authority == authority.key(),
+        constraint = run.authority == authority.key(),
         constraint = run.coordinator_instance == coordinator_instance.key(),
         constraint = run.coordinator_account == coordinator_account.key(),
     )]
     pub run: Box<Account<'info, Run>>,
 
-    #[account()]
-    pub coordinator_instance: Account<'info, CoordinatorInstance>,
-
+    /// CHECK: This is only used and checked in the CPI to the coordinator program
     #[account(mut)]
-    pub coordinator_account: AccountLoader<'info, CoordinatorAccount>,
+    pub coordinator_instance: UncheckedAccount<'info>,
+
+    /// CHECK: This is only used and checked in the CPI to the coordinator program
+    #[account(mut)]
+    pub coordinator_account: UncheckedAccount<'info>,
 
     #[account()]
     pub coordinator_program: Program<'info, PsycheSolanaCoordinator>,
@@ -46,6 +47,7 @@ pub struct RunUpdateParams {
     pub epoch_earning_rate_total_shared: Option<u64>,
     pub epoch_slashing_rate_per_client: Option<u64>,
     pub paused: Option<bool>,
+    pub join_authority: Option<Pubkey>,
     pub client_version: Option<String>,
 }
 
@@ -127,6 +129,27 @@ pub fn run_update_processor(
             )
             .with_signer(run_signer_seeds),
             paused,
+        )?;
+    }
+
+    if let Some(join_authority) = params.join_authority {
+        set_join_authority(
+            CpiContext::new(
+                context.accounts.coordinator_program.to_account_info(),
+                OwnerCoordinatorAccounts {
+                    authority: context.accounts.run.to_account_info(),
+                    coordinator_instance: context
+                        .accounts
+                        .coordinator_instance
+                        .to_account_info(),
+                    coordinator_account: context
+                        .accounts
+                        .coordinator_account
+                        .to_account_info(),
+                },
+            )
+            .with_signer(run_signer_seeds),
+            join_authority,
         )?;
     }
 

@@ -28,6 +28,7 @@ use solana_toolbox_endpoint::ToolboxEndpoint;
 pub async fn process_treasurer_run_create(
     endpoint: &mut ToolboxEndpoint,
     payer: &Keypair,
+    authority: &Keypair,
     collateral_mint: &Pubkey,
     coordinator_account: &Pubkey,
     params: RunCreateParams,
@@ -37,9 +38,10 @@ pub async fn process_treasurer_run_create(
         &run,
         collateral_mint,
     );
-    let coordinator_instance = find_coordinator_instance(&params.run_id);
+    let coordinator_instance = find_coordinator_instance(&params.init.run_id);
     let accounts = RunCreateAccounts {
         payer: payer.pubkey(),
+        authority: authority.pubkey(),
         collateral_mint: *collateral_mint,
         run,
         run_collateral,
@@ -55,7 +57,9 @@ pub async fn process_treasurer_run_create(
         data: RunCreate { params }.data(),
         program_id: psyche_solana_treasurer::ID,
     };
-    endpoint.process_instruction(payer, instruction).await?;
+    endpoint
+        .process_instruction_with_signers(payer, instruction, &[authority])
+        .await?;
     Ok((run, coordinator_instance))
 }
 

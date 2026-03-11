@@ -207,8 +207,18 @@ pub mod psyche_solana_coordinator {
         }
 
         account.state.client_version =
-            FixedString::<96>::try_from(new_version.as_str()).unwrap();
+            FixedString::try_from(new_version.as_str())
+                .map_err(|_| ProgramError::FixedStringTooLong)?;
         msg!("new version: {}", account.state.client_version);
+        Ok(())
+    }
+
+    pub fn set_join_authority(
+        ctx: Context<OwnerCoordinatorAccounts>,
+        join_authority: Pubkey,
+    ) -> Result<()> {
+        let account = &mut ctx.accounts.coordinator_instance;
+        account.join_authority = join_authority;
         Ok(())
     }
 
@@ -328,6 +338,7 @@ pub struct OwnerCoordinatorAccounts<'info> {
     pub authority: Signer<'info>,
 
     #[account(
+        mut,
         seeds = [
             CoordinatorInstance::SEEDS_PREFIX,
             bytes_from_string(&coordinator_instance.run_id)

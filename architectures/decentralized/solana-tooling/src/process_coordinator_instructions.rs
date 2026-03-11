@@ -33,12 +33,14 @@ use solana_toolbox_endpoint::ToolboxEndpoint;
 pub async fn process_coordinator_init(
     endpoint: &mut ToolboxEndpoint,
     payer: &Keypair,
+    main_authority: &Keypair,
     coordinator_account: &Pubkey,
     params: InitCoordinatorParams,
 ) -> Result<Pubkey> {
     let coordinator_instance = find_coordinator_instance(&params.run_id);
     let accounts = InitCoordinatorAccounts {
         payer: payer.pubkey(),
+        authority: main_authority.pubkey(),
         coordinator_instance,
         coordinator_account: *coordinator_account,
         system_program: system_program::ID,
@@ -48,7 +50,9 @@ pub async fn process_coordinator_init(
         data: InitCoordinator { params }.data(),
         program_id: psyche_solana_coordinator::ID,
     };
-    endpoint.process_instruction(payer, instruction).await?;
+    endpoint
+        .process_instruction_with_signers(payer, instruction, &[main_authority])
+        .await?;
     Ok(coordinator_instance)
 }
 
