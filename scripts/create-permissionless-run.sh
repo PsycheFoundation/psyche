@@ -43,7 +43,8 @@ cargo run --release --bin run-manager -- \
     join-authorization-create \
     --wallet-private-key-path ${WALLET_FILE} \
     --rpc "${RPC}" \
-    --authorizer 11111111111111111111111111111111
+    --authorizer $(solana-keygen pubkey /home/marian/.config/solana/id.json)
+# --authorizer 11111111111111111111111111111111
 
 echo -e "\n[+] Creating training run..."
 cargo run --release --bin run-manager -- \
