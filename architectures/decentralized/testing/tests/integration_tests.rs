@@ -353,8 +353,6 @@ async fn disconnect_client() {
     let mut watcher = DockerWatcher::new(docker.clone());
 
     // Initialize a Solana run with 3 clients.
-    // Use round_witness_time=15 to give enough time for P2P gossip to deliver training
-    // results between peers before bloom filters are built.
     let _cleanup = e2e_testing_setup_with_min(docker.clone(), 3, 3, None, None, Some(15)).await;
 
     let _monitor_client_1 = watcher
@@ -483,7 +481,6 @@ async fn disconnect_client() {
     }
 
     // Each alive client should detect the killed one and send a healthcheck.
-    // We expect at least 2 (one per alive client), but may see more across rounds.
     assert!(
         seen_health_checks.len() >= 2,
         "Expected at least 2 healthchecks, got {}",
