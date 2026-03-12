@@ -45,16 +45,6 @@ export async function fetchStatus(): Promise<IndexerStatus> {
 		: psycheJsonFetch('status')
 }
 
-export async function fetchRuns(): Promise<ApiGetRuns> {
-	return import.meta.env.VITE_FAKE_DATA
-		? ({
-				runs: fakeRunSummaries,
-				totalTokens: 1_000_000_000n,
-				totalTokensPerSecondActive: 23_135_234n,
-			} satisfies ApiGetRuns)
-		: psycheJsonFetch('runs')
-}
-
 export async function fetchCheckpointStatus(
 	owner: string,
 	repo: string,
@@ -133,8 +123,6 @@ export async function fetchSummariesStreaming(): Promise<
 				while (true) {
 					controller.enqueue({
 						runs: fakeRunSummaries,
-						totalTokens: 1_000_000_000n + BigInt(i * 10000),
-						totalTokensPerSecondActive: 23_135_234n,
 					})
 					const nextFakeDataDelay = 1000 + Math.random() * 1000
 					await new Promise((r) => setTimeout(r, nextFakeDataDelay))
@@ -146,7 +134,7 @@ export async function fetchSummariesStreaming(): Promise<
 
 	console.log('opening summaries stream')
 
-	return makeStreamingNdJsonDecode(`runs`)
+	return makeStreamingNdJsonDecode('runs')
 }
 
 export async function fetchContributionsStreaming(): Promise<

@@ -6,6 +6,7 @@ import { ApiGetRuns } from 'shared'
 import { Sort } from './Sort.js'
 import { text } from '../fonts.js'
 import AnimatedTokensCounter from './AnimatedTokensCounter.js'
+import { shouldDisplayRun } from '../allowlist.js'
 
 const RunsContainer = styled.div`
 	height: 100%;
@@ -70,18 +71,45 @@ const sortFuncs = {
 		Number(b.size - a.size),
 } as const
 
-export function Runs({
-	runs,
-	totalTokens,
-	totalTokensPerSecondActive,
-}: ApiGetRuns) {
+export function Runs({ runs }: ApiGetRuns) {
 	const [runTypeFilter, setRunTypeFilter] = useState<RunType>('all')
 	const [sort, setSort] = useState<(typeof runSort)[number]>(runSort[0])
 
+	const filteredRuns = useMemo(
+		() => runs.filter((r) => shouldDisplayRun(r.id)),
+		[runs]
+	)
+
 	// Create stable sorted list that only changes when sort changes, not when data updates
 	const sortedRuns = useMemo(() => {
-		return [...runs].sort(sortFuncs[sort.value])
-	}, [runs.length, sort.value]) // Only resort when sort changes or runs count changes
+		return [...filteredRuns].sort(sortFuncs[sort.value])
+	}, [filteredRuns.length, sort.value]) // Only resort when sort changes or runs count changes
+
+	const totalTokens = useMemo(
+		() =>
+			filteredRuns.reduce(
+				(sum, run) =>
+					sum + (run.trainingStep?.tokensCompletedAtStartOfStep ?? 0n),
+				0n
+			),
+		[filteredRuns]
+	)
+	const totalTokensPerSecondActive = useMemo(
+		() =>
+			filteredRuns.reduce((sum, summary) => {
+				const ACTIVE_TIMEOUT_MS = 10 * 60 * 1000
+				const timeSinceLastUpdate =
+					Date.now() - summary.lastUpdate.time.getTime()
+				if (
+					summary.status.type !== 'active' ||
+					timeSinceLastUpdate > ACTIVE_TIMEOUT_MS
+				) {
+					return sum
+				}
+				return sum + (summary.trainingStep?.lastTokensPerSecond ?? 0n)
+			}, 0n),
+		[filteredRuns]
+	)
 
 	return (
 		<RunsContainer>

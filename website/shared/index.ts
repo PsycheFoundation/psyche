@@ -179,8 +179,6 @@ export type MaybeError<T extends object> = T & {
 export type ApiGetRun = MaybeError<{ run: RunData | null; isOnlyRun: boolean }>
 export type ApiGetRuns = MaybeError<{
 	runs: RunSummary[]
-	totalTokens: bigint
-	totalTokensPerSecondActive: bigint
 }>
 export type ApiGetCheckpointStatus = MaybeError<{
 	isValid: boolean
