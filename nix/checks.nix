@@ -29,38 +29,28 @@
         # test_solana_rpc_fallback requires nginx proxies — not yet ported to subprocess mode
       ];
 
-      coordinatorProgram = self'.packages.solana-coordinator-program;
-      authorizerProgram = self'.packages.solana-authorizer-program;
-      solana = inputs'.solana-pkgs.packages.solana;
-      baseConfig = ../config/solana-test/nano-config.toml;
-
-      testRuntimeInputs = [
-        solana
-        self'.packages.run-manager
-        self'.packages.psyche-solana-client
-        pkgs.coreutils
-        pkgs.gnugrep
-        pkgs.gnutar
-        pkgs.bzip2
-      ];
-
-      testEnvSetup = ''
-        export SOLANA_PROGRAMS_DIR="${coordinatorProgram}"
-        export SOLANA_AUTHORIZER_DIR="${authorizerProgram}"
-        export TEST_BASE_CONFIG_PATH="${baseConfig}"
-        export HOME="''${HOME:-/tmp/test-home}"
-        mkdir -p "$HOME"
-      '';
-
       mkTestCheck =
         testName:
         pkgs.runCommand "solana-test-${testName}"
           {
-            nativeBuildInputs = testRuntimeInputs;
-            __noChroot = true; # needs loopback networking for solana-test-validator
+            nativeBuildInputs = [
+              inputs'.solana-pkgs.packages.solana
+              self'.packages.run-manager
+              self'.packages.psyche-solana-client
+              pkgs.coreutils
+              pkgs.gnugrep
+              pkgs.gnutar
+              pkgs.bzip2
+            ];
+
+            SOLANA_PROGRAMS_DIR = self'.packages.solana-coordinator-program;
+            SOLANA_AUTHORIZER_DIR = self'.packages.solana-authorizer-program;
+            TEST_BASE_CONFIG_PATH = ../config/solana-test/nano-config.toml;
+            HOME = "./tmp-home";
           }
           ''
-            ${testEnvSetup}
+
+            mkdir -p "$HOME"
             echo "running test: ${testName}"
             ${
               pkgs.lib.getExe self'.packages."test-psyche-decentralized-testing-integration_tests"

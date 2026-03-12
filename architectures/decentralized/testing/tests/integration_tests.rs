@@ -3,7 +3,7 @@
 // These tests run all components as direct subprocesses (no Docker).
 // solana-test-validator, program deployment, and client spawning are all
 // managed by the subprocess_setup module.
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use anchor_client::solana_sdk::signature::{Keypair, Signer};
 use psyche_coordinator::{RunState, model::Checkpoint};
@@ -14,7 +14,7 @@ use psyche_decentralized_testing::{
         e2e_testing_setup, e2e_testing_setup_with_min, kill_all_clients, spawn_client,
     },
     subprocess_watcher::{Response, SubprocessWatcher},
-    utils::{SolanaTestClient, write_keypair_to_file},
+    utils::{SolanaTestClient, tmp_path, write_keypair_to_file},
 };
 use rstest::*;
 use serial_test::serial;
@@ -757,14 +757,9 @@ async fn test_pause_and_resume_run() {
     let client_keypair = Arc::new(Keypair::new());
 
     // Write keypairs to temp files
-    let owner_path = PathBuf::from(format!(
-        "/tmp/test-owner-keypair-{}.json",
-        std::process::id()
-    ));
-    let client_path = PathBuf::from(format!(
-        "/tmp/test-client-keypair-{}.json",
-        std::process::id()
-    ));
+
+    let owner_path = tmp_path(&format!("test-owner-keypair-{}.json", std::process::id()));
+    let client_path = tmp_path(&format!("test-client-keypair-{}.json", std::process::id()));
     write_keypair_to_file(&owner_keypair, &owner_path).expect("Failed to write owner keypair");
     write_keypair_to_file(&client_keypair, &client_path).expect("Failed to write client keypair");
 

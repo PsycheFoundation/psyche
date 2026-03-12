@@ -231,8 +231,7 @@ impl ConfigBuilder {
         self.set_value("config.warmup_time", 100);
 
         let config_content = toml::to_string(&self.base_config).unwrap();
-        let config_file_path =
-            PathBuf::from(format!("/tmp/test-config-{}.toml", std::process::id()));
+        let config_file_path = tmp_path(&format!("/tmp/test-config-{}.toml", std::process::id()));
         fs::write(&config_file_path, config_content).unwrap();
 
         config_file_path
@@ -248,4 +247,10 @@ impl ConfigBuilder {
 
         current[parts.last().unwrap()] = value.into();
     }
+}
+
+pub fn tmp_path(path: &str) -> PathBuf {
+    let mut p: PathBuf = std::env::var("TMPDIR").unwrap_or("/tmp".into()).into();
+    p.push(path);
+    p
 }

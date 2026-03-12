@@ -331,7 +331,7 @@ let
         else if lib.isBool needsPython then
           { ${name} = if needsPython then withPython else withoutPython; }
         else
-          throw "needsPython must be true, false, or \"optional\", got: ${builtins.toString needsPython}";
+          throw "needsPython must be true, false, or \"optional\", got: ${toString needsPython}";
 
       allRsFilenamesInDir =
         dir:
@@ -367,7 +367,7 @@ let
         in
         builtins.foldl' (acc: name: acc // (buildOne name)) { } targetNames;
 
-      cargoToml = builtins.fromTOML (builtins.readFile (cratePath + "/Cargo.toml"));
+      cargoToml = fromTOML (builtins.readFile (cratePath + "/Cargo.toml"));
       packageName = cargoToml.package.name;
       hasMainRs = builtins.pathExists (cratePath + "/src/main.rs");
 

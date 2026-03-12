@@ -6,7 +6,7 @@ use tokio::process::{Child, Command};
 use tokio::signal;
 
 use crate::subprocess_watcher::{SubprocessWatcher, WatcherError};
-use crate::utils::ConfigBuilder;
+use crate::utils::{ConfigBuilder, tmp_path};
 
 pub const CLIENT_PROCESS_PREFIX: &str = "client";
 pub const VALIDATOR_PROCESS_NAME: &str = "validator";
@@ -135,10 +135,11 @@ async fn start_validator(watcher: &SubprocessWatcher) -> Child {
     println!("[+] Setting solana config...");
     run_cmd("solana", &["config", "set", "--url", "localhost"]).await;
 
-    let ledger_dir = format!("/tmp/test-ledger-{}", std::process::id());
-    println!("[+] Starting solana-test-validator (ledger: {ledger_dir})...");
+    let ledger_dir = tmp_path(&format!("test-ledger-{}", std::process::id()));
+
+    println!("[+] Starting solana-test-validator (ledger: {ledger_dir:?})...");
     let mut child = Command::new("solana-test-validator")
-        .args(["-r", "--ledger", &ledger_dir])
+        .args(["-r", "--ledger", &ledger_dir.to_str().unwrap()])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true)
@@ -262,7 +263,8 @@ async fn setup_test_run(config_path: &Path, owner_keypair_path: Option<&Path>) -
     let (wallet_path, cleanup_path) = if let Some(path) = owner_keypair_path {
         (path.to_path_buf(), None)
     } else {
-        let tmp = PathBuf::from(format!("/tmp/test-owner-{}.json", std::process::id()));
+        let tmp = tmp_path(&format!("test-owner-{}.json", std::process::id()));
+
         run_cmd(
             "solana-keygen",
             &[
@@ -270,7 +272,7 @@ async fn setup_test_run(config_path: &Path, owner_keypair_path: Option<&Path>) -
                 "--no-bip39-passphrase",
                 "--force",
                 "--outfile",
-                &tmp.to_string_lossy(),
+                &tmp.to_str().unwrap(),
             ],
         )
         .await;
@@ -376,8 +378,8 @@ pub async fn spawn_client(
     let wallet_path = if let Some(path) = keypair_path {
         path.to_path_buf()
     } else {
-        let tmp = PathBuf::from(format!(
-            "/tmp/test-client-{}-{}.json",
+        let tmp = tmp_path(&format!(
+            "test-client-{}-{}.json",
             client_index,
             std::process::id()
         ));
@@ -388,7 +390,7 @@ pub async fn spawn_client(
                 "--no-bip39-passphrase",
                 "--force",
                 "--outfile",
-                &tmp.to_string_lossy(),
+                tmp.to_str().unwrap(),
             ],
         )
         .await;
