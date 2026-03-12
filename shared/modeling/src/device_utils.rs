@@ -1,9 +1,8 @@
 use std::{fmt, str::FromStr};
 
+use anyhow::Context;
 use itertools::Itertools;
-use tch::{Device, utils::has_mps};
-#[cfg(test)]
-use tch::{Kind, Tensor};
+use tch::{utils::has_mps, Device, Kind, Tensor};
 use thiserror::Error;
 
 /// Get all available CUDA devices
@@ -97,6 +96,22 @@ impl Devices {
             Devices::Cpu => true,
             Devices::Cuda(_) => tch::utils::has_cuda() && tch::Cuda::is_available(),
             Devices::Mps => has_mps(),
+        }
+    }
+
+    /// Ensures the device is usable
+    ///
+    /// Currently does nothing for CPU and MPS devices
+    pub fn ensure_usable(&self) -> anyhow::Result<()> {
+        match self {
+            Devices::Cpu | Devices::Mps => Ok(()),
+            Devices::Cuda(device_indices) => {
+                for &device_idx in device_indices {
+                    ensure_cuda_device_usable(device_idx)
+                        .with_context(|| format!("cuda:{device_idx} is not usable"))?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -217,6 +232,46 @@ impl DevicePytorchStr for Device {
     }
 }
 
+/// Ensures that a CUDA device is usable
+///
+/// The causal SDPA with a large sequence length is designed to trigger cuDNN's
+/// runtime kernel compilation
+fn ensure_cuda_device_usable(device_idx: usize) -> anyhow::Result<()> {
+    let device = Device::Cuda(device_idx);
+
+    let batch: i64 = 2;
+    let heads: i64 = 32;
+    let seq_len: i64 = 4096;
+    let head_dim: i64 = 128;
+
+    let q = Tensor::f_randn([batch, heads, seq_len, head_dim], (Kind::BFloat16, device))?
+        .f_set_requires_grad(true)
+        .context("failed to set requires grad")?;
+    let k = Tensor::f_randn([batch, heads, seq_len, head_dim], (Kind::BFloat16, device))?
+        .f_set_requires_grad(true)
+        .context("failed to set requires grad")?;
+    let v = Tensor::f_randn([batch, heads, seq_len, head_dim], (Kind::BFloat16, device))?
+        .f_set_requires_grad(true)
+        .context("failed to set requires grad")?;
+
+    let output = Tensor::f_scaled_dot_product_attention::<Tensor>(
+        &q, &k, &v, None,  // attn_mask
+        0.0,   // dropout_p
+        true,  // is_causal
+        None,  // scale (None = default 1/sqrt(head_dim))
+        false, // enable_gqa
+    )
+    .context("failed to run SDPA operation")?;
+
+    let loss = output
+        .f_sum(Kind::BFloat16)
+        .context("failed to sum SDPA output")?;
+    loss.f_backward()
+        .context("failed to run backward pass on SDPA output")?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use tch::utils::has_cuda;
@@ -242,11 +297,9 @@ mod tests {
                     .unwrap(),
                 Devices::Cuda((0..tch::Cuda::device_count() as usize).collect())
             );
-            assert!(
-                format!("cuda:{}", tch::Cuda::device_count())
-                    .parse::<Devices>()
-                    .is_err()
-            );
+            assert!(format!("cuda:{}", tch::Cuda::device_count())
+                .parse::<Devices>()
+                .is_err());
         } else {
             assert!(matches!(
                 "cuda".parse::<Devices>(),
