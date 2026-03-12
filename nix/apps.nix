@@ -31,14 +31,12 @@
           coordinatorProgram = self'.packages.solana-coordinator-program;
           authorizerProgram = self'.packages.solana-authorizer-program;
           solana = inputs.solana-pkgs.packages.${system}.solana;
-          anchor = inputs.solana-pkgs.packages.${system}.anchor;
           baseConfig = ../config/solana-test/nano-config.toml;
 
           script = pkgs.writeShellApplication {
             name = "solana-test-${testName}";
             runtimeInputs = [
               solana
-              anchor
               self'.packages.run-manager
               self'.packages.psyche-solana-client
               testBinary

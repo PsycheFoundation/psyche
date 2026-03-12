@@ -67,17 +67,8 @@ impl Drop for SubprocessTestCleanup {
 
 /// Run a command and panic if it fails. Returns stdout as string.
 async fn run_cmd(program: &str, args: &[&str]) -> String {
-    run_cmd_in(program, args, None).await
-}
-
-/// Run a command in an optional working directory. Panics on failure.
-async fn run_cmd_in(program: &str, args: &[&str], cwd: Option<&Path>) -> String {
-    let mut cmd = Command::new(program);
-    cmd.args(args);
-    if let Some(dir) = cwd {
-        cmd.current_dir(dir);
-    }
-    let output = cmd
+    let output = Command::new(program)
+        .args(args)
         .output()
         .await
         .unwrap_or_else(|e| panic!("Failed to run {program}: {e}"));
@@ -128,14 +119,6 @@ fn authorizer_keypair_path() -> PathBuf {
         "SOLANA_AUTHORIZER_DIR",
         "../solana-authorizer/target/deploy",
         "psyche_solana_authorizer-keypair.json",
-    )
-}
-
-fn authorizer_idl_path() -> PathBuf {
-    program_artifact_path(
-        "SOLANA_AUTHORIZER_DIR",
-        "../solana-authorizer/target/deploy",
-        "psyche_solana_authorizer.json",
     )
 }
 
@@ -190,12 +173,11 @@ async fn start_validator(watcher: &SubprocessWatcher) -> Child {
     child
 }
 
-/// Deploy the Solana programs (authorizer + coordinator) and init the authorizer IDL.
+/// Deploy the Solana programs (authorizer + coordinator).
 async fn deploy_programs() {
     println!("[+] Deploying Solana Authorizer...");
     let auth_so = authorizer_so_path();
     let auth_keypair = authorizer_keypair_path();
-    let auth_idl = authorizer_idl_path();
 
     assert!(
         auth_so.exists(),
@@ -216,45 +198,6 @@ async fn deploy_programs() {
             "--max-len",
             "500000",
         ],
-    )
-    .await;
-
-    // Get authorizer program ID for IDL init
-    let auth_id = run_cmd(
-        "solana",
-        &["address", "-k", &auth_keypair.to_string_lossy()],
-    )
-    .await;
-    let auth_id = auth_id.trim();
-    println!("[+] Authorizer program ID: {auth_id}");
-
-    // IDL init — anchor requires an Anchor.toml in the cwd, so create a
-    // minimal dummy workspace in a temp dir.
-    println!("[+] Initializing Authorizer IDL...");
-    let anchor_workspace = PathBuf::from(format!("/tmp/anchor-workspace-{}", std::process::id()));
-    std::fs::create_dir_all(&anchor_workspace).expect("Failed to create anchor workspace dir");
-    std::fs::write(
-        anchor_workspace.join("Anchor.toml"),
-        format!("[provider]\ncluster = \"{RPC_URL}\"\n"),
-    )
-    .expect("Failed to write dummy Anchor.toml");
-    run_cmd_in(
-        "anchor",
-        &[
-            "idl",
-            "init",
-            "--provider.cluster",
-            RPC_URL,
-            "--provider.wallet",
-            &format!(
-                "{}/.config/solana/id.json",
-                std::env::var("HOME").unwrap_or_else(|_| "/root".to_string())
-            ),
-            "--filepath",
-            &auth_idl.to_string_lossy(),
-            auth_id,
-        ],
-        Some(&anchor_workspace),
     )
     .await;
 
