@@ -4,5 +4,5 @@ psycheLib.buildSolanaIdl {
   workspaceDir = ./.;
   sourceRoot = "source/architectures/decentralized/solana-coordinator";
   programName = "solana-coordinator";
-  keypair = ../local-dev-keypair.json;
+  keypair = ./target/deploy/psyche_solana_coordinator-keypair.json;
 }

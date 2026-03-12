@@ -4,5 +4,5 @@ psycheLib.buildSolanaIdl {
   workspaceDir = ./.;
   sourceRoot = "source/architectures/decentralized/solana-mining-pool";
   programName = "solana-mining-pool";
-  keypair = ../local-dev-keypair.json;
+  keypair = ./target/deploy/psyche_solana_mining_pool-keypair.json;
 }

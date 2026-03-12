@@ -136,7 +136,7 @@ async fn start_validator(watcher: &SubprocessWatcher) -> Child {
     run_cmd("solana", &["config", "set", "--url", "localhost"]).await;
 
     println!("[+] Starting solana-test-validator...");
-    let child = Command::new("solana-test-validator")
+    let mut child = Command::new("solana-test-validator")
         .arg("-r")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -154,6 +154,31 @@ async fn start_validator(watcher: &SubprocessWatcher) -> Child {
     // Wait for validator to be ready
     println!("[+] Waiting for validator to be ready...");
     for attempt in 0..60 {
+        // Check if the validator process has already exited
+        if let Some(status) = child.try_wait().expect("Failed to check validator status") {
+            let stdout = child.stdout.take();
+            let stderr = child.stderr.take();
+            let stdout_str = if let Some(mut s) = stdout {
+                let mut buf = String::new();
+                use tokio::io::AsyncReadExt;
+                let _ = s.read_to_string(&mut buf).await;
+                buf
+            } else {
+                String::new()
+            };
+            let stderr_str = if let Some(mut s) = stderr {
+                let mut buf = String::new();
+                use tokio::io::AsyncReadExt;
+                let _ = s.read_to_string(&mut buf).await;
+                buf
+            } else {
+                String::new()
+            };
+            panic!(
+                "Validator exited early with status {status}\nstdout: {stdout_str}\nstderr: {stderr_str}"
+            );
+        }
+
         tokio::time::sleep(Duration::from_secs(1)).await;
         let result = Command::new("solana")
             .args(["cluster-version", "--url", RPC_URL])
