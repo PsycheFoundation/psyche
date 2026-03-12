@@ -1,5 +1,5 @@
-# Garnix action apps for integration tests and Docker image pushing.
-{ inputs, ... }:
+# Garnix apps for Docker image pushing
+{ ... }:
 {
   perSystem =
     {
@@ -10,57 +10,6 @@
       ...
     }:
     let
-      solanaTests = [
-        "test_one_clients_three_epochs_run"
-        "test_two_clients_three_epochs_run"
-        "test_client_join_and_get_model_p2p"
-        # test_rejoining_client_delay requires network delay (CAP_NET_ADMIN) — #[ignore]d
-        "disconnect_client"
-        "drop_a_client_waitingformembers_then_reconnect"
-        "test_when_all_clients_disconnect_checkpoint_is_hub"
-        "test_everybody_leaves_in_warmup"
-        "test_lost_only_peer_go_back_to_hub_checkpoint"
-        "test_pause_and_resume_run"
-        # test_solana_rpc_fallback requires nginx proxies — not yet ported to subprocess mode
-      ];
-
-      mkTestApp =
-        testName:
-        let
-          testBinary = self'.packages."test-psyche-decentralized-testing-integration_tests";
-          coordinatorProgram = self'.packages.solana-coordinator-program;
-          authorizerProgram = self'.packages.solana-authorizer-program;
-          solana = inputs.solana-pkgs.packages.${system}.solana;
-          baseConfig = ../config/solana-test/nano-config.toml;
-
-          script = pkgs.writeShellApplication {
-            name = "solana-test-${testName}";
-            runtimeInputs = [
-              solana
-              self'.packages.run-manager
-              self'.packages.psyche-solana-client
-              testBinary
-              pkgs.coreutils
-              pkgs.gnugrep
-              pkgs.gnutar
-              pkgs.bzip2
-            ];
-            text = ''
-              export SOLANA_PROGRAMS_DIR="${coordinatorProgram}"
-              export SOLANA_AUTHORIZER_DIR="${authorizerProgram}"
-              export TEST_BASE_CONFIG_PATH="${baseConfig}"
-              export HOME="''${HOME:-/tmp/test-home}"
-              mkdir -p "$HOME"
-
-              echo "running test: ${testName}"
-              test-psyche-decentralized-testing-integration_tests --nocapture "${testName}"
-            '';
-          };
-        in
-        {
-          type = "app";
-          program = lib.getExe script;
-        };
 
       dockerhubPasswordAge = ../secrets/dockerhub-password.age;
 
@@ -104,13 +53,6 @@
           program = lib.getExe script;
         };
 
-      testApps = builtins.listToAttrs (
-        map (testName: {
-          name = "solana-test-${testName}";
-          value = mkTestApp testName;
-        }) solanaTests
-      );
-
       pushApps = {
         push-docker-solana-client = mkDockerPushApp {
           repository = "nousresearch/psyche-client";
@@ -123,6 +65,6 @@
       };
     in
     lib.optionalAttrs (system == "x86_64-linux") {
-      apps = testApps // pushApps;
+      apps = pushApps;
     };
 }

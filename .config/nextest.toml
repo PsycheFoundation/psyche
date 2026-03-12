@@ -13,10 +13,6 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 default-filter = 'not (package(psyche-modeling) and test(parallelism::)) and not package(psyche-decentralized-testing) and not package(run-manager)'
 fail-fast = false
 
-[profile.decentralized]
-slow-timeout = { period = "60s", terminate-after = 3 }
-default-filter = 'package(psyche-decentralized-testing) or package(run-manager)'
-
 [profile.parallelism]
 slow-timeout = { period = "30s", terminate-after = 3 }
 default-filter = 'package(psyche-modeling) and test(parallelism::)'

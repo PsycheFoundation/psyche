@@ -19,11 +19,7 @@ servers:
       type: on-branch
       branch: main
 builds:
-  - exclude:
-      - 'checks.x86_64-linux.workspace-test-all'
-      - 'checks.x86_64-linux.workspace-test-decentralized'
-      - 'checks.x86_64-linux.workspace-test-parallelism'
-    include:
+  - include:
       - 'packages.x86_64-linux.psyche-solana-client'
       - 'packages.x86_64-linux.psyche-centralized-client'
       - 'packages.x86_64-linux.psyche-centralized-server'
@@ -38,8 +34,7 @@ builds:
       - 'devShells.x86_64-linux.*'
       - 'nixosConfigurations.*'
       - 'checks.x86_64-linux.*'
-
-  # on main, might as well build everything, though
+    # on main, might as well build everything, though
   - exclude:
       - 'packages.aarch64-darwin.*'
       - 'devShells.aarch64-darwin.*'
@@ -50,24 +45,8 @@ builds:
 
 actions:
   - on: push
-    run: solana-test-test_one_clients_three_epochs_run
-  - on: push
-    run: solana-test-test_two_clients_three_epochs_run
-  - on: push
-    run: solana-test-test_client_join_and_get_model_p2p
-  - on: push
-    run: solana-test-disconnect_client
-  - on: push
-    run: solana-test-drop_a_client_waitingformembers_then_reconnect
-  - on: push
-    run: solana-test-test_when_all_clients_disconnect_checkpoint_is_hub
-  - on: push
-    run: solana-test-test_everybody_leaves_in_warmup
-  - on: push
-    run: solana-test-test_lost_only_peer_go_back_to_hub_checkpoint
-  - on: push
-    run: solana-test-test_pause_and_resume_run
-  - on: push
+    branch: garnix-actions
     run: push-docker-solana-client
   - on: push
+    branch: main
     run: push-docker-gateway
