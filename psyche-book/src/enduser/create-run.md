@@ -22,13 +22,13 @@ We’ll need a keypair file that manages join permissions. This can be the defau
 
 #### Join Authority for Public Runs
 
-If we're looking to make a permissionless run (anyone can join), we'll need to create an authorization that's valid for everyone. In this case, if we set the authorizer to be `11111111111111111111111111111111` in the following command it will be valid for everyone so any other client can join the created run without additional restrictions.
+If we're looking to make a permissionless run (anyone can join), we'll need to create an authorization that's valid for everyone. This can be done by using the `permissionless` authorization type, which maps to the system program ID (`11111111111111111111111111111111`) and allows any client to join the created run without additional restrictions.
 
 ```sh
 run-manager join-authorization-create \
     --rpc [RPC] \
     --wallet-private-key-path [SOLANA_KEY_FILE] \
-    --authorizer 11111111111111111111111111111111
+    --authorization permissionless
 ```
 
 In this case the `SOLANA_KEY_FILE` needs to be the path to a Solana keypair that is creating the authorization for this specific run.
@@ -45,7 +45,7 @@ First, create the authorization with the following parameters:
 run-manager join-authorization-create \
     --rpc [RPC] \
     --wallet-private-key-path ~/.config/solana/owner.json \
-    --authorizer $(solana-keygen pubkey ~/.config/solana/joiner.json)
+    --authorization $(solana-keygen pubkey ~/.config/solana/joiner.json)
 ```
 
 This command uses the public key of the user you want to allow to join and the keypair of the run owner to create the appropriate authorization. The `solana-keygen pubkey` command just gives you the public key derivated from the keypair file.

@@ -43,7 +43,7 @@ cargo run --release --bin run-manager -- \
     join-authorization-create \
     --wallet-private-key-path ${WALLET_FILE} \
     --rpc "${RPC}" \
-    --authorizer 11111111111111111111111111111111
+    --authorization permissionless
 
 echo -e "\n[+] Creating training run..."
 cargo run --release --bin run-manager -- \
