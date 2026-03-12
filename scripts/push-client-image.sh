@@ -7,4 +7,4 @@ IMAGE_PATH=$(cat image-path.txt)
 "$IMAGE_PATH" | skopeo copy \
     --dest-creds "${REGISTRY_USERNAME}:${REGISTRY_PASSWORD}" \
     docker-archive:/dev/stdin \
-    "docker://${DOCKER_REPOSITORY}:latest"
+    "docker://${DOCKER_REPOSITORY}:${DOCKER_TAG:-latest}"
