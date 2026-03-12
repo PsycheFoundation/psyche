@@ -160,6 +160,7 @@ pub struct ConfigBuilder {
     batch_size: u32,
     architecture: String,
     waiting_for_members_extra_time: Option<u32>,
+    round_witness_time: Option<u32>,
 }
 
 impl Default for ConfigBuilder {
@@ -189,6 +190,7 @@ impl ConfigBuilder {
             batch_size: 4,
             architecture: String::from("HfLlama"),
             waiting_for_members_extra_time: None,
+            round_witness_time: None,
         }
     }
 
@@ -218,6 +220,11 @@ impl ConfigBuilder {
         self
     }
 
+    pub fn with_round_witness_time(mut self, time: u32) -> Self {
+        self.round_witness_time = Some(time);
+        self
+    }
+
     pub fn build(mut self) -> PathBuf {
         // Use min_clients if set, otherwise default to num_clients
         let min_clients = self.min_clients.unwrap_or(self.num_clients);
@@ -238,6 +245,10 @@ impl ConfigBuilder {
 
         if let Some(time) = self.waiting_for_members_extra_time {
             self.set_value("config.waiting_for_members_extra_time", time);
+        }
+
+        if let Some(time) = self.round_witness_time {
+            self.set_value("config.round_witness_time", time);
         }
 
         let config_content = toml::to_string(&self.base_config).unwrap();
