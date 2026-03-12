@@ -426,9 +426,15 @@ class TorchtitanAuto(CausalLM):
         from torch.nn.attention.flex_attention import create_block_mask
 
         with torch.no_grad():
-            attention_masks = self.model.get_attention_masks(
-                create_block_mask, input_ids, eos_id=None
-            )
+            import inspect
+
+            sig = inspect.signature(self.model.get_attention_masks)
+            params = list(sig.parameters.keys())
+            args = [create_block_mask, input_ids]
+            kwargs = {}
+            if "eos_id" in params:
+                kwargs["eos_id"] = None
+            attention_masks = self.model.get_attention_masks(*args, **kwargs)
 
         self._cached_attention_masks = attention_masks
         self._cached_seq_len = seq_len
