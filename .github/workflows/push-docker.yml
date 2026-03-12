@@ -2,7 +2,7 @@ name: Push Client Image
 on:
   push:
     branches:
-      - main
+      - tt-update-build
 
 jobs:
   push-docker-image:
