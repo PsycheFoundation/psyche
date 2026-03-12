@@ -42,6 +42,8 @@
               testBinary
               pkgs.coreutils
               pkgs.gnugrep
+              pkgs.gnutar
+              pkgs.bzip2
             ];
             text = ''
               export SOLANA_PROGRAMS_DIR="${coordinatorProgram}"
