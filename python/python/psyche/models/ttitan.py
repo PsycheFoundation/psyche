@@ -64,6 +64,7 @@ class TorchtitanAuto(CausalLM):
         self._cached_attention_masks = None
         self._cached_seq_len = None
         self._needs_attention_masks = hasattr(model, "get_attention_masks")
+        self._logged_signatures = False
 
     @staticmethod
     def convert_config(config, override_max_position_embeddings: Optional[int] = None):
@@ -424,17 +425,47 @@ class TorchtitanAuto(CausalLM):
             return self._cached_attention_masks
 
         from torch.nn.attention.flex_attention import create_block_mask
+        import inspect
+
+        sig = inspect.signature(self.model.get_attention_masks)
+        params = list(sig.parameters.keys())
+        print(
+            f"[psyche] get_attention_masks signature: {sig}, params: {params}",
+            flush=True,
+        )
+
+        kwargs = {}
+        # Upstream torchtitan convention (PR #1776): (create_mask_fn, batch, eos_id)
+        # Some model variants just take (input_batch, ...)
+        if "create_mask_fn" in params:
+            kwargs["create_mask_fn"] = create_block_mask
+        if "input_batch" in params or "batch" in params:
+            key = "input_batch" if "input_batch" in params else "batch"
+            kwargs[key] = input_ids
+        if "eos_id" in params:
+            kwargs["eos_id"] = None
+
+        # Fallback: if we didn't match any known parameter names, try
+        # positional: first arg = input tensor (most common single-arg form)
+        if not kwargs:
+            print(
+                f"[psyche] WARNING: unrecognized get_attention_masks params {params}, "
+                f"trying positional call with input_ids",
+                flush=True,
+            )
+            kwargs = {}
 
         with torch.no_grad():
-            import inspect
+            if kwargs:
+                attention_masks = self.model.get_attention_masks(**kwargs)
+            else:
+                attention_masks = self.model.get_attention_masks(input_ids)
 
-            sig = inspect.signature(self.model.get_attention_masks)
-            params = list(sig.parameters.keys())
-            args = [create_block_mask, input_ids]
-            kwargs = {}
-            if "eos_id" in params:
-                kwargs["eos_id"] = None
-            attention_masks = self.model.get_attention_masks(*args, **kwargs)
+        print(
+            f"[psyche] get_attention_masks returned type={type(attention_masks)}, "
+            f"value={'None' if attention_masks is None else (type(attention_masks).__name__ + ': ' + str({k: type(v).__name__ for k, v in attention_masks.items()}) if isinstance(attention_masks, dict) else repr(attention_masks))}",
+            flush=True,
+        )
 
         self._cached_attention_masks = attention_masks
         self._cached_seq_len = seq_len
@@ -466,6 +497,22 @@ class TorchtitanAuto(CausalLM):
                         position_ids = position_ids.narrow(0, start_row, shard_size)
         try:
             with self.amp, torch.cuda.device(input_ids.device.index):
+                if not self._logged_signatures:
+                    import inspect
+
+                    fwd_sig = inspect.signature(self.model.forward)
+                    print(
+                        f"[psyche] model.forward signature: {fwd_sig}",
+                        flush=True,
+                    )
+                    print(
+                        f"[psyche] model type: {type(self.model).__name__}, "
+                        f"model_type config: {self.config.model_type}, "
+                        f"needs_attention_masks: {self._needs_attention_masks}",
+                        flush=True,
+                    )
+                    self._logged_signatures = True
+
                 attention_masks = self._build_attention_masks(input_ids)
 
                 forward_kwargs = {
