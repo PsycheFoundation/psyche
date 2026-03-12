@@ -135,9 +135,10 @@ async fn start_validator(watcher: &SubprocessWatcher) -> Child {
     println!("[+] Setting solana config...");
     run_cmd("solana", &["config", "set", "--url", "localhost"]).await;
 
-    println!("[+] Starting solana-test-validator...");
+    let ledger_dir = format!("/tmp/test-ledger-{}", std::process::id());
+    println!("[+] Starting solana-test-validator (ledger: {ledger_dir})...");
     let mut child = Command::new("solana-test-validator")
-        .arg("-r")
+        .args(["-r", "--ledger", &ledger_dir])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true)
