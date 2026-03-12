@@ -61,10 +61,12 @@ pub struct UploadUrlResponse {
 }
 
 /// Get a signed upload URL for a file
+#[allow(clippy::too_many_arguments)]
 pub async fn get_upload_url(
     client: &reqwest::Client,
     run_id: &str,
     wallet_address: &str,
+    authorization_grantee: &str,
     signature: &str,
     filename: &str,
     expires_in_seconds: u64,
@@ -74,6 +76,7 @@ pub async fn get_upload_url(
 
     let body = serde_json::json!({
         "walletAddress": wallet_address,
+        "authorizationGrantee": authorization_grantee,
         "filename": filename,
         "expiresInSeconds": expires_in_seconds,
         "nonce": nonce.to_string(),
@@ -102,6 +105,7 @@ pub async fn get_download_urls(
     client: &reqwest::Client,
     run_id: &str,
     wallet_address: &str,
+    authorization_grantee: &str,
     signature: &str,
     expires_in_seconds: u64,
     nonce: u64,
@@ -110,6 +114,7 @@ pub async fn get_download_urls(
 
     let body = serde_json::json!({
         "walletAddress": wallet_address,
+        "authorizationGrantee": authorization_grantee,
         "expiresInSeconds": expires_in_seconds,
         "nonce": nonce.to_string(),
     });

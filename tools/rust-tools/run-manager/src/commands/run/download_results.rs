@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::commands::Command;
+use anchor_client::solana_sdk::pubkey::Pubkey;
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use clap::Args;
@@ -25,6 +26,9 @@ pub struct CommandDownloadResults {
 
     #[clap(long)]
     pub overwrite: bool,
+
+    #[clap(long, env)]
+    pub authorizer: Pubkey,
 }
 
 #[async_trait]
@@ -35,6 +39,7 @@ impl Command for CommandDownloadResults {
             output_dir,
             expires_in_seconds,
             overwrite,
+            authorizer,
         } = self;
 
         // Check if output directory exists and is not empty
@@ -86,6 +91,7 @@ impl Command for CommandDownloadResults {
             &client,
             &run_id,
             &wallet_address,
+            &authorizer.to_string(),
             &signature_b58,
             expires_in_seconds,
             nonce,
