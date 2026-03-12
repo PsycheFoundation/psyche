@@ -1,0 +1,80 @@
+# Docker Compose for isolated network model sharing test.
+#
+# Sharer and downloaders run on separate Docker networks that cannot reach
+# each other directly. Both have internet access for the psyche relay, but
+# holepunching between them fails naturally — forcing organic relay fallback.
+#
+# Usage:
+#   docker compose -f shared/network/examples/docker-isolated-test/docker-compose.yml up --build
+#
+# Environment variables:
+#   NUM_PARAMS       - number of parameters (default: 10)
+#   PARAM_SIZE_MB    - size per parameter in MB (default: 200)
+#   NUM_DOWNLOADERS  - downloader replicas (default: 5)
+#   MAX_CONCURRENT   - max concurrent downloads (default: 4)
+#   DISCOVERY_MODE   - local, n0 (default: n0)
+#   RELAY_KIND       - disabled, psyche, n0 (default: psyche)
+
+services:
+  sharer:
+    build:
+      context: ../../../..
+      dockerfile: shared/network/examples/docker-isolated-test/Dockerfile
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        model_sharing_test --mode=sharer \
+          --num-parameters=${NUM_PARAMS:-10} \
+          --parameter-size-mb=${PARAM_SIZE_MB:-200} \
+          --discovery-mode=${DISCOVERY_MODE:-n0} \
+          --relay-kind=${RELAY_KIND:-psyche} &
+        PID=$$!
+        while [ ! -f /tmp/sharer_addr.json ]; do sleep 0.5; done
+        cp /tmp/sharer_addr.json /shared/sharer_addr.json
+        wait $$PID
+    volumes:
+      - sharer-addr:/shared
+    environment:
+      - RUST_LOG=${RUST_LOG:-info}
+    networks:
+      - sharer-net
+    healthcheck:
+      test: ['CMD-SHELL', 'test -f /shared/sharer_addr.json']
+      interval: 2s
+      timeout: 2s
+      retries: 60
+      start_period: 5s
+
+  downloader:
+    build:
+      context: ../../../..
+      dockerfile: shared/network/examples/docker-isolated-test/Dockerfile
+    command:
+      - '--mode=downloader'
+      - '--num-downloaders=1'
+      - '--num-parameters=${NUM_PARAMS:-10}'
+      - '--parameter-size-mb=${PARAM_SIZE_MB:-200}'
+      - '--max-concurrent-downloads=${MAX_CONCURRENT:-4}'
+      - '--discovery-mode=${DISCOVERY_MODE:-n0}'
+      - '--relay-kind=${RELAY_KIND:-psyche}'
+      - '--sharer-addr=/shared/sharer_addr.json'
+    volumes:
+      - sharer-addr:/shared:ro
+    environment:
+      - RUST_LOG=${RUST_LOG:-info}
+    networks:
+      - downloader-net
+    depends_on:
+      sharer:
+        condition: service_healthy
+    deploy:
+      replicas: ${NUM_DOWNLOADERS:-5}
+
+volumes:
+  sharer-addr:
+
+networks:
+  sharer-net:
+    driver: bridge
+  downloader-net:
+    driver: bridge

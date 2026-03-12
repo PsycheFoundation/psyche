@@ -1,5 +1,6 @@
 use anyhow::Result;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
+use iroh::EndpointAddr;
 use iroh_blobs::BlobFormat;
 use iroh_blobs::Hash;
 use iroh_blobs::api::Tag;
@@ -22,10 +23,29 @@ use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
+#[derive(Debug, Clone, ValueEnum)]
+enum RunMode {
+    /// Run everything in one process (default, original behavior)
+    All,
+    /// Run as a sharer only — prints endpoint address JSON to stdout for downloaders
+    Sharer,
+    /// Run as a downloader only — requires --sharer-addr
+    Downloader,
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "model_sharing_test")]
 #[command(about = "Test harness for P2P model sharing flow")]
 struct CliArgs {
+    /// Run mode: "all" (default), "sharer", or "downloader"
+    #[clap(long, value_enum, default_value_t = RunMode::All)]
+    mode: RunMode,
+
+    /// JSON-encoded sharer endpoint address (required in downloader mode).
+    /// Can also be a path to a file containing the JSON.
+    #[clap(long)]
+    sharer_addr: Option<String>,
+
     #[clap(long, default_value_t = 1)]
     num_sharers: usize,
 
@@ -629,6 +649,19 @@ fn print_report(reports: &[DownloaderReport], param_size_bytes: usize) {
     println!("\n{separator}");
 }
 
+/// Parse sharer address from a JSON string or a file path containing JSON.
+fn parse_sharer_addr(raw: &str) -> Result<EndpointAddr> {
+    // Try parsing as JSON first
+    if let Ok(addr) = serde_json::from_str::<EndpointAddr>(raw) {
+        return Ok(addr);
+    }
+    // Try reading as a file path
+    let content = std::fs::read_to_string(raw)
+        .map_err(|e| anyhow::anyhow!("Failed to read sharer-addr file '{raw}': {e}"))?;
+    serde_json::from_str::<EndpointAddr>(content.trim())
+        .map_err(|e| anyhow::anyhow!("Failed to parse sharer-addr JSON: {e}"))
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = CliArgs::parse();
@@ -647,19 +680,18 @@ async fn main() -> Result<()> {
 
     let param_names = generate_parameter_names(args.num_parameters);
     let param_size_bytes = args.parameter_size_mb * 1024 * 1024;
+    let relay_only = args.relay_only;
 
     println!("Model Sharing Test Configuration:");
-    println!("  Sharers:              {}", args.num_sharers);
-    println!("  Downloaders:          {}", args.num_downloaders);
+    println!("  Mode:                 {:?}", args.mode);
     println!("  Parameters:           {}", args.num_parameters);
     println!("  Parameter size:       {} MB", args.parameter_size_mb);
     println!("  Max concurrent DLs:   {}", args.max_concurrent_downloads);
     println!("  Discovery mode:       {discovery_mode:?}");
     println!("  Relay kind:           {relay_kind:?}");
-    if args.slow_sharers > 0 {
+    if relay_only {
         println!(
-            "  Slow sharers:         {} (throttled to {} KB/s)",
-            args.slow_sharers, args.slow_sharer_rate_kb
+            "  Relay-only mode:      ENABLED (direct IP transports disabled, all traffic via relay)"
         );
     }
     println!(
@@ -668,48 +700,35 @@ async fn main() -> Result<()> {
     );
     println!();
 
-    let relay_only = args.relay_only;
-    if relay_only {
-        println!(
-            "  Relay-only mode:      ENABLED (direct IP transports disabled, all traffic via relay)"
-        );
-    }
-
     let cancel = CancellationToken::new();
-    let num_fast = args.num_sharers.saturating_sub(args.slow_sharers);
 
-    let mut sharer_handles = Vec::new();
-    let mut sharer_ids = Vec::new();
-
-    for i in 0..args.num_sharers {
-        let is_slow = i >= num_fast;
-        // Each sharer gets its own FakeStore to avoid shared-state issues
-        // (e.g. config blob contaminating hash listings for other sharers).
-        let store = if is_slow {
-            FakeStore::builder()
+    match args.mode {
+        RunMode::Sharer => {
+            // Single sharer mode: create sharer, write endpoint addr to stdout and optionally file
+            let store = FakeStore::builder()
                 .with_unique_blobs(args.num_parameters, param_size_bytes as u64)
-                .with_throttle(
-                    std::num::NonZeroU64::new(args.slow_sharer_rate_kb * 1024)
-                        .expect("slow_sharer_rate_kb must be > 0"),
-                )
-                .build()
-        } else {
-            FakeStore::builder()
-                .with_unique_blobs(args.num_parameters, param_size_bytes as u64)
-                .build()
-        };
-        let label = if is_slow {
-            format!("Sharer-{i}-SLOW")
-        } else {
-            format!("Sharer-{i}")
-        };
-        let network =
-            create_peer(&label, discovery_mode, relay_kind, Some(&store), relay_only).await?;
-        sharer_ids.push(network.endpoint_id());
+                .build();
+            let network = create_peer(
+                "Sharer-0",
+                discovery_mode,
+                relay_kind,
+                Some(&store),
+                relay_only,
+            )
+            .await?;
 
-        let param_names = param_names.clone();
-        let cancel = cancel.clone();
-        sharer_handles.push(tokio::spawn(async move {
+            let endpoint_addr = network.endpoint_addr().await;
+            let addr_json = serde_json::to_string(&endpoint_addr)?;
+
+            // Print with marker so it can be parsed from logs
+            println!("SHARER_ADDR_JSON:{addr_json}");
+
+            // Also write to /tmp/sharer_addr.json for Docker volume sharing
+            if let Err(e) = std::fs::write("/tmp/sharer_addr.json", &addr_json) {
+                warn!("Could not write sharer addr to /tmp/sharer_addr.json: {e}");
+            }
+
+            info!("Sharer running, endpoint: {}", network.endpoint_id());
             run_sharer(
                 network,
                 store,
@@ -718,53 +737,158 @@ async fn main() -> Result<()> {
                 relay_only,
                 cancel,
             )
-            .await
-        }));
-    }
+            .await?;
+        }
 
-    tokio::time::sleep(Duration::from_secs(2)).await;
+        RunMode::Downloader => {
+            let sharer_addr_raw = args
+                .sharer_addr
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("--sharer-addr is required in downloader mode"))?;
+            let sharer_addr = parse_sharer_addr(sharer_addr_raw)?;
+            let sharer_id = sharer_addr.id;
+            info!("Downloader targeting sharer: {}", sharer_id.fmt_short());
 
-    let mut downloader_handles = Vec::new();
-    for i in 0..args.num_downloaders {
-        let network = create_peer(
-            &format!("Downloader-{i}"),
-            discovery_mode,
-            relay_kind,
-            None,
-            relay_only,
-        )
-        .await?;
-        let sharer_ids = sharer_ids.clone();
-        let cancel = cancel.clone();
-        let expected = args.num_parameters;
-        let max_concurrent = args.max_concurrent_downloads;
-        downloader_handles.push(tokio::spawn(async move {
-            run_downloader(
-                network,
-                sharer_ids,
-                expected,
-                max_concurrent,
-                param_size_bytes,
-                cancel,
-            )
-            .await
-        }));
-    }
+            let mut downloader_handles = Vec::new();
+            for i in 0..args.num_downloaders {
+                let network = create_peer(
+                    &format!("Downloader-{i}"),
+                    discovery_mode,
+                    relay_kind,
+                    None,
+                    relay_only,
+                )
+                .await?;
+                let sharer_ids = vec![sharer_id];
+                let cancel = cancel.clone();
+                let expected = args.num_parameters;
+                let max_concurrent = args.max_concurrent_downloads;
+                downloader_handles.push(tokio::spawn(async move {
+                    run_downloader(
+                        network,
+                        sharer_ids,
+                        expected,
+                        max_concurrent,
+                        param_size_bytes,
+                        cancel,
+                    )
+                    .await
+                }));
+            }
 
-    let mut reports = Vec::new();
-    for handle in downloader_handles {
-        match handle.await? {
-            Ok(report) => reports.push(report),
-            Err(e) => error!("Downloader failed: {e:#}"),
+            let mut reports = Vec::new();
+            for handle in downloader_handles {
+                match handle.await? {
+                    Ok(report) => reports.push(report),
+                    Err(e) => error!("Downloader failed: {e:#}"),
+                }
+            }
+
+            cancel.cancel();
+            print_report(&reports, param_size_bytes);
+        }
+
+        RunMode::All => {
+            // Original behavior: everything in one process
+            println!("  Sharers:              {}", args.num_sharers);
+            println!("  Downloaders:          {}", args.num_downloaders);
+            if args.slow_sharers > 0 {
+                println!(
+                    "  Slow sharers:         {} (throttled to {} KB/s)",
+                    args.slow_sharers, args.slow_sharer_rate_kb
+                );
+            }
+            println!();
+
+            let num_fast = args.num_sharers.saturating_sub(args.slow_sharers);
+            let mut sharer_handles = Vec::new();
+            let mut sharer_ids = Vec::new();
+
+            for i in 0..args.num_sharers {
+                let is_slow = i >= num_fast;
+                let store = if is_slow {
+                    FakeStore::builder()
+                        .with_unique_blobs(args.num_parameters, param_size_bytes as u64)
+                        .with_throttle(
+                            std::num::NonZeroU64::new(args.slow_sharer_rate_kb * 1024)
+                                .expect("slow_sharer_rate_kb must be > 0"),
+                        )
+                        .build()
+                } else {
+                    FakeStore::builder()
+                        .with_unique_blobs(args.num_parameters, param_size_bytes as u64)
+                        .build()
+                };
+                let label = if is_slow {
+                    format!("Sharer-{i}-SLOW")
+                } else {
+                    format!("Sharer-{i}")
+                };
+                let network =
+                    create_peer(&label, discovery_mode, relay_kind, Some(&store), relay_only)
+                        .await?;
+                sharer_ids.push(network.endpoint_id());
+
+                let param_names = param_names.clone();
+                let cancel = cancel.clone();
+                sharer_handles.push(tokio::spawn(async move {
+                    run_sharer(
+                        network,
+                        store,
+                        param_names,
+                        param_size_bytes,
+                        relay_only,
+                        cancel,
+                    )
+                    .await
+                }));
+            }
+
+            tokio::time::sleep(Duration::from_secs(2)).await;
+
+            let mut downloader_handles = Vec::new();
+            for i in 0..args.num_downloaders {
+                let network = create_peer(
+                    &format!("Downloader-{i}"),
+                    discovery_mode,
+                    relay_kind,
+                    None,
+                    relay_only,
+                )
+                .await?;
+                let sharer_ids = sharer_ids.clone();
+                let cancel = cancel.clone();
+                let expected = args.num_parameters;
+                let max_concurrent = args.max_concurrent_downloads;
+                downloader_handles.push(tokio::spawn(async move {
+                    run_downloader(
+                        network,
+                        sharer_ids,
+                        expected,
+                        max_concurrent,
+                        param_size_bytes,
+                        cancel,
+                    )
+                    .await
+                }));
+            }
+
+            let mut reports = Vec::new();
+            for handle in downloader_handles {
+                match handle.await? {
+                    Ok(report) => reports.push(report),
+                    Err(e) => error!("Downloader failed: {e:#}"),
+                }
+            }
+
+            cancel.cancel();
+            for handle in sharer_handles {
+                let _ = handle.await;
+            }
+
+            print_report(&reports, param_size_bytes);
         }
     }
-
-    cancel.cancel();
-    for handle in sharer_handles {
-        let _ = handle.await;
-    }
-
-    print_report(&reports, param_size_bytes);
 
     Ok(())
 }
