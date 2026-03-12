@@ -21,8 +21,12 @@ waiting_for_members_extra_time = 10
 architecture = "HfDeepseek"
 data_type = "Pretraining"
 max_seq_len = 2048
-data_location = { WeightedHttp = "https://storage.googleapis.com/nous-pretraining-public-us/consilience-stage1-mix.json" }
 cold_start_warmup_steps = 100
+
+[data_locations]
+data_locations = [
+  { WeightedHttp = "https://storage.googleapis.com/nous-pretraining-public-us/consilience-stage1-mix.json" },
+]
 
 [model.LLM.checkpoint.Hub]
 repo_id = "PsycheFoundation/consilience-v1-40b-init"

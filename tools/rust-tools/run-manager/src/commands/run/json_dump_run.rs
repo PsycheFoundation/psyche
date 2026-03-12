@@ -108,6 +108,7 @@ impl Command for CommandJsonDumpRun {
                 "client_version": coordinator_account_state.state.client_version,
                 "metadata": coordinator_account_state.state.metadata,
                 "model": coordinator_account_state.state.coordinator.model,
+                "data_locations": coordinator_account_state.state.coordinator.data_locations,
                 "config": coordinator_account_state.state.coordinator.config,
             },
             "status": {

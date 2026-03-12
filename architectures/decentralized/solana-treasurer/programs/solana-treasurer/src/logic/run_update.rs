@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
+use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::Model;
 use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::CoordinatorInstance;
@@ -47,6 +48,7 @@ pub struct RunUpdateParams {
     pub epoch_slashing_rate_per_client: Option<u64>,
     pub paused: Option<bool>,
     pub client_version: Option<String>,
+    pub data_location: Option<LLMTrainingDataLocation>,
 }
 
 pub fn run_update_processor(
@@ -106,6 +108,27 @@ pub fn run_update_processor(
             .with_signer(run_signer_seeds),
             params.epoch_earning_rate_total_shared,
             params.epoch_slashing_rate_per_client,
+        )?;
+    }
+
+    if let Some(data_location) = params.data_location {
+        psyche_solana_coordinator::cpi::update_data_locations(
+            CpiContext::new(
+                context.accounts.coordinator_program.to_account_info(),
+                OwnerCoordinatorAccounts {
+                    authority: context.accounts.run.to_account_info(),
+                    coordinator_instance: context
+                        .accounts
+                        .coordinator_instance
+                        .to_account_info(),
+                    coordinator_account: context
+                        .accounts
+                        .coordinator_account
+                        .to_account_info(),
+                },
+            )
+            .with_signer(run_signer_seeds),
+            Some(data_location),
         )?;
     }
 

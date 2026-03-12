@@ -353,6 +353,28 @@ export async function startWatchCoordinatorChainLoop(
 						})
 						break
 					}
+					case 'clear_data_locations': {
+						const runPdaAddr = i.accounts[1].toString()
+						const coordinatorAddr = i.accounts[2].toString()
+						runUpdates.getAndTouchCurrentRun({
+							runPdaAddr,
+							coordinatorAddr,
+							decoded,
+							tx,
+						})
+						break
+					}
+					case 'update_data_locations': {
+						const runPdaAddr = i.accounts[1].toString()
+						const coordinatorAddr = i.accounts[2].toString()
+						runUpdates.getAndTouchCurrentRun({
+							runPdaAddr,
+							coordinatorAddr,
+							decoded,
+							tx,
+						})
+						break
+					}
 					default: {
 						const _missed_tx: never = decoded
 						throw new Error(

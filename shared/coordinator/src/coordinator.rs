@@ -1,6 +1,6 @@
 use crate::{
     Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
-    model::{Checkpoint, Model},
+    model::{Checkpoint, LLMDataLocations, Model},
 };
 
 use anchor_lang::{
@@ -304,6 +304,8 @@ pub struct Coordinator {
     pub run_state: RunState,
 
     pub model: Model,
+
+    pub data_locations: LLMDataLocations,
 
     pub config: CoordinatorConfig,
 
