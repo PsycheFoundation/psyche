@@ -343,7 +343,7 @@ where
             let transport_config = QuicTransportConfig::builder()
                 .max_idle_timeout(Some(Duration::from_secs(120).try_into()?))
                 .keep_alive_interval(Duration::from_secs(5))
-                .set_max_remote_nat_traversal_addresses(50)
+                .set_max_remote_nat_traversal_addresses(12)
                 .build();
 
             let relay_mode = match relay_kind {
