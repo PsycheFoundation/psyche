@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use anchor_client::solana_sdk::pubkey::Pubkey;
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use clap::Args;
@@ -25,6 +26,9 @@ pub struct CommandUploadData {
     /// How long the signed URLs should be valid (in seconds)
     #[clap(long, env, default_value = "3600")]
     pub expires_in_seconds: u64,
+
+    #[clap(long, env)]
+    pub authorizer: Pubkey,
 }
 
 #[async_trait]
@@ -34,6 +38,7 @@ impl Command for CommandUploadData {
             run_id,
             path,
             expires_in_seconds,
+            authorizer,
         } = self;
 
         // Determine base directory for computing relative paths
@@ -100,6 +105,7 @@ impl Command for CommandUploadData {
                 &client,
                 &run_id,
                 &wallet_address,
+                &authorizer.to_string(),
                 &signature_b58,
                 relative_path,
                 expires_in_seconds,

@@ -102,9 +102,13 @@ pub async fn build_app(
     // Construct RunDownClient using the wallet keypair for signing.
     // This enables GCS checkpoint upload/download via run-down signed URLs.
     let run_down_keypair = wallet_keypair.clone();
+    let authorization_grantee = authorizer
+        .unwrap_or_else(|| wallet_keypair.pubkey())
+        .to_string();
     let run_down_client = Arc::new(RunDownClient::new(
         p.run_id.clone(),
         wallet_keypair.pubkey().to_string(),
+        authorization_grantee,
         move |msg| run_down_keypair.sign_message(msg).as_ref().to_vec(),
     ));
     checkpoint_config.run_down_client = Some(run_down_client);
