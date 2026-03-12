@@ -3,6 +3,22 @@ use iroh::EndpointAddr;
 use std::{fs, path::PathBuf};
 use tracing::info;
 
+/// Fetch the gateway's endpoint address via its HTTP `/bootstrap` endpoint.
+pub async fn fetch_bootstrap_peer(gateway_url: &str) -> Result<EndpointAddr> {
+    let url = format!("{}/bootstrap", gateway_url.trim_end_matches('/'));
+    info!("Fetching bootstrap info from {}", url);
+    let addr: EndpointAddr = reqwest::get(&url)
+        .await
+        .context("Failed to reach gateway bootstrap endpoint")?
+        .error_for_status()
+        .context("Gateway returned error for /bootstrap")?
+        .json()
+        .await
+        .context("Failed to parse bootstrap response as EndpointAddr")?;
+    info!("Got bootstrap peer: {}", addr.id.fmt_short());
+    Ok(addr)
+}
+
 pub fn load_bootstrap_peers(
     bootstrap_peer_file: Option<&PathBuf>,
     fallback_message: &str,
