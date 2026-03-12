@@ -1,4 +1,4 @@
-Thsi binary is a manager for Psyche client containers. It should allow users to connect to a Psyche without having to worry about client versions, as this performs the necessary checks beforehand.
+This binary is a manager for Psyche client containers. It should allow users to connect to a Psyche without having to worry about client versions, as this performs the necessary checks beforehand.
 
 One can run the run manager like this:
 

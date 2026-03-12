@@ -1,0 +1,28 @@
+[package]
+name = "train"
+edition = "2024"
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+clap-markdown.workspace = true
+psyche-coordinator.workspace = true
+psyche-core.workspace = true
+psyche-data-provider.workspace = true
+psyche-modeling.workspace = true
+psyche-network.workspace = true
+psyche-tui.workspace = true
+serde.workspace = true
+tch.workspace = true
+toml.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+
+psyche-python-extension-impl.workspace = true
+serde_json.workspace = true
+
+[features]
+parallelism = ["psyche-modeling/parallelism"]
+python = ["psyche-modeling/python"]
