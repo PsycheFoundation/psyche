@@ -15,28 +15,33 @@ total_steps = 25000
 waiting_for_members_extra_time = 3
 
 [model.LLM]
-architecture = "HfLlama"
-data_type = "Pretraining"
 max_seq_len = 2048
 cold_start_warmup_steps = 0
 
 [model.LLM.checkpoint.Hub]
 repo_id = "emozilla/llama2-20m-init"
 
-[model.LLM.data_location.Http]
+[model_extra_data]
+version = 1
+architecture = "HfLlama"
+data_type = "Pretraining"
+
+[model_extra_data.data_location.Http]
 token_size_in_bytes = "TwoBytes"
 shuffle = "DontShuffle"
-[model.LLM.data_location.Http.location.Gcp]
+
+[model_extra_data.data_location.Http.location.Gcp]
 bucket_name = "nous-pretraining-public-us"
 filter_directory = "fineweb-edu-tokenized-llama2"
 
-[model.LLM.lr_schedule.Cosine]
+[model_extra_data.lr_schedule.Cosine]
 base_lr = 4.0e-4
 warmup_steps = 250
 warmup_init_lr = 0.0
 total_steps = 25000
 final_lr = 4.0e-5
-[model.LLM.optimizer.Distro]
+
+[model_extra_data.optimizer.Distro]
 clip_grad_norm = 1.0
 compression_decay = 0.999
 compression_chunk = 64

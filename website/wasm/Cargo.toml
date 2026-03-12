@@ -8,6 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 psyche-solana-coordinator = { path = "../../architectures/decentralized/solana-coordinator/programs/solana-coordinator" }
+psyche-coordinator.workspace = true
 serde.workspace = true
 serde-wasm-bindgen = "0.6.5"
 wasm-bindgen = "=0.2.108"

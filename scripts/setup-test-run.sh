@@ -63,7 +63,8 @@ nix run .#run-manager -- \
     --rpc "${RPC}" \
     --ws-rpc "${WS_RPC}" \
     --run-id "${RUN_ID}" \
-    --config-path "config/solana-test/test-config.toml"
+    --config-path "config/solana-test/test-config.toml" \
+    --skip-upload-model-extra-data
 
 echo "[+] Unpausing run..."
 nix run .#run-manager -- \
