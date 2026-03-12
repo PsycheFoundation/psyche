@@ -16,7 +16,7 @@ Here's a sample config with some of its options documented.
 # maximum time, in seconds, to let nodes download the model from a checkpoint / other nodes
 warmup_time = 30
 
-# time, in seconds, to let nodes bring the model from the GPU to disk, and to opt to join the next round.
+# time, in seconds, to let nodes bring the model from the GPU to disk, upload the model to the remote storage and to opt to join the next round.
 cooldown_time = 30
 
 # time, in seconds, that an epoch will last.
@@ -70,9 +70,15 @@ architecture = "HfLlama"
 data_type = "Pretraining"
 max_seq_len = 2048
 
+# Use one of the following checkpoint options (Hub or Gcs, not both):
+
 [model.LLM.checkpoint.Hub]
-# Repo where the model is located in HugggingFace, will be used to download the model at the beginning of training.
+# Repo where the model is located in HuggingFace, will be used to download the model at the beginning of training.
 repo_id = "emozilla/llama2-20m-init"
+
+# Or, use Google Cloud Storage instead:
+# [model.LLM.checkpoint.Gcs]
+# bucket = "bucket_name"
 
 [model.LLM.data_location.Http]
 # Token size in bytes, can be "TwoBytes" or "FourBytes"

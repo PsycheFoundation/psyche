@@ -342,6 +342,17 @@ export async function startWatchCoordinatorChainLoop(
 						})
 						break
 					}
+					case 'cooldown_witness': {
+						const runPdaAddr = i.accounts[1].toString()
+						const coordinatorAddr = i.accounts[2].toString()
+						runUpdates.getAndTouchCurrentRun({
+							runPdaAddr,
+							coordinatorAddr,
+							decoded,
+							tx,
+						})
+						break
+					}
 					case 'update_client_version': {
 						const runPdaAddr = i.accounts[1].toString()
 						const coordinatorAddr = i.accounts[2].toString()

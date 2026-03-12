@@ -10,7 +10,7 @@ pub use client::Client;
 pub use protocol::{Broadcast, BroadcastType, Finished, NC, TrainingResult};
 pub use state::{
     CheckpointConfig, GcsUploadInfo, HubUploadInfo, InitRunError, RoundState, RunInitConfig,
-    RunInitConfigAndIO, UploadInfo,
+    RunInitConfigAndIO, UploadCredentials, UploadInfo,
 };
 pub use tui::{ClientTUI, ClientTUIState};
 

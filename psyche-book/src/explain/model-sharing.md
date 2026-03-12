@@ -6,15 +6,19 @@ At the beginning of a run, all clients must download the model parameters, token
 
 Each client will then modify their copy of the model by receiving new training results from other clients and applying them. This keeps everyone's copy of model identical within an **epoch** without an additional full synchronization step.
 
-When a new client joins a run that has already progressed past its first epoch, it would not be correct for the client to download the original model from HuggingFace, as the model parameters would have already been updated during training. Instead, the new client must acquire a copy of the model from the peers who have been actively training it.
+When a new client joins a run that has already progressed past its first epoch, it would not be correct for the client to download the original model from the external storage, as the model parameters would have already been updated during training. Instead, the new client must acquire a copy of the model from the peers who have been actively training it.
 
 This synchronization process occurs during the _Warmup_ phase, while the coordinator waits to begin the next _Training_ phase.
 
-To address this, we **checkpoint** the model at the end of an **epoch**, where clients save and share the entire model for new peers to join. There are two checkpointing variants: HuggingFace based and P2P based.
+To address this, we **checkpoint** the model at the end of an **epoch**, where clients save and share the entire model for new peers to join. There are three checkpointing variants: HuggingFace based, Google Cloud Storage based and P2P based.
 
 ## HuggingFace checkpoint
 
-In this approach, a client or a set of clients can optionally run as **checkpointers** if they declare a checkpoint URL when joining the run. These clients upload their copy of updated model to HuggingFace after each epoch, and send the URL for this checkpoint to the coordinator. When a new client joins the run, it retrieves the checkpoint URL from the coordinator, and connects to HuggingFace to download the latest copy of the model parameters and configuration files.
+In this approach, a client or a set of clients will be elected randomly as **checkpointers**. These clients upload their copy of updated model to HuggingFace at Cooldown state at the end of the epoch. The model will be uploaded to the HuggingFace repository that is declared in the run configuration by the run owner. When a new client joins the run it connects to HuggingFace to download the latest copy of the model parameters and configuration files.
+
+## Google Cloud Storage checkpoint
+
+Very similar to the previous approach but based on Google Cloud Storage bucket. Every elected checkpointer will upload the model at the end of an epoch. The bucket name is declared by the run owner in the initial configuration. If a client joins the run, it connects to the GCS and download the model parameters and configuration files.
 
 ## P2P checkpoint
 

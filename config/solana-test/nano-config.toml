@@ -1,6 +1,6 @@
 [config]
 warmup_time = 100
-cooldown_time = 5
+cooldown_time = 30
 epoch_time = 120
 max_round_train_time = 30
 round_witness_time = 5
