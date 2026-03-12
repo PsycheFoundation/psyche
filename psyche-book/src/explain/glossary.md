@@ -82,7 +82,7 @@ A `RunState` indicating that the training run has completed its configured `tota
 CI (Continuous Integration) service based on `Nix`, used by `Psyche`.
 
 **Health Check**
-A verification procedure (`health_check()`) initiated by designated `witness` clients. Its purpose is to monitor peer clients and confirm they are actively processing their assigned training batches. When a witness client detects a peer that appears unresponsive or failing (`unhealthy`), it notifies the central coordinator. The coordinator independently verifies the status of the reported peer by running its own health check. If this verification is verified then the peer is marked as `unhealthy` and is kicked.
+A verification procedure (`health_check()`) initiated by designated `witness` clients. Its purpose is to monitor peer clients and confirm they are actively processing their assigned training batches. When a witness client detects a peer that appears unresponsive or failing (`unhealthy`), it notifies the central coordinator. The coordinator independently verifies the status of the reported peer by running its own health check. If the verification confirms the peer is unhealthy, the peer is marked as `unhealthy` and removed from the run.
 
 **Healthy**
 The desired `ClientState`, indicating the client is connected, responsive, and participating correctly in the training process. Only Healthy clients typically receive `Rewards`.
@@ -118,7 +118,7 @@ A feature that allows progressing early from the `RoundTrain` phase to the `Witn
 A `RunState` where the training process is temporarily stopped by manual intervention. Can be resumed later.
 
 **P2P**
-Peer-to-Peer, meaning a client acts both as a client and as a server, sharing data with it's peers. This is the intended way of data-sharing during a stable run.
+Peer-to-Peer, meaning a client acts both as a client and as a server, sharing data with its peers. This is the intended way of data-sharing during a stable run.
 
 **Psyche**
 Nous Research's set of systems that enable distributed training of transformer-based AI models over the internet.

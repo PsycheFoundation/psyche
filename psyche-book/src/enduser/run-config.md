@@ -37,7 +37,7 @@ round_witness_time = 1
 # than 100.
 min_clients = 1
 
-# minumum number of clients required before we transition from WaitingForMembers to Warmup.
+# minimum number of clients required before we transition from WaitingForMembers to Warmup.
 # must be equal to or greater than min_clients.
 init_min_clients = 1
 
