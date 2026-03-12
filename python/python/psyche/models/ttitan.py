@@ -61,6 +61,9 @@ class TorchtitanAuto(CausalLM):
         self.device = device
         self.amp = amp
         self.parallel_dims = parallel_dims
+        self._cached_attention_masks = None
+        self._cached_seq_len = None
+        self._needs_attention_masks = hasattr(model, "get_attention_masks")
 
     @staticmethod
     def convert_config(config, override_max_position_embeddings: Optional[int] = None):
@@ -406,6 +409,31 @@ class TorchtitanAuto(CausalLM):
     def get_config(self):
         return self.config.to_dict()
 
+    def _build_attention_masks(self, input_ids: torch.Tensor):
+        """Build FlexAttention masks for models that require them (e.g. qwen3_next).
+
+        Uses the model's get_attention_masks() API when available. The result
+        is cached and reused as long as the sequence length stays the same,
+        since a basic causal mask only depends on sequence length.
+        """
+        if not self._needs_attention_masks:
+            return None
+
+        seq_len = input_ids.shape[1]
+        if self._cached_attention_masks is not None and self._cached_seq_len == seq_len:
+            return self._cached_attention_masks
+
+        from torch.nn.attention.flex_attention import create_block_mask
+
+        with torch.no_grad():
+            attention_masks = self.model.get_attention_masks(
+                create_block_mask, input_ids, eos_id=None
+            )
+
+        self._cached_attention_masks = attention_masks
+        self._cached_seq_len = seq_len
+        return attention_masks
+
     def forward(
         self,
         input_ids: torch.Tensor,
@@ -432,12 +460,18 @@ class TorchtitanAuto(CausalLM):
                         position_ids = position_ids.narrow(0, start_row, shard_size)
         try:
             with self.amp, torch.cuda.device(input_ids.device.index):
-                pred = self.model(
-                    tokens=input_ids.contiguous(),
-                    position_ids=(
+                attention_masks = self._build_attention_masks(input_ids)
+
+                forward_kwargs = {
+                    "tokens": input_ids.contiguous(),
+                    "position_ids": (
                         position_ids.contiguous() if position_ids is not None else None
                     ),
-                )
+                }
+                if attention_masks is not None:
+                    forward_kwargs["attention_masks"] = attention_masks
+
+                pred = self.model(**forward_kwargs)
                 if num_logits_to_keep:
                     pred = pred[:, -num_logits_to_keep:, :]
                 loss = None
