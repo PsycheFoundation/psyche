@@ -134,6 +134,26 @@ impl PythonCausalLM {
         parallelism: Option<ParallelismConfig>,
         override_max_position_embeddings: Option<usize>,
     ) -> Result<PythonCausalLM, PythonCausalLMError> {
+        Self::new_with_options(
+            architecture,
+            source,
+            device,
+            attn_implementation,
+            parallelism,
+            override_max_position_embeddings,
+            true,
+        )
+    }
+
+    pub fn new_with_options(
+        architecture: &str,
+        source: &PretrainedSource<PythonModelConfig>,
+        device: Device,
+        attn_implementation: AttentionImplementation,
+        parallelism: Option<ParallelismConfig>,
+        override_max_position_embeddings: Option<usize>,
+        compile: bool,
+    ) -> Result<PythonCausalLM, PythonCausalLMError> {
         let config = source.get_config()?;
         let result: PyResult<PyObject> = Python::with_gil(|py| {
             let psyche = Python::import(py, "psyche")?;
@@ -176,7 +196,9 @@ impl PythonCausalLM {
                 parallelism.as_ref().map(|x| x.tp).unwrap_or(1),
                 override_max_position_embeddings,
             );
-            let causal_lm = make_causal_lm.call1(args)?;
+            let kwargs = PyDict::new(py);
+            kwargs.set_item("compile", compile)?;
+            let causal_lm = make_causal_lm.call(args, Some(&kwargs))?;
             Ok(causal_lm.unbind())
         });
         let causal_lm = result?;

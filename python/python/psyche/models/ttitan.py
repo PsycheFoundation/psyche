@@ -282,6 +282,7 @@ class TorchtitanAuto(CausalLM):
         param_dtype: torch.dtype = torch.bfloat16,
         reduce_dtype: torch.dtype = torch.float32,
         fsdp_modules: Optional[Iterable[str]] = None,
+        compile: bool = True,
     ):
         config_json = None
         if isinstance(source, PretrainedSourceStateDict):
@@ -302,7 +303,7 @@ class TorchtitanAuto(CausalLM):
 
         job_config = JobConfig()
         job_config.training.seq_len = config_tt.max_seq_len
-        job_config.compile.enable = True
+        job_config.compile.enable = compile
         job_config.compile.components = ["model", "loss"]
         job_config.compile.fullgraph = False
         job_config.activation_checkpoint.mode = "full"
