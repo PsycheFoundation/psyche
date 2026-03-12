@@ -63,8 +63,11 @@ class TorchtitanAuto(CausalLM):
         self.parallel_dims = parallel_dims
         self._cached_attention_masks = None
         self._cached_seq_len = None
-        self._needs_attention_masks = hasattr(model, "get_attention_masks")
-        self._logged_signatures = False
+
+        import inspect
+
+        fwd_params = list(inspect.signature(model.forward).parameters.keys())
+        self._forward_accepts_attention_masks = "attention_masks" in fwd_params
 
     @staticmethod
     def convert_config(config, override_max_position_embeddings: Optional[int] = None):
@@ -410,63 +413,65 @@ class TorchtitanAuto(CausalLM):
     def get_config(self):
         return self.config.to_dict()
 
-    def _build_attention_masks(self, input_ids: torch.Tensor):
-        """Build FlexAttention masks for models that require them (e.g. qwen3_next).
+    @staticmethod
+    def _causal_mask(b, h, q_idx, kv_idx):
+        return q_idx >= kv_idx
 
-        Uses the model's get_attention_masks() API when available. The result
-        is cached and reused as long as the sequence length stays the same,
-        since a basic causal mask only depends on sequence length.
+    def _build_attention_masks(
+        self,
+        input_ids: torch.Tensor,
+        sequence_lengths: Optional[list[list[int]]] = None,
+    ):
+        """Build FlexAttention masks for models that require them.
+
+        When sequence_lengths is provided (packed SFT data), builds a
+        block-causal mask that prevents cross-document attention.
+        Otherwise falls back to a simple causal mask (cached by seq_len).
         """
-        if not self._needs_attention_masks:
+        if not self._forward_accepts_attention_masks:
             return None
 
+        from torch.nn.attention.flex_attention import create_block_mask
+
         seq_len = input_ids.shape[1]
+
+        if sequence_lengths is not None:
+            batch_size = input_ids.shape[0]
+            seq_idx = torch.zeros(
+                batch_size, seq_len, dtype=torch.int32, device=input_ids.device
+            )
+            for b in range(batch_size):
+                doc_id = 0
+                pos = 0
+                for length in sequence_lengths[b]:
+                    seq_idx[b, pos : pos + length] = doc_id
+                    doc_id += 1
+                    pos += length
+
+            def block_causal_mask(b, h, q_idx, kv_idx):
+                return (seq_idx[b, q_idx] == seq_idx[b, kv_idx]) & (
+                    q_idx >= kv_idx
+                )
+
+            with torch.no_grad():
+                block_mask = create_block_mask(
+                    block_causal_mask,
+                    B=batch_size,
+                    H=None,
+                    Q_LEN=seq_len,
+                    KV_LEN=seq_len,
+                )
+            return {"flex_attn": block_mask}
+
         if self._cached_attention_masks is not None and self._cached_seq_len == seq_len:
             return self._cached_attention_masks
 
-        from torch.nn.attention.flex_attention import create_block_mask
-        import inspect
-
-        sig = inspect.signature(self.model.get_attention_masks)
-        params = list(sig.parameters.keys())
-        print(
-            f"[psyche] get_attention_masks signature: {sig}, params: {params}",
-            flush=True,
-        )
-
-        kwargs = {}
-        # Upstream torchtitan convention (PR #1776): (create_mask_fn, batch, eos_id)
-        # Some model variants just take (input_batch, ...)
-        if "create_mask_fn" in params:
-            kwargs["create_mask_fn"] = create_block_mask
-        if "input_batch" in params or "batch" in params:
-            key = "input_batch" if "input_batch" in params else "batch"
-            kwargs[key] = input_ids
-        if "eos_id" in params:
-            kwargs["eos_id"] = None
-
-        # Fallback: if we didn't match any known parameter names, try
-        # positional: first arg = input tensor (most common single-arg form)
-        if not kwargs:
-            print(
-                f"[psyche] WARNING: unrecognized get_attention_masks params {params}, "
-                f"trying positional call with input_ids",
-                flush=True,
-            )
-            kwargs = {}
-
         with torch.no_grad():
-            if kwargs:
-                attention_masks = self.model.get_attention_masks(**kwargs)
-            else:
-                attention_masks = self.model.get_attention_masks(input_ids)
+            block_mask = create_block_mask(
+                self._causal_mask, B=1, H=None, Q_LEN=seq_len, KV_LEN=seq_len
+            )
 
-        print(
-            f"[psyche] get_attention_masks returned type={type(attention_masks)}, "
-            f"value={'None' if attention_masks is None else (type(attention_masks).__name__ + ': ' + str({k: type(v).__name__ for k, v in attention_masks.items()}) if isinstance(attention_masks, dict) else repr(attention_masks))}",
-            flush=True,
-        )
-
+        attention_masks = {"flex_attn": block_mask}
         self._cached_attention_masks = attention_masks
         self._cached_seq_len = seq_len
         return attention_masks
@@ -495,25 +500,15 @@ class TorchtitanAuto(CausalLM):
                         labels = labels.narrow(0, start_row, shard_size)
                     if position_ids is not None:
                         position_ids = position_ids.narrow(0, start_row, shard_size)
+                    if sequence_lengths is not None:
+                        sequence_lengths = sequence_lengths[
+                            start_row : start_row + shard_size
+                        ]
         try:
             with self.amp, torch.cuda.device(input_ids.device.index):
-                if not self._logged_signatures:
-                    import inspect
-
-                    fwd_sig = inspect.signature(self.model.forward)
-                    print(
-                        f"[psyche] model.forward signature: {fwd_sig}",
-                        flush=True,
-                    )
-                    print(
-                        f"[psyche] model type: {type(self.model).__name__}, "
-                        f"model_type config: {self.config.model_type}, "
-                        f"needs_attention_masks: {self._needs_attention_masks}",
-                        flush=True,
-                    )
-                    self._logged_signatures = True
-
-                attention_masks = self._build_attention_masks(input_ids)
+                attention_masks = self._build_attention_masks(
+                    input_ids, sequence_lengths
+                )
 
                 forward_kwargs = {
                     "tokens": input_ids.contiguous(),
