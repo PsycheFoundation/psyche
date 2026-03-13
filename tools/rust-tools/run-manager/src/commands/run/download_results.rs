@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::commands::Command;
+use anchor_client::solana_sdk::pubkey::Pubkey;
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use clap::Args;
@@ -25,6 +26,9 @@ pub struct CommandDownloadResults {
 
     #[clap(long)]
     pub overwrite: bool,
+
+    #[clap(long, env)]
+    pub authorizer: Pubkey,
 }
 
 #[async_trait]
@@ -35,6 +39,7 @@ impl Command for CommandDownloadResults {
             output_dir,
             expires_in_seconds,
             overwrite,
+            authorizer,
         } = self;
 
         // Check if output directory exists and is not empty
@@ -71,14 +76,22 @@ impl Command for CommandDownloadResults {
         let nonce: u64 = rand::random();
 
         // Generate signature for the run-down service
-        let signature_b58 =
-            run_down_service::generate_signature(&backend, &run_id, expires_in_seconds, nonce);
+        let wallet_address = backend.get_payer().to_string();
+        let signature_b58 = run_down_service::generate_signature(
+            &backend,
+            &run_id,
+            &wallet_address,
+            expires_in_seconds,
+            nonce,
+        );
 
         // Make POST request to the API
         let client = reqwest::Client::new();
         let urls_response = run_down_service::get_download_urls(
             &client,
             &run_id,
+            &wallet_address,
+            &authorizer.to_string(),
             &signature_b58,
             expires_in_seconds,
             nonce,

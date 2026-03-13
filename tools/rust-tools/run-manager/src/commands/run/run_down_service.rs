@@ -6,19 +6,20 @@ const RUN_DOWN_SERVICE_BASE_URL: &str = "https://run-down.nousresearch.com/v1";
 
 /// Generate a signed message for the Nous run-down service API
 ///
-/// Creates a message in the format: `nous-run-down-service:{run_id}:{expires_in_seconds}:{nonce}`
+/// Creates a message in the format: `nous-run-down-service:{run_id}:{wallet_address}:{expires_in_seconds}:{nonce}`
 /// and signs it using the provided backend's wallet.
 ///
 /// Returns the base58-encoded signature.
 pub fn generate_signature(
     backend: &SolanaBackend,
     run_id: &str,
+    wallet_address: &str,
     expires_in_seconds: u64,
     nonce: u64,
 ) -> String {
     let message = format!(
-        "nous-run-down-service:{}:{}:{}",
-        run_id, expires_in_seconds, nonce
+        "nous-run-down-service:{}:{}:{}:{}",
+        run_id, wallet_address, expires_in_seconds, nonce
     );
     let message_bytes = message.as_bytes();
     let signature = backend.sign_message(message_bytes);
@@ -60,9 +61,12 @@ pub struct UploadUrlResponse {
 }
 
 /// Get a signed upload URL for a file
+#[allow(clippy::too_many_arguments)]
 pub async fn get_upload_url(
     client: &reqwest::Client,
     run_id: &str,
+    wallet_address: &str,
+    authorization_grantee: &str,
     signature: &str,
     filename: &str,
     expires_in_seconds: u64,
@@ -71,6 +75,8 @@ pub async fn get_upload_url(
     let url = format!("{}/upload/{}", RUN_DOWN_SERVICE_BASE_URL, run_id);
 
     let body = serde_json::json!({
+        "walletAddress": wallet_address,
+        "authorizationGrantee": authorization_grantee,
         "filename": filename,
         "expiresInSeconds": expires_in_seconds,
         "nonce": nonce.to_string(),
@@ -98,6 +104,8 @@ pub struct DownloadUrlsResponse {
 pub async fn get_download_urls(
     client: &reqwest::Client,
     run_id: &str,
+    wallet_address: &str,
+    authorization_grantee: &str,
     signature: &str,
     expires_in_seconds: u64,
     nonce: u64,
@@ -105,6 +113,8 @@ pub async fn get_download_urls(
     let url = format!("{}/download/{}", RUN_DOWN_SERVICE_BASE_URL, run_id);
 
     let body = serde_json::json!({
+        "walletAddress": wallet_address,
+        "authorizationGrantee": authorization_grantee,
         "expiresInSeconds": expires_in_seconds,
         "nonce": nonce.to_string(),
     });
