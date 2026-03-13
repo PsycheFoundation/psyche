@@ -51,8 +51,8 @@ pub struct SolanaBackendRunner {
     pub(crate) backend: SolanaBackend,
     instance: Pubkey,
     account: Pubkey,
-    updates: broadcast::Receiver<Coordinator<psyche_solana_coordinator::ClientId>>,
-    init: Option<Coordinator<psyche_solana_coordinator::ClientId>>,
+    updates: broadcast::Receiver<Coordinator>,
+    init: Option<Coordinator>,
 }
 
 async fn subscribe_to_account(
@@ -135,7 +135,7 @@ async fn subscribe_to_account(
 }
 
 impl SolanaBackend {
-    #[allow(dead_code)]
+    #[allow(clippy::result_large_err)]
     pub fn new(
         cluster: Cluster,
         backup_clusters: Vec<Cluster>,
@@ -260,7 +260,7 @@ impl SolanaBackend {
         &self,
         coordinator_instance: Pubkey,
         coordinator_account: Pubkey,
-        id: psyche_solana_coordinator::ClientId,
+        id: psyche_core::NodeIdentity,
         authorizer: Option<Pubkey>,
     ) -> Result<Signature> {
         let coordinator_instance_state =
@@ -329,7 +329,7 @@ impl SolanaBackend {
         &self,
         coordinator_instance: Pubkey,
         coordinator_account: Pubkey,
-        id: psyche_solana_coordinator::ClientId,
+        id: psyche_core::NodeIdentity,
         check: CommitteeProof,
     ) {
         let user = self.get_payer();
@@ -630,10 +630,8 @@ impl SolanaBackend {
 }
 
 #[async_trait::async_trait]
-impl WatcherBackend<psyche_solana_coordinator::ClientId> for SolanaBackendRunner {
-    async fn wait_for_new_state(
-        &mut self,
-    ) -> Result<Coordinator<psyche_solana_coordinator::ClientId>> {
+impl WatcherBackend for SolanaBackendRunner {
+    async fn wait_for_new_state(&mut self) -> Result<Coordinator> {
         match self.init.take() {
             Some(init) => Ok(init),
             None => self
@@ -650,10 +648,7 @@ impl WatcherBackend<psyche_solana_coordinator::ClientId> for SolanaBackendRunner
         Ok(())
     }
 
-    async fn send_health_check(
-        &mut self,
-        checks: HealthChecks<psyche_solana_coordinator::ClientId>,
-    ) -> Result<()> {
+    async fn send_health_check(&mut self, checks: HealthChecks) -> Result<()> {
         for (id, proof) in checks {
             self.backend
                 .send_health_check(self.instance, self.account, id, proof);
@@ -669,7 +664,7 @@ impl WatcherBackend<psyche_solana_coordinator::ClientId> for SolanaBackendRunner
 }
 
 impl SolanaBackendRunner {
-    pub fn updates(&self) -> broadcast::Receiver<Coordinator<psyche_solana_coordinator::ClientId>> {
+    pub fn updates(&self) -> broadcast::Receiver<Coordinator> {
         self.updates.resubscribe()
     }
 }

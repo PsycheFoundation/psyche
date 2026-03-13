@@ -62,8 +62,8 @@ impl CommitteeSelection {
         Ok(())
     }
 
-    pub fn from_coordinator<T: NodeIdentity>(
-        coordinator: &Coordinator<T>,
+    pub fn from_coordinator(
+        coordinator: &Coordinator,
         offset: isize,
     ) -> Result<Self, CoordinatorError> {
         let round = get_round_by_offset(coordinator, offset)?;
@@ -91,11 +91,11 @@ impl CommitteeSelection {
         proof.position == position && proof.witness == self.is_witness_at_position(position).into()
     }
 
-    pub fn verify_witness_for_client<T: NodeIdentity>(
+    pub fn verify_witness_for_client(
         &self,
-        client_id: &T,
+        client_id: &NodeIdentity,
         proof: &WitnessProof,
-        clients: &[Client<T>],
+        clients: &[Client],
     ) -> bool {
         Self::verify_client(client_id, proof.index, clients) && self.verify_witness(proof)
     }
@@ -132,16 +132,16 @@ impl CommitteeSelection {
         proof.position == position && proof.committee == self.get_committee_from_position(position)
     }
 
-    pub fn verify_committee_for_client<T: NodeIdentity>(
+    pub fn verify_committee_for_client(
         &self,
-        client_id: &T,
+        client_id: &NodeIdentity,
         proof: &CommitteeProof,
-        clients: &[Client<T>],
+        clients: &[Client],
     ) -> bool {
         Self::verify_client(client_id, proof.index, clients) && self.verify_committee(proof)
     }
 
-    fn verify_client<T: NodeIdentity>(client_id: &T, index: u64, clients: &[Client<T>]) -> bool {
+    fn verify_client(client_id: &NodeIdentity, index: u64, clients: &[Client]) -> bool {
         clients.get(index as usize).map(|c| &c.id) == Some(client_id)
     }
 

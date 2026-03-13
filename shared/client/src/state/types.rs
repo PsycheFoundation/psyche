@@ -72,8 +72,8 @@ impl CheckpointConfig {
 }
 
 #[derive(Debug)]
-pub enum PayloadState<T: NodeIdentity> {
-    Downloading((T, BatchId, BlobTicket)),
+pub enum PayloadState {
+    Downloading((NodeIdentity, BatchId, BlobTicket)),
     Deserializing(JoinHandle<Result<(Vec<DistroResult>, u32), DeserializeError>>),
 }
 

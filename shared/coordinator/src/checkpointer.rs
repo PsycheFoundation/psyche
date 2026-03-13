@@ -1,7 +1,7 @@
 use std::cmp::max;
 
 use crate::{Coordinator, CoordinatorError, coordinator::SOLANA_MAX_NUM_CHECKPOINTERS};
-use psyche_core::{NodeIdentity, compute_shuffled_index, sha256, sha256v};
+use psyche_core::{compute_shuffled_index, sha256, sha256v};
 
 use super::types::salts;
 
@@ -19,8 +19,8 @@ impl CheckpointerSelection {
         }
     }
 
-    pub fn from_coordinator<T: NodeIdentity>(
-        coordinator: &Coordinator<T>,
+    pub fn from_coordinator(
+        coordinator: &Coordinator,
         offset: isize,
     ) -> Result<Self, CoordinatorError> {
         let round = get_round_by_offset(coordinator, offset)?;
@@ -43,8 +43,8 @@ impl CheckpointerSelection {
     }
 }
 
-pub(crate) fn get_round_by_offset<T: NodeIdentity>(
-    coordinator: &Coordinator<T>,
+pub(crate) fn get_round_by_offset(
+    coordinator: &Coordinator,
     offset: isize,
 ) -> Result<&crate::Round, CoordinatorError> {
     match offset {

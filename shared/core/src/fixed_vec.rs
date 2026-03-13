@@ -1,4 +1,3 @@
-use crate as psyche_core;
 use anchor_lang::{AnchorDeserialize, AnchorSerialize, prelude::borsh};
 use bytemuck::Zeroable;
 use serde::{Deserialize, Serialize};

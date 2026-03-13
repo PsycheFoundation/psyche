@@ -3,7 +3,6 @@ use psyche_coordinator::{
     CheckpointerSelection, Coordinator,
     model::{self, HubRepo, LLM, Model},
 };
-use psyche_core::NodeIdentity;
 use psyche_data_provider::{
     GcsManifestMetadata, HubUploadInfo, UploadError, upload_to_gcs_signed, upload_to_hub,
 };
@@ -132,11 +131,11 @@ async fn cleanup_dirs(
 }
 
 impl CooldownStepMetadata {
-    pub fn start<T: NodeIdentity>(
+    pub fn start(
         &self,
         mut trainers: Vec<Trainer>,
-        state: &Coordinator<T>,
         client_index: u64,
+        state: &Coordinator,
     ) -> Result<CooldownStep, CooldownError> {
         let Some(mut trainer) = trainers.pop() else {
             return Err(CooldownError::NoTrainers);

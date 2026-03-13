@@ -83,9 +83,9 @@ tokenizers = { version = "0.20.0", default-features = false, features = [
   "onig",
 ] }
 google-cloud-storage = "1.6.0"
-tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "dda507e05a776547a112b6854d1e611684f8c729" }
-torch-sys = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "dda507e05a776547a112b6854d1e611684f8c729" }
-pyo3-tch = { git = "https://github.com/jquesnelle/tch-rs.git", rev = "dda507e05a776547a112b6854d1e611684f8c729" }
+tch = { git = "https://github.com/NousResearch/tch-rs.git", rev = "dda507e05a776547a112b6854d1e611684f8c729" }
+torch-sys = { git = "https://github.com/NousResearch/tch-rs.git", rev = "dda507e05a776547a112b6854d1e611684f8c729" }
+pyo3-tch = { git = "https://github.com/NousResearch/tch-rs.git", rev = "dda507e05a776547a112b6854d1e611684f8c729" }
 #tch = { path = "../tch-rs" }
 #torch-sys = { path = "../tch-rs/torch-sys" }
 #pyo3-tch = { path = "../tch-rs/pyo3-tch" }
@@ -105,7 +105,7 @@ anchor-lang-idl = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a2
   "build",
 ] }
 
-ts-rs = { git = "https://github.com/arilotter/ts-rs.git", rev = "92ce1752227fec9bb868ad8f25b26f110a795099", features = [
+ts-rs = { git = "https://github.com/arilotter/ts-rs.git", rev = "20c5bef07f3aa8ca3aa1b5cdad11ecdd60c64d34", features = [
   "psyche-impl",
 ] }
 rayon = "1.10.0"
