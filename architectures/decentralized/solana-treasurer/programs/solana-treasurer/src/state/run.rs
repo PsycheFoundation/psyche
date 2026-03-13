@@ -5,9 +5,7 @@ use anchor_lang::prelude::*;
 pub struct Run {
     pub bump: u8,
     pub index: u64,
-
-    pub main_authority: Pubkey,
-    pub join_authority: Pubkey,
+    pub authority: Pubkey,
 
     pub coordinator_account: Pubkey,
     pub coordinator_instance: Pubkey,

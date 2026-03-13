@@ -1,4 +1,5 @@
 use crate::commands::Command;
+use anchor_lang::prelude::Pubkey;
 use async_trait::async_trait;
 use std::path::PathBuf;
 
@@ -40,6 +41,9 @@ pub struct CommandUpdateConfig {
     // end metadata
     #[clap(long, env)]
     pub client_version: Option<String>,
+
+    #[clap(long, env)]
+    pub join_authority: Option<Pubkey>,
 }
 
 #[async_trait]
@@ -56,6 +60,7 @@ impl Command for CommandUpdateConfig {
             num_parameters,
             vocab_size,
             client_version,
+            join_authority,
         } = self;
 
         let main_authority = backend.get_payer();
@@ -160,6 +165,7 @@ impl Command for CommandUpdateConfig {
                 &coordinator_account,
                 &main_authority,
                 RunUpdateParams {
+                    join_authority,
                     metadata,
                     config,
                     model,
@@ -191,6 +197,15 @@ impl Command for CommandUpdateConfig {
                     &coordinator_account,
                     &main_authority,
                     &client_version,
+                ));
+            }
+
+            if let Some(join_authority) = join_authority {
+                instructions.push(instructions::coordinator_set_join_authority(
+                    &run_id,
+                    &coordinator_account,
+                    &main_authority,
+                    &join_authority,
                 ));
             }
 

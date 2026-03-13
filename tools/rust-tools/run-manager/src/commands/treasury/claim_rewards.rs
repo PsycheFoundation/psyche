@@ -1,4 +1,5 @@
 use crate::commands::Command;
+use anchor_lang::prelude::Pubkey;
 use anchor_spl::{associated_token, token};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -14,6 +15,8 @@ pub struct CommandTreasurerClaimRewards {
     pub run_id: String,
     #[clap(long, env)]
     pub treasurer_index: Option<u64>,
+    #[clap(long, env)]
+    pub user: Option<Pubkey>,
 }
 
 #[async_trait]
@@ -22,6 +25,7 @@ impl Command for CommandTreasurerClaimRewards {
         let Self {
             run_id,
             treasurer_index,
+            user,
         } = self;
 
         let treasurer_index = backend
@@ -55,34 +59,39 @@ impl Command for CommandTreasurerClaimRewards {
             native_amount_to_ui_amount(treasurer_run_collateral_amount, collateral_mint_decimals)
         );
 
-        let user = backend.get_payer();
-        println!("User: {user}");
+        let claimer = backend.get_payer();
+        println!("Claimer: {claimer}");
 
-        let user_collateral_address = associated_token::get_associated_token_address(
-            &user,
+        let claimer_collateral_address = associated_token::get_associated_token_address(
+            &claimer,
             &treasurer_run_state.collateral_mint,
         );
-        if backend.get_balance(&user_collateral_address).await? == 0 {
+        if backend.get_balance(&claimer_collateral_address).await? == 0 {
             let instruction = associated_token::spl_associated_token_account::instruction::create_associated_token_account_idempotent(
             &backend.get_payer(),
-            &user,
+            &claimer,
             &treasurer_run_state.collateral_mint,
             &token::ID,
         );
             let signature = backend
-                .send_and_retry("Create user ATA", &[instruction], &[])
+                .send_and_retry("Create claimer ATA", &[instruction], &[])
                 .await?;
-            println!("Created associated token account for user during transaction: {signature}");
+            println!(
+                "Created associated token account for claimer during transaction: {signature}"
+            );
         }
 
-        let user_collateral_amount = backend
-            .get_token_account(&user_collateral_address)
+        let claimer_collateral_amount = backend
+            .get_token_account(&claimer_collateral_address)
             .await?
             .amount;
         println!(
-            "User collateral amount: {}",
-            native_amount_to_ui_amount(user_collateral_amount, collateral_mint_decimals)
+            "Claimer collateral amount: {}",
+            native_amount_to_ui_amount(claimer_collateral_amount, collateral_mint_decimals)
         );
+
+        let user = user.unwrap_or(backend.get_payer());
+        println!("User: {user}");
 
         let treasurer_participant_address =
             psyche_solana_treasurer::find_participant(&treasurer_run_address, &user);
@@ -143,6 +152,8 @@ impl Command for CommandTreasurerClaimRewards {
 
         let instruction = instructions::treasurer_participant_claim(
             treasurer_index,
+            &claimer,
+            &claimer_collateral_address,
             &treasurer_run_state.collateral_mint,
             &treasurer_run_state.coordinator_account,
             &user,

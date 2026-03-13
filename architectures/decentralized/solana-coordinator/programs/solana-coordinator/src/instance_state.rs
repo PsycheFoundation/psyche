@@ -56,6 +56,7 @@ impl RunMetadata {}
     Zeroable,
     AnchorSerialize,
     AnchorDeserialize,
+    PartialEq,
     Serialize,
     Deserialize,
     TS,
@@ -332,7 +333,11 @@ impl CoordinatorInstanceState {
         Ok(())
     }
 
-    pub fn join_run(&mut self, id: NodeIdentity) -> Result<()> {
+    pub fn join_run(
+        &mut self,
+        id: NodeIdentity,
+        claimer: Pubkey,
+    ) -> Result<()> {
         let existing =
             match self.clients_state.clients.iter_mut().find(|x| x.id == id) {
                 Some(client) => {
@@ -357,10 +362,10 @@ impl CoordinatorInstanceState {
 
             let new_client = Client {
                 id,
+                claimer,
                 earned: 0,
                 slashed: 0,
                 active: self.clients_state.next_active,
-                _unused: Default::default(),
             };
 
             if self.clients_state.clients.push(new_client).is_err() {

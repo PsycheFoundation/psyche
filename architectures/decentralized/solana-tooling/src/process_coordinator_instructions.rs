@@ -33,12 +33,14 @@ use solana_toolbox_endpoint::ToolboxEndpoint;
 pub async fn process_coordinator_init(
     endpoint: &mut ToolboxEndpoint,
     payer: &Keypair,
+    main_authority: &Keypair,
     coordinator_account: &Pubkey,
     params: InitCoordinatorParams,
 ) -> Result<Pubkey> {
     let coordinator_instance = find_coordinator_instance(&params.run_id);
     let accounts = InitCoordinatorAccounts {
         payer: payer.pubkey(),
+        authority: main_authority.pubkey(),
         coordinator_instance,
         coordinator_account: *coordinator_account,
         system_program: system_program::ID,
@@ -48,7 +50,9 @@ pub async fn process_coordinator_init(
         data: InitCoordinator { params }.data(),
         program_id: psyche_solana_coordinator::ID,
     };
-    endpoint.process_instruction(payer, instruction).await?;
+    endpoint
+        .process_instruction_with_signers(payer, instruction, &[main_authority])
+        .await?;
     Ok(coordinator_instance)
 }
 
@@ -114,6 +118,7 @@ pub async fn process_update(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn process_coordinator_join_run(
     endpoint: &mut ToolboxEndpoint,
     payer: &Keypair,
@@ -122,6 +127,7 @@ pub async fn process_coordinator_join_run(
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
     client_id: NodeIdentity,
+    claimer: &Pubkey,
 ) -> Result<()> {
     let accounts = JoinRunAccounts {
         user: user.pubkey(),
@@ -132,7 +138,10 @@ pub async fn process_coordinator_join_run(
     let instruction = Instruction {
         accounts: accounts.to_account_metas(None),
         data: JoinRun {
-            params: JoinRunParams { client_id },
+            params: JoinRunParams {
+                client_id,
+                claimer: *claimer,
+            },
         }
         .data(),
         program_id: psyche_solana_coordinator::ID,
@@ -167,7 +176,7 @@ pub async fn process_coordinator_set_paused(
     Ok(())
 }
 
-pub async fn process_coordiantor_set_future_epoch_rates(
+pub async fn process_coordinator_set_future_epoch_rates(
     endpoint: &mut ToolboxEndpoint,
     payer: &Keypair,
     authority: &Keypair,
