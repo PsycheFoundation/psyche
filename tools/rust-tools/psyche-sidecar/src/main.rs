@@ -100,10 +100,16 @@ async fn main() -> Result<()> {
                 sidecar_tasks.push(tokio::spawn(async move {
                     info!("Starting Python sidecars for rank {}", rank);
                     let start_device = start_device.unwrap_or_default();
-                    let device = rank - start_rank + start_device;
+                    let local_device = rank - start_rank + start_device;
 
                     run_python_sidecar(
-                        main_host, port, world_size, rank, device, backend, parent_pid,
+                        main_host,
+                        port,
+                        world_size,
+                        rank,
+                        local_device,
+                        backend,
+                        parent_pid,
                     )
                     .await
                 }));
@@ -147,7 +153,8 @@ async fn run_python_sidecar(
     );
 
     let mut cmd = Command::new("python");
-    cmd.arg("-m")
+    cmd.env("CUDA_VISIBLE_DEVICES", device.to_string())
+        .arg("-m")
         .arg("psyche.sidecar")
         .arg("--backend")
         .arg(&backend)
@@ -158,7 +165,7 @@ async fn run_python_sidecar(
         .arg("--rank")
         .arg(rank.to_string())
         .arg("--device")
-        .arg(device.to_string())
+        .arg("0")
         .arg("--parent-pid")
         .arg(parent_pid.to_string());
 

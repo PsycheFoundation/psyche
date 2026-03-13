@@ -324,6 +324,10 @@ impl PythonDistributedCausalLM {
                 comm.set("dp", &format!("{}", parallelism.dp))?;
                 comm.set("tp", &format!("{}", parallelism.tp))?;
                 comm.set("ep", &format!("{}", parallelism.ep))?;
+                comm.set(
+                    "override_max_position_embeddings",
+                    &format!("{}", override_max_position_embeddings.unwrap_or(0)),
+                )?;
                 let local = PythonCausalLM::new(
                     &architecture,
                     &source,
@@ -340,6 +344,7 @@ impl PythonDistributedCausalLM {
         let children: Result<Vec<Child>, _> = (1..num_local_ranks)
             .map(|rank| {
                 let res = Command::new("python")
+                    .env("CUDA_VISIBLE_DEVICES", format!("{rank}"))
                     .arg("-m")
                     .arg("psyche.sidecar")
                     .arg("--parent-pid")
@@ -353,7 +358,7 @@ impl PythonDistributedCausalLM {
                     .arg("--rank")
                     .arg(format!("{rank}"))
                     .arg("--device")
-                    .arg(format!("{rank}"))
+                    .arg("0")
                     .spawn();
                 match res.as_ref() {
                     Ok(child) => debug!("Spawned sidecar process {}", child.id()),

@@ -206,6 +206,8 @@ def main():
     dp = int(store.get("dp").decode())
     tp = int(store.get("tp").decode())
     ep = int(store.get("ep").decode())
+    override_max_pos = int(store.get("override_max_position_embeddings").decode())
+    override_max_pos = override_max_pos if override_max_pos > 0 else None
 
     device = args.device if args.device else 0
 
@@ -217,6 +219,7 @@ def main():
         dp=dp,
         tp=tp,
         ep=ep,
+        override_max_position_embeddings=override_max_pos,
     )
 
     trainer: Optional[Trainer] = None
