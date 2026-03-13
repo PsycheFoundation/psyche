@@ -11,7 +11,7 @@ lib.makeScope pkgs.newScope (
     };
     util = import ./util.nix;
 
-    workspaceCargoToml = builtins.fromTOML (builtins.readFile ../Cargo.toml);
+    workspaceCargoToml = fromTOML (builtins.readFile ../Cargo.toml);
 
     # expand globs in workspace members from cargo.toml
     expandWorkspaceMembers =
@@ -54,7 +54,7 @@ lib.makeScope pkgs.newScope (
           in
           if hasCargoToml && hasPackagesNix && !isExcluded then
             let
-              cargoToml = builtins.fromTOML (builtins.readFile cargoTomlPath);
+              cargoToml = fromTOML (builtins.readFile cargoTomlPath);
               packageName = cargoToml.package.name or (baseNameOf memberPath);
             in
             {
