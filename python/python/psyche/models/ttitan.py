@@ -314,18 +314,19 @@ class TorchtitanAuto(CausalLM):
         job_config.compile.components = ["model", "loss"]
         job_config.compile.fullgraph = False
         job_config.activation_checkpoint.mode = "full"
-        job_config.parallelism.data_parallel_shard_degree = dp
+        dp_shard = dp * ep
+        job_config.parallelism.data_parallel_shard_degree = dp_shard
         job_config.parallelism.tensor_parallel_degree = tp
 
         parallel_dims = ParallelDims(
             dp_replicate=1,
-            dp_shard=dp,
+            dp_shard=dp_shard,
             cp=1,
             tp=tp,
             pp=1,
             ep=ep,
             etp=1,
-            world_size=dp * tp * ep,
+            world_size=dp_shard * tp,
         )
 
         config_tt.update_from_config(job_config)
