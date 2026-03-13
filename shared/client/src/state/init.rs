@@ -9,7 +9,7 @@ use psyche_core::{
 use psyche_data_provider::{
     DataProvider, DataProviderTcpClient, DownloadError, DummyDataProvider,
     PreprocessedDataProvider, Split, WeightedDataProvider, download_dataset_repo_async,
-    download_model_from_gcs_async, download_model_repo_async,
+    download_model_from_gcs_signed_async, download_model_repo_async,
     http::{FileURLs, HttpDataProvider},
 };
 use psyche_metrics::ClientMetrics;
@@ -261,6 +261,8 @@ impl RunInitConfigAndIO {
             Ok(data_provider)
         };
 
+        let run_down_client = init_config.checkpoint_config.run_down_client.clone();
+
         let model_future: JoinHandle<Result<RawLoadedModel, InitRunError>> = match &llm.architecture
         {
             model::LLMArchitecture::HfLlama
@@ -427,19 +429,16 @@ impl RunInitConfigAndIO {
                                     vec![],
                                 )
                             }
-                            model::Checkpoint::Gcs(gcs_repo) => {
-                                let bucket: String = (&gcs_repo.bucket).into();
-                                let prefix: Option<String> = gcs_repo.prefix.map(|p| (&p).into());
-
+                            model::Checkpoint::Gcs(_) => {
+                                let run_down = run_down_client.as_ref().ok_or_else(|| {
+                                    DownloadError::RunDown("RunDownClient not configured".into())
+                                })?;
                                 info!(
-                                    "Downloading model from gs://{}/{}",
-                                    bucket,
-                                    prefix.as_deref().unwrap_or("")
+                                    "Downloading model via run-down signed URLs for run {}",
+                                    run_down.run_id()
                                 );
-
                                 let repo_files =
-                                    download_model_from_gcs_async(&bucket, prefix.as_deref())
-                                        .await?;
+                                    download_model_from_gcs_signed_async(run_down).await?;
 
                                 let checkpoint_extra_files = repo_files
                                     .iter()
