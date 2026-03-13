@@ -205,6 +205,7 @@ def main():
 
     dp = int(store.get("dp").decode())
     tp = int(store.get("tp").decode())
+    ep = int(store.get("ep").decode())
 
     device = args.device if args.device else 0
 
@@ -215,6 +216,7 @@ def main():
         attn_implementation="flash_attention_2",
         dp=dp,
         tp=tp,
+        ep=ep,
     )
 
     trainer: Optional[Trainer] = None

@@ -200,7 +200,7 @@ fn inference(
                     source,
                     device,
                     attn_implementation,
-                    psyche_modeling::ParallelismConfig { dp: tp, tp: 1 },
+                    psyche_modeling::ParallelismConfig { dp: tp, tp: 1, ep: 1 },
                     None,
                     None,
                     Some(args.device.size() as i64),

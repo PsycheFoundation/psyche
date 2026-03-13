@@ -315,7 +315,7 @@ async fn main() -> Result<()> {
                             source,
                             target_device,
                             args.attn_implementation.map(Into::into).unwrap_or_default(),
-                            psyche_modeling::ParallelismConfig { dp, tp },
+                            psyche_modeling::ParallelismConfig { dp, tp, ep: 1 },
                             Some(args.sequence_length),
                             None,
                             Some(args.device.size() as i64),

@@ -52,6 +52,7 @@ pub struct RunInitConfig {
     pub hub_max_concurrent_downloads: usize,
     pub data_parallelism: usize,
     pub tensor_parallelism: usize,
+    pub expert_parallelism: usize,
     pub micro_batch_size: usize,
     pub optim_stats_every_n_steps: Option<u32>,
     pub grad_accum_in_fp32: bool,
@@ -513,16 +514,17 @@ impl RunInitConfigAndIO {
                                 {
                                     let dp = init_config.data_parallelism;
                                     let tp = init_config.tensor_parallelism;
+                                    let ep = init_config.expert_parallelism;
                                     let num_local_ranks = init_config.device.size() as i64;
 
                                     tokio::task::spawn_blocking(move || {
-                                        if tp != 1 || dp != 1 {
+                                        if tp != 1 || dp != 1 || ep != 1 {
                                             psyche_modeling::PythonDistributedCausalLM::new(
                                                 llm.architecture.to_string(),
                                                 source.try_into()?,
                                                 tch::Device::cuda_if_available(),
                                                 attn_implementation.unwrap_or_default(),
-                                                psyche_modeling::ParallelismConfig { dp, tp },
+                                                psyche_modeling::ParallelismConfig { dp, tp, ep },
                                                 Some(llm.max_seq_len as usize),
                                                 init_config.sidecar_port,
                                                 Some(num_local_ranks),
@@ -649,9 +651,10 @@ impl RunInitConfigAndIO {
                         info!(
                             integration_test_log_marker = %IntegrationTestLogMarker::LoadedModel,
                             checkpoint = %llm.checkpoint,
-                            gpus = init_config.data_parallelism * init_config.tensor_parallelism,
+                            gpus = init_config.data_parallelism * init_config.tensor_parallelism * init_config.expert_parallelism,
                             dp = init_config.data_parallelism,
                             tp = init_config.tensor_parallelism,
+                            ep = init_config.expert_parallelism,
                             "loaded_model",
                         );
 

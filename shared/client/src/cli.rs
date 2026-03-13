@@ -120,6 +120,9 @@ pub struct TrainArgs {
     #[clap(long, default_value_t = 1, env)]
     pub tensor_parallelism: usize,
 
+    #[clap(long, default_value_t = 1, env)]
+    pub expert_parallelism: usize,
+
     #[clap(long, env, default_value_t = 1)]
     pub micro_batch_size: usize,
 

@@ -233,7 +233,7 @@ impl PythonDistributedCausalLM {
             return Err(PythonDistributedCausalLMError::CUDANotAvailable);
         }
         let num_local_ranks = num_local_ranks.unwrap_or_else(tch::Cuda::device_count);
-        let world_size = parallelism.dp * parallelism.tp;
+        let world_size = parallelism.dp * parallelism.tp * parallelism.ep;
         if world_size < (num_local_ranks as usize) {
             return Err(PythonDistributedCausalLMError::IncompatibleWorldSize(
                 world_size,
@@ -323,6 +323,7 @@ impl PythonDistributedCausalLM {
                 }
                 comm.set("dp", &format!("{}", parallelism.dp))?;
                 comm.set("tp", &format!("{}", parallelism.tp))?;
+                comm.set("ep", &format!("{}", parallelism.ep))?;
                 let local = PythonCausalLM::new(
                     &architecture,
                     &source,

@@ -285,6 +285,7 @@ class TorchtitanAuto(CausalLM):
         attn_implementation: str,
         dp: int = 1,
         tp: int = 1,
+        ep: int = 1,
         override_max_position_embeddings: Optional[int] = None,
         param_dtype: torch.dtype = torch.bfloat16,
         reduce_dtype: torch.dtype = torch.float32,
@@ -322,9 +323,9 @@ class TorchtitanAuto(CausalLM):
             cp=1,
             tp=tp,
             pp=1,
-            ep=1,
+            ep=ep,
             etp=1,
-            world_size=dp * tp,  # fake, but only used for validation
+            world_size=dp * tp * ep,
         )
 
         config_tt.update_from_config(job_config)
@@ -345,7 +346,7 @@ class TorchtitanAuto(CausalLM):
             model, config_tt.max_seq_len
         )
 
-        if dp != 1 or tp != 1:
+        if dp != 1 or tp != 1 or ep != 1:
             model = train_spec.parallelize_fn(model, parallel_dims, job_config)
 
         model.to_empty(device=device)

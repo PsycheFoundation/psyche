@@ -120,6 +120,7 @@ pub async fn build_app(
     let state_options = RunInitConfig {
         data_parallelism: p.data_parallelism,
         tensor_parallelism: p.tensor_parallelism,
+        expert_parallelism: p.expert_parallelism,
         micro_batch_size: p.micro_batch_size,
         write_gradients_dir: p.write_gradients_dir,
         eval_tasks,

@@ -10,6 +10,7 @@ use torch_sys::IntList;
 pub struct ParallelismConfig {
     pub dp: usize,
     pub tp: usize,
+    pub ep: usize,
 }
 
 #[cfg(feature = "parallelism")]

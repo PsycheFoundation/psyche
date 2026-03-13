@@ -245,6 +245,7 @@ fn run_data_parallel(
                         psyche_modeling::ParallelismConfig {
                             dp: data_parallelism,
                             tp: 1,
+                            ep: 1,
                         },
                         None,
                         None,
