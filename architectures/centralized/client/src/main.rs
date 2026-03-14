@@ -72,27 +72,51 @@ async fn async_main() -> Result<()> {
             let logger = psyche_tui::logging()
                 .with_output(args.logs)
                 .with_log_file(args.write_log.clone())
-                .with_metrics_destination(args.oltp_metrics_url.clone().map(|endpoint| {
-                    MetricsDestination::OpenTelemetry(OpenTelemetry {
-                        endpoint,
-                        authorization_header: args.oltp_auth_header.clone(),
-                        report_interval: args.oltp_report_interval,
-                    })
-                }))
-                .with_trace_destination(args.oltp_tracing_url.clone().map(|endpoint| {
-                    TraceDestination::OpenTelemetry(OpenTelemetry {
-                        endpoint,
-                        authorization_header: args.oltp_auth_header.clone(),
-                        report_interval: args.oltp_report_interval,
-                    })
-                }))
-                .with_remote_logs(args.oltp_logs_url.clone().map(|endpoint| {
-                    RemoteLogsDestination::OpenTelemetry(OpenTelemetry {
-                        endpoint,
-                        authorization_header: args.oltp_auth_header.clone(),
-                        report_interval: Duration::from_secs(4),
-                    })
-                }))
+                .with_metrics_destination(
+                    args.otlp_metrics_url
+                        .clone()
+                        .map_or_else(|| args.oltp_metrics_url.clone(), Some)
+                        .map(|endpoint| {
+                            MetricsDestination::OpenTelemetry(OpenTelemetry {
+                                endpoint,
+                                authorization_header: args
+                                    .otlp_auth_header
+                                    .clone()
+                                    .map_or_else(|| args.oltp_auth_header.clone(), Some),
+                                report_interval: args.otlp_report_interval,
+                            })
+                        }),
+                )
+                .with_trace_destination(
+                    args.otlp_tracing_url
+                        .clone()
+                        .map_or_else(|| args.oltp_tracing_url.clone(), Some)
+                        .map(|endpoint| {
+                            TraceDestination::OpenTelemetry(OpenTelemetry {
+                                endpoint,
+                                authorization_header: args
+                                    .otlp_auth_header
+                                    .clone()
+                                    .map_or_else(|| args.oltp_auth_header.clone(), Some),
+                                report_interval: args.otlp_report_interval,
+                            })
+                        }),
+                )
+                .with_remote_logs(
+                    args.otlp_logs_url
+                        .clone()
+                        .map_or_else(|| args.oltp_logs_url.clone(), Some)
+                        .map(|endpoint| {
+                            RemoteLogsDestination::OpenTelemetry(OpenTelemetry {
+                                endpoint,
+                                authorization_header: args
+                                    .otlp_auth_header
+                                    .clone()
+                                    .map_or_else(|| args.oltp_auth_header.clone(), Some),
+                                report_interval: Duration::from_secs(4),
+                            })
+                        }),
+                )
                 .with_service_info(ServiceInfo {
                     name: "psyche-centralized-client".to_string(),
                     instance_id: identity_secret_key.public().to_string(),
