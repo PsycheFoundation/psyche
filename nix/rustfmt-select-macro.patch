@@ -1,0 +1,274 @@
+From 2159cf7b8e1bfb612e8e2c333c49b2c2432bccd7 Mon Sep 17 00:00:00 2001
+From: Ari Lotter <arilotter@gmail.com>
+Date: Fri, 13 Mar 2026 20:03:40 -0400
+Subject: [PATCH] add select! formatter
+
+---
+ src/macros.rs              |  80 ++++++++++++++++++++++
+ src/parse/macros/mod.rs    |   1 +
+ src/parse/macros/select.rs | 136 +++++++++++++++++++++++++++++++++++++
+ 3 files changed, 217 insertions(+)
+ create mode 100644 src/parse/macros/select.rs
+
+diff --git a/src/macros.rs b/src/macros.rs
+index 1c5d804..2bd2949 100644
+--- a/src/tools/rustfmt/src/macros.rs
++++ b/src/tools/rustfmt/src/macros.rs
+@@ -25,9 +25,11 @@ use crate::comment::{
+ use crate::config::StyleEdition;
+ use crate::config::lists::*;
+ use crate::expr::{RhsAssignKind, rewrite_array, rewrite_assign_rhs};
++use crate::expr::rewrite_block_with_visitor;
+ use crate::lists::{ListFormatting, itemize_list, write_list};
+ use crate::overflow;
+ use crate::parse::macros::lazy_static::parse_lazy_static;
++use crate::parse::macros::select::{SelectArmKind, parse_select};
+ use crate::parse::macros::{ParsedMacroArgs, parse_expr, parse_macro_args};
+ use crate::rewrite::{
+     MacroErrorKind, Rewrite, RewriteContext, RewriteError, RewriteErrorExt, RewriteResult,
+@@ -244,6 +246,24 @@ fn rewrite_macro_inner(
+         }
+     }
+ 
++    // Format tokio and futures select! macros.
++    if matches!(
++        macro_name.as_str(),
++        "select!" | "tokio::select!" | "futures::select!"
++    ) && !has_comment
++    {
++        match format_select_macro(context, shape, ts.clone(), mac.span(), &macro_name) {
++            Ok(rw) => return Ok(rw),
++            Err(err) => match err {
++                // Fall through to brace passthrough if we could not parse the select arms.
++                RewriteError::MacroFailure { kind, span: _ }
++                    if kind == MacroErrorKind::ParseFailure => {}
++                // If formatting fails after a successful parse, propagate the error.
++                _ => return Err(err),
++            },
++        }
++    }
++
+     let ParsedMacroArgs {
+         args: arg_vec,
+         vec_with_semi,
+@@ -1523,3 +1543,63 @@ fn rewrite_macro_with_items(
+     result.push_str(trailing_semicolon);
+     Ok(result)
+ }
++
++fn format_select_macro(
++    context: &RewriteContext<'_>,
++    shape: Shape,
++    ts: TokenStream,
++    span: Span,
++    macro_name: &str,
++) -> RewriteResult {
++    let parsed = parse_select(context, ts).macro_error(MacroErrorKind::ParseFailure, span)?;
++
++    let arm_shape = shape
++        .block_indent(context.config.tab_spaces())
++        .with_max_width(context.config);
++
++    let mut result = String::with_capacity(1024);
++    result.push_str(macro_name);
++    result.push_str(" {");
++
++    let newline = arm_shape.indent.to_string_with_newline(context.config);
++    let closing_newline = shape.indent.to_string_with_newline(context.config);
++
++    if parsed.biased {
++        result.push_str(&newline);
++        result.push_str("biased;");
++    }
++
++    for arm in &parsed.arms {
++        result.push_str(&newline);
++
++        match &arm.kind {
++            SelectArmKind::Future { pat, expr, guard } => {
++                result.push_str(&pprust::pat_to_string(pat));
++                result.push_str(" = ");
++
++                let expr_str = expr.rewrite_result(context, arm_shape)?;
++                result.push_str(&expr_str);
++
++                if let Some(guard) = guard {
++                    let guard_str = guard.rewrite_result(context, arm_shape)?;
++                    result.push_str(", if ");
++                    result.push_str(&guard_str);
++                }
++            }
++            SelectArmKind::Complete => result.push_str("complete"),
++            SelectArmKind::Default => result.push_str("default"),
++        }
++
++        result.push_str(" =>");
++
++        // Handler block — use the full rustfmt block formatter.
++        let block_str =
++            rewrite_block_with_visitor(context, " ", &arm.body, None, None, arm_shape, true)?;
++        result.push_str(&block_str);
++    }
++
++    result.push_str(&closing_newline);
++    result.push('}');
++
++    Ok(result)
++}
+diff --git a/src/parse/macros/mod.rs b/src/parse/macros/mod.rs
+index 00e0f6f..08a1159 100644
+--- a/src/tools/rustfmt/src/parse/macros/mod.rs
++++ b/src/tools/rustfmt/src/parse/macros/mod.rs
+@@ -12,6 +12,7 @@ use crate::rewrite::RewriteContext;
+ pub(crate) mod cfg_if;
+ pub(crate) mod cfg_match;
+ pub(crate) mod lazy_static;
++pub(crate) mod select;
+ 
+ fn build_stream_parser<'a>(psess: &'a ParseSess, tokens: TokenStream) -> Parser<'a> {
+     Parser::new(psess, tokens, MACRO_ARGUMENTS).recovery(Recovery::Forbidden)
+diff --git a/src/parse/macros/select.rs b/src/parse/macros/select.rs
+new file mode 100644
+index 0000000..0fb0a55
+--- /dev/null
++++ b/src/tools/rustfmt/src/parse/macros/select.rs
+@@ -0,0 +1,136 @@
++use rustc_ast::ast;
++use rustc_ast::token;
++use rustc_ast::tokenstream::TokenStream;
++use rustc_parse::exp;
++use rustc_span::Symbol;
++
++use crate::rewrite::RewriteContext;
++
++pub(crate) enum SelectArmKind {
++    /// `<pat> = <expr> [, if <guard>] => <block>`  (tokio and futures)
++    Future {
++        pat: Box<ast::Pat>,
++        expr: Box<ast::Expr>,
++        guard: Option<Box<ast::Expr>>,
++    },
++    /// `complete => <block>`  (futures only)
++    Complete,
++    /// `default => <block>`  (futures only)
++    Default,
++}
++
++pub(crate) struct SelectArm {
++    pub(crate) kind: SelectArmKind,
++    pub(crate) body: Box<ast::Block>,
++}
++
++pub(crate) struct ParsedSelectMacro {
++    pub(crate) biased: bool,
++    pub(crate) arms: Vec<SelectArm>,
++}
++
++pub(crate) fn parse_select(
++    context: &RewriteContext<'_>,
++    ts: TokenStream,
++) -> Option<ParsedSelectMacro> {
++    let mut parser = super::build_parser(context, ts);
++
++    macro_rules! parse_or {
++        ($method:ident $(,)* $($arg:expr),* $(,)*) => {
++            match parser.$method($($arg,)*) {
++                Ok(val) => {
++                    if parser.psess.dcx().has_errors().is_some() {
++                        parser.psess.dcx().reset_err_count();
++                        return None;
++                    } else {
++                        val
++                    }
++                }
++                Err(err) => {
++                    err.cancel();
++                    parser.psess.dcx().reset_err_count();
++                    return None;
++                }
++            }
++        }
++    }
++
++    // Helper: check whether the current token is a plain identifier with the given name.
++    let is_ident = |parser: &rustc_parse::parser::Parser<'_>, name: &str| {
++        parser
++            .token
++            .ident()
++            .map_or(false, |(id, _)| id.name == Symbol::intern(name))
++    };
++
++    // Optional `biased;` directive (tokio only, not a Rust keyword).
++    let biased = if is_ident(&parser, "biased") {
++        parser.bump();
++        if !parser.eat(exp!(Semi)) {
++            return None;
++        }
++        true
++    } else {
++        false
++    };
++
++    let mut arms = vec![];
++
++    while parser.token.kind != token::Eof {
++        // Check for `complete =>` and `default =>` (futures::select! special arms).
++        let kind = if is_ident(&parser, "complete") {
++            parser.bump();
++            if !parser.eat(exp!(FatArrow)) {
++                return None;
++            }
++            SelectArmKind::Complete
++        } else if is_ident(&parser, "default") {
++            parser.bump();
++            if !parser.eat(exp!(FatArrow)) {
++                return None;
++            }
++            SelectArmKind::Default
++        } else {
++            // `<pat> = <expr> [, if <guard>] => <block>`
++            let pat = parse_or!(parse_pat_no_top_alt, None, None);
++
++            if !parser.eat(exp!(Eq)) {
++                return None;
++            }
++
++            // `parse_expr` stops before `=>` since `=>` is not a valid expression operator.
++            let future_expr = parse_or!(parse_expr);
++
++            // Optional `, if <guard>`
++            let guard = if parser.eat(exp!(Comma)) {
++                if parser.eat_keyword(exp!(If)) {
++                    Some(parse_or!(parse_expr))
++                } else {
++                    // A lone comma before `=>` — not valid select! syntax.
++                    return None;
++                }
++            } else {
++                None
++            };
++
++            if !parser.eat(exp!(FatArrow)) {
++                return None;
++            }
++
++            SelectArmKind::Future {
++                pat,
++                expr: future_expr,
++                guard,
++            }
++        };
++
++        let body = parse_or!(parse_block);
++
++        // Optional trailing comma after the arm body.
++        let _ = parser.eat(exp!(Comma));
++
++        arms.push(SelectArm { kind, body });
++    }
++
++    Some(ParsedSelectMacro { biased, arms })
++}
+-- 
+2.53.0
+

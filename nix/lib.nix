@@ -9,9 +9,21 @@ let
   util = import ./util.nix;
   system = pkgs.stdenv.hostPlatform.system;
 
-  rustToolchain = pkgs.rust-bin.nightly.latest.default.override {
+  rustToolchainBase = pkgs.rust-bin.nightly.latest.default.override {
     extensions = [ "rust-src" ];
     targets = [ "wasm32-unknown-unknown" ];
+  };
+
+  rustfmtPatched = pkgs.rustPackages.rustfmt.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./rustfmt-select-macro.patch ];
+  });
+
+  rustToolchain = pkgs.symlinkJoin {
+    name = "rust-nightly-patched-rustfmt";
+    paths = [
+      rustfmtPatched
+      rustToolchainBase
+    ];
   };
 
   craneLib = (inputs.crane.mkLib pkgs).overrideToolchain rustToolchain;
