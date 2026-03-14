@@ -78,12 +78,16 @@ pub fn lender_claim_processor(
 
     let total_repayed_redeemable_amount = pool.total_claimed_redeemable_amount
         + context.accounts.pool_redeemable.amount;
+
+    // FIX: remove unwrap() to prevent panic / hard DoS
     let claimable_redeemable_amount = u64::try_from(
         u128::from(total_repayed_redeemable_amount)
-            * u128::from(lender.deposited_collateral_amount)
-            / u128::from(pool.total_deposited_collateral_amount),
+            .checked_mul(u128::from(lender.deposited_collateral_amount))
+            .ok_or(ProgramError::MathOverflow)?
+            .checked_div(u128::from(pool.total_deposited_collateral_amount))
+            .ok_or(ProgramError::MathOverflow)?,
     )
-    .unwrap();
+    .map_err(|_| ProgramError::MathOverflow)?;
 
     if lender.claimed_redeemable_amount + params.redeemable_amount
         > claimable_redeemable_amount
@@ -96,6 +100,7 @@ pub fn lender_claim_processor(
 
     let pool_signer_seeds: &[&[&[u8]]] =
         &[&[Pool::SEEDS_PREFIX, &pool.index.to_le_bytes(), &[pool.bump]]];
+
     transfer(
         CpiContext::new(
             context.accounts.token_program.to_account_info(),
