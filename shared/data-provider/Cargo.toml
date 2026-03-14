@@ -22,13 +22,13 @@ rand.workspace = true
 tokio-util.workspace = true
 futures.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 postcard.workspace = true
 bytemuck.workspace = true
 reqwest = "0.12.12"
 google-cloud-storage = "0.24.0"
 chrono = { version = "0.4", features = ["serde"] }
-serde_json.workspace = true
 ts-rs.workspace = true
 rayon.workspace = true
 
