@@ -120,7 +120,10 @@ export function Runs({
 						(r) => runTypeFilter === 'all' || runTypeFilter === r.status.type
 					)
 					.map((r) => (
-						<RunSummaryCard key={`id: ${r.id} index: ${r.index}`} info={r} />
+						<RunSummaryCard
+							key={`${r.id}-${r.programId}-${r.index}`}
+							info={r}
+						/>
 					))}
 			</RunBoxesContainer>
 		</RunsContainer>

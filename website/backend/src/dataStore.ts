@@ -3,6 +3,7 @@ import { RunSummary, RunData, ContributionInfo, ChainTimestamp } from 'shared'
 import { PsycheMiningPoolAccount, WitnessMetadata } from './idlTypes.js'
 import EventEmitter from 'node:events'
 import { UniqueRunKey } from './coordinator.js'
+import { PublicKey } from '@solana/web3.js'
 
 export interface IndexedSignature {
 	signature: string
@@ -28,6 +29,8 @@ export interface RunSummariesData {
 
 export interface CoordinatorDataStore extends ChainDataStore {
 	eventEmitter: EventEmitter<{ update: [UniqueRunKey]; updateSummaries: [] }>
+
+	readonly programId: PublicKey
 
 	createRun(
 		pubkey: string,

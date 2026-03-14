@@ -65,15 +65,17 @@ export const RunSummaryCard = memo(function RunSummaryCard({
 		type,
 		index,
 		isOnlyRunAtThisIndex,
+		programId,
 	},
 }: {
 	info: RunSummary
 }) {
 	return (
 		<ShadowCard
-			to="/runs/$run/$index"
+			to="/runs/$run/$programId/$index"
 			params={{
 				run: id,
+				programId: programId,
 				index: index,
 			}}
 		>
@@ -81,6 +83,7 @@ export const RunSummaryCard = memo(function RunSummaryCard({
 				<RunTitleRow>
 					<RunTitle className={text['display/2xl']}>
 						{name || id} {isOnlyRunAtThisIndex ? '' : `(v${index + 1})`}
+						{programId && ` - ${programId.slice(0, 12)}`}
 					</RunTitle>
 					<StatusChip status={status.type} style="minimal" />
 				</RunTitleRow>
