@@ -4,6 +4,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main, '**']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # First, build the validator image and cache it
   build-validator:
@@ -37,3 +42,66 @@ jobs:
     with:
       test-name: ${{ matrix.test-name }}
     secrets: inherit
+
+  decentralized-integration-python-test:
+    runs-on: self-hosted
+    timeout-minutes: 60
+    needs: build-validator
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Clean up leftover Docker containers
+        run: |
+          # Stop and remove any leftover test containers from previous runs
+          cd docker/test && docker compose down --remove-orphans 2>/dev/null || true
+          docker ps --filter name=test-psyche -q | xargs -r docker stop || true
+          docker ps -a --filter name=test-psyche -q | xargs -r docker rm || true
+
+      - name: Get Validator Image from cache
+        id: cache-validator
+        uses: actions/cache/restore@v4
+        with:
+          path: validator-image.tar.gz
+          key: validator-image-${{ runner.os }}-${{ hashFiles('shared/coordinator/src/coordinator.rs', 'architectures/decentralized/solana-coordinator/**/*.rs', 'architectures/decentralized/solana-coordinator/**/*.toml', 'architectures/decentralized/solana-coordinator/Cargo.lock', 'architectures/decentralized/solana-authorizer/**/*.rs', 'architectures/decentralized/solana-authorizer/**/*.toml', 'architectures/decentralized/solana-authorizer/Cargo.lock', 'docker/test/psyche_solana_validator_entrypoint.sh', 'nix/docker.nix', 'flake.lock') }}
+          fail-on-cache-miss: true
+
+      - name: Load Validator Image
+        run: |
+          echo "Loading validator image from cache"
+          docker load < validator-image.tar.gz
+          docker images | grep psyche-solana-test-validator
+
+          echo "Disk usage after loading validator"
+          df -h
+
+      - name: Clean up validator tar file
+        run: |
+          # Remove the compressed validator image to free up disk space
+          rm -f validator-image.tar.gz
+          echo "Disk usage after removing validator tar"
+          df -h
+
+      - name: Download Solana Test Client Python Image
+        run: |
+          echo "Disk space before client build"
+          df -h
+
+          sleep 500
+
+          # download from Garnix cache (falls back to local build if not cached)
+          echo "Attempting to fetch from Garnix cache"
+          OUT_PATH=$(nix build .#docker-psyche-solana-test-client --no-link --print-out-paths)
+
+          # Load the image into Docker
+          $OUT_PATH | docker load
+
+          echo "Disk space after client build"
+          df -h
+
+      - name: Run decentralized integration test
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          nix develop .#dev-python --command bash -c "cargo test --release --features python,parallelism -p psyche-decentralized-testing --test integration_tests -- --nocapture test_run_with_python"

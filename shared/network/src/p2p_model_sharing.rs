@@ -169,6 +169,7 @@ impl PeerManagerActor {
                 info!("Updated peer list ({} peers)", self.available_peers.len(),);
             }
             PeerCommand::GetPeer { reply } => {
+                // Sort available peers by quality (bandwidth tier, then bandwidth value, then latency)
                 let mut peers_with_priority: Vec<(EndpointId, PeerBandwidth, Duration)> = self
                     .available_peers
                     .drain(..)
@@ -189,7 +190,10 @@ impl PeerManagerActor {
 
                 self.available_peers = peers_with_priority.into_iter().map(|(p, _, _)| p).collect();
 
-                let peer = if let Some(peer) = self.available_peers.pop_front() {
+                // Return the best peer without removing it — the download scheduler
+                // controls concurrency globally, so a single peer can serve multiple
+                // concurrent downloads.
+                let peer = if let Some(&peer) = self.available_peers.front() {
                     let bandwidth = self
                         .connection_monitor
                         .get_bandwidth(&peer)
@@ -210,10 +214,10 @@ impl PeerManagerActor {
                 let _ = reply.send(peer);
             }
             PeerCommand::ReportSuccess { peer_id } => {
+                // Peer stays in available_peers across requests, so just log success.
+                // Only re-add if it was removed due to errors being below threshold.
                 if !self.available_peers.contains(&peer_id) {
                     self.available_peers.push_back(peer_id);
-                } else {
-                    warn!("Peer was already available but we tried to add it again");
                 }
                 info!("Peer {peer_id} correctly provided the blob ticket");
             }
