@@ -251,10 +251,7 @@ impl App {
                 _ => None,
             };
             if let Some(ref creds) = credentials {
-                // Validate basic credentials
                 creds.validate().await?;
-                // For GCS, also validate bucket permissions
-                creds.validate_gcs_bucket_permissions().await?;
             }
         }
 

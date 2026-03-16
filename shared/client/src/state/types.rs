@@ -41,7 +41,7 @@ impl UploadCredentials {
                     .build()?;
                 Ok(())
             }
-            UploadCredentials::Gcs | UploadCredentials::GcsBucket(_) => {
+            UploadCredentials::Gcs => {
                 let _storage = Storage::builder()
                     .build()
                     .await
@@ -53,44 +53,47 @@ impl UploadCredentials {
                     .map_err(|e| anyhow::anyhow!("Failed to create GCS control client: {}", e))?;
                 Ok(())
             }
+            UploadCredentials::GcsBucket(bucket) => {
+                let _storage = Storage::builder()
+                    .build()
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to create GCS client: {}", e))?;
+
+                let client = StorageControl::builder()
+                    .build()
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to create GCS control client: {}", e))?;
+
+                let permissions_to_test = vec![
+                    "storage.objects.list",
+                    "storage.objects.get",
+                    "storage.objects.create",
+                    "storage.objects.delete",
+                ];
+
+                let resource = format!("projects/_/buckets/{}", bucket);
+                let perms_vec: Vec<String> =
+                    permissions_to_test.iter().map(|s| s.to_string()).collect();
+                let response = client
+                    .test_iam_permissions()
+                    .set_resource(&resource)
+                    .set_permissions(perms_vec)
+                    .send()
+                    .await?;
+
+                let correct_permissions = permissions_to_test
+                    .into_iter()
+                    .all(|p| response.permissions.contains(&p.to_string()));
+                if !correct_permissions {
+                    anyhow::bail!(
+                        "GCS bucket {} does not have the required permissions for checkpoint upload. Make sure to set GOOGLE_APPLICATION_CREDENTIALS environment variable correctly and have the correct permissions to the bucket.",
+                        bucket
+                    )
+                }
+                Ok(())
+            }
             UploadCredentials::Skip => Ok(()),
         }
-    }
-
-    /// Validates GCS bucket permissions by testing IAM permissions.
-    /// Only applicable for GcsBucket variant; returns Ok for other variants.
-    pub async fn validate_gcs_bucket_permissions(&self) -> anyhow::Result<()> {
-        if let UploadCredentials::GcsBucket(bucket) = self {
-            let client = StorageControl::builder().build().await?;
-
-            let permissions_to_test = vec![
-                "storage.objects.list",
-                "storage.objects.get",
-                "storage.objects.create",
-                "storage.objects.delete",
-            ];
-
-            let resource = format!("projects/_/buckets/{}", bucket);
-            let perms_vec: Vec<String> =
-                permissions_to_test.iter().map(|s| s.to_string()).collect();
-            let response = client
-                .test_iam_permissions()
-                .set_resource(&resource)
-                .set_permissions(perms_vec)
-                .send()
-                .await?;
-
-            let correct_permissions = permissions_to_test
-                .into_iter()
-                .all(|p| response.permissions.contains(&p.to_string()));
-            if !correct_permissions {
-                anyhow::bail!(
-                    "GCS bucket {} does not have the required permissions for checkpoint upload. Make sure to set GOOGLE_APPLICATION_CREDENTIALS environment variable correctly and have the correct permissions to the bucket.",
-                    bucket
-                )
-            }
-        }
-        Ok(())
     }
 }
 
