@@ -84,16 +84,40 @@ pub enum LLMTrainingDataType {
 )]
 #[repr(C)]
 #[allow(clippy::large_enum_variant)]
-#[derive(Default)]
 pub enum LLMTrainingDataLocation {
-    #[default]
-    Dummy,
+    Dummy(DummyType),
     Server(FixedString<{ SOLANA_MAX_STRING_LEN }>),
     Local(FixedString<{ SOLANA_MAX_URL_STRING_LEN }>),
     Http(HttpLLMTrainingDataLocation),
     /// link to a JSON file that deserializes to a Vec<LLMTrainingDataLocationAndWeight>
     WeightedHttp(FixedString<{ SOLANA_MAX_URL_STRING_LEN }>),
     Preprocessed(FixedString<{ SOLANA_MAX_URL_STRING_LEN }>),
+}
+
+impl Default for LLMTrainingDataLocation {
+    fn default() -> Self {
+        Self::Dummy(DummyType::Working)
+    }
+}
+
+#[derive(
+    AnchorSerialize,
+    AnchorDeserialize,
+    InitSpace,
+    Serialize,
+    Deserialize,
+    Clone,
+    Debug,
+    Zeroable,
+    Copy,
+    TS,
+    PartialEq,
+    Eq,
+)]
+#[repr(C)]
+pub enum DummyType {
+    Working,
+    Failing,
 }
 
 #[derive(
@@ -163,7 +187,6 @@ impl LLMTrainingDataLocationAndWeight {
     TS,
 )]
 #[repr(C)]
-#[allow(clippy::large_enum_variant)]
 pub enum HttpTrainingDataLocation {
     SingleUrl(FixedString<{ SOLANA_MAX_URL_STRING_LEN }>),
     NumberedFiles {

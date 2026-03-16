@@ -21,8 +21,10 @@ architecture = "HfLlama"
 data_type = "Pretraining"
 max_seq_len = 512
 optimizer = "Dummy"
-data_location = "Dummy"
 cold_start_warmup_steps = 0
+
+[data_locations]
+data_locations = [{ Dummy = "Working" }]
 
 
 [model.LLM.checkpoint.Dummy]

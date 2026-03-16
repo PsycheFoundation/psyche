@@ -29,6 +29,8 @@ pub enum Response {
     SolanaSubscription(String, String),
     WitnessElected(String),
     Error(ObservedErrorKind, String),
+    DataProviderFetchSuccess(u64),
+    DataProviderFetchError(u64),
     RpcFallback(String, String),
 }
 
@@ -307,6 +309,26 @@ impl DockerWatcher {
                             message.to_string(),
                         );
 
+                        if log_sender.send(response).await.is_err() {
+                            println!("Probably the test ended so we drop the log sender");
+                        }
+                    }
+                    IntegrationTestLogMarker::DataProviderFetchSuccess => {
+                        let provider_idx = parsed_log
+                            .get("provider_idx")
+                            .and_then(|v| v.as_u64())
+                            .unwrap();
+                        let response = Response::DataProviderFetchSuccess(provider_idx);
+                        if log_sender.send(response).await.is_err() {
+                            println!("Probably the test ended so we drop the log sender");
+                        }
+                    }
+                    IntegrationTestLogMarker::DataProviderFetchError => {
+                        let provider_idx = parsed_log
+                            .get("provider_idx")
+                            .and_then(|v| v.as_u64())
+                            .unwrap();
+                        let response = Response::DataProviderFetchError(provider_idx);
                         if log_sender.send(response).await.is_err() {
                             println!("Probably the test ended so we drop the log sender");
                         }

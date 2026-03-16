@@ -1,5 +1,3 @@
-use std::vec;
-
 use psyche_coordinator::CommitteeSelection;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::SOLANA_MAX_NUM_WITNESSES;
@@ -30,6 +28,7 @@ use psyche_solana_treasurer::logic::RunCreateParams;
 use psyche_solana_treasurer::logic::RunUpdateParams;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
+use std::vec;
 
 #[tokio::test]
 pub async fn run() {

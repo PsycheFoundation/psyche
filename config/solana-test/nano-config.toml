@@ -17,7 +17,6 @@ waiting_for_members_extra_time = 3
 [model.LLM]
 max_seq_len = 64
 cold_start_warmup_steps = 0
-
 [model.LLM.checkpoint.Hub]
 repo_id = "pefontana/Nano-Llama"
 revision = "cf48eac4944f6e954a3d9c9c30e8c865e64e7d03"
@@ -26,13 +25,9 @@ revision = "cf48eac4944f6e954a3d9c9c30e8c865e64e7d03"
 version = 1
 architecture = "HfLlama"
 data_type = "Pretraining"
-
-[model_extra_data.data_location.Http]
-token_size_in_bytes = "TwoBytes"
-shuffle = "DontShuffle"
-
-[model_extra_data.data_location.Http.location]
-SingleUrl = "https://huggingface.co/pefontana/Nano-Llama/resolve/main/tiny-ci-dataset/000_tiny-test.ds"
+data_locations = [
+  { Http = { location = { SingleUrl = "https://huggingface.co/pefontana/Nano-Llama/resolve/main/tiny-ci-dataset/000_tiny-test.ds" }, token_size_in_bytes = "TwoBytes", shuffle = "DontShuffle" } },
+]
 
 [model_extra_data.lr_schedule.Cosine]
 base_lr = 4.0e-4

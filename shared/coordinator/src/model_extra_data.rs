@@ -18,7 +18,7 @@ pub struct ModelExtraData {
 
     pub data_type: LLMTrainingDataType,
 
-    pub data_location: LLMTrainingDataLocation,
+    pub data_locations: Vec<LLMTrainingDataLocation>,
 
     pub lr_schedule: LearningRateSchedule,
 
@@ -35,7 +35,7 @@ impl Default for ModelExtraData {
             version: 1,
             architecture: LLMArchitecture::HfLlama,
             data_type: LLMTrainingDataType::Pretraining,
-            data_location: LLMTrainingDataLocation::default(),
+            data_locations: vec![LLMTrainingDataLocation::default()],
             lr_schedule: LearningRateSchedule::Constant(psyche_core::ConstantLR::default()),
             optimizer: OptimizerDefinition::Dummy,
             run_metadata: None,
@@ -73,28 +73,34 @@ impl ModelExtraData {
 
     /// Validate the configuration
     pub fn check(&self) -> bool {
-        let bad_data_location = match &self.data_location {
-            LLMTrainingDataLocation::Dummy => false,
-            LLMTrainingDataLocation::Server(url) => url.is_empty(),
-            LLMTrainingDataLocation::Local(_) => false,
-            LLMTrainingDataLocation::Http(http_loc) => {
-                use crate::model::HttpTrainingDataLocation;
-                match &http_loc.location {
-                    HttpTrainingDataLocation::SingleUrl(url) => url.is_empty(),
-                    HttpTrainingDataLocation::NumberedFiles {
-                        url_template,
-                        num_files,
-                        ..
-                    } => url_template.is_empty() || *num_files == 0,
-                    HttpTrainingDataLocation::Gcp { bucket_name, .. } => bucket_name.is_empty(),
-                }
-            }
-            LLMTrainingDataLocation::WeightedHttp(url) => url.is_empty(),
-            LLMTrainingDataLocation::Preprocessed(url) => url.is_empty(),
-        };
-
-        if bad_data_location {
+        if self.data_locations.is_empty() {
             return false;
+        }
+
+        for data_location in &self.data_locations {
+            let bad_data_location = match data_location {
+                LLMTrainingDataLocation::Dummy(_) => false,
+                LLMTrainingDataLocation::Server(url) => url.is_empty(),
+                LLMTrainingDataLocation::Local(_) => false,
+                LLMTrainingDataLocation::Http(http_loc) => {
+                    use crate::model::HttpTrainingDataLocation;
+                    match &http_loc.location {
+                        HttpTrainingDataLocation::SingleUrl(url) => url.is_empty(),
+                        HttpTrainingDataLocation::NumberedFiles {
+                            url_template,
+                            num_files,
+                            ..
+                        } => url_template.is_empty() || *num_files == 0,
+                        HttpTrainingDataLocation::Gcp { bucket_name, .. } => bucket_name.is_empty(),
+                    }
+                }
+                LLMTrainingDataLocation::WeightedHttp(url) => url.is_empty(),
+                LLMTrainingDataLocation::Preprocessed(url) => url.is_empty(),
+            };
+
+            if bad_data_location {
+                return false;
+            }
         }
 
         match &self.optimizer {
