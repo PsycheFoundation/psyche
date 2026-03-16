@@ -21,8 +21,8 @@ pub enum UploadInfo {
 /// Credentials for upload validation without requiring full upload details.
 #[derive(Debug, Clone)]
 pub enum UploadCredentials {
-    /// HuggingFace Hub token for validation
-    HubToken(String),
+    /// HuggingFace Hub token and repo for write permission validation
+    HubToken { token: String, repo: String },
     /// GCS credentials (validated via environment variable)
     Gcs,
     /// GCS credentials with bucket for full permission validation
@@ -35,10 +35,17 @@ impl UploadCredentials {
     /// Validates that the upload credentials are valid.
     pub async fn validate(&self) -> anyhow::Result<()> {
         match self {
-            UploadCredentials::HubToken(token) => {
-                let _api = hf_hub::api::tokio::ApiBuilder::new()
+            UploadCredentials::HubToken { token, repo } => {
+                let api = hf_hub::api::tokio::ApiBuilder::new()
                     .with_token(Some(token.clone()))
                     .build()?;
+                let api_repo = api.repo(hf_hub::Repo::model(repo.clone()));
+                if !api_repo.is_writable().await {
+                    anyhow::bail!(
+                        "Checkpoint upload repo {} is not writable with the provided HF token.",
+                        repo
+                    );
+                }
                 Ok(())
             }
             UploadCredentials::Gcs => {
@@ -100,9 +107,13 @@ impl UploadCredentials {
 impl From<&UploadInfo> for UploadCredentials {
     fn from(info: &UploadInfo) -> Self {
         match info {
-            UploadInfo::Hub(HubUploadInfo { hub_token, .. }) => {
-                UploadCredentials::HubToken(hub_token.clone())
-            }
+            UploadInfo::Hub(HubUploadInfo {
+                hub_repo,
+                hub_token,
+            }) => UploadCredentials::HubToken {
+                token: hub_token.clone(),
+                repo: hub_repo.clone(),
+            },
             UploadInfo::Gcs(GcsUploadInfo { gcs_bucket, .. }) => {
                 UploadCredentials::GcsBucket(gcs_bucket.clone())
             }

@@ -238,12 +238,15 @@ impl App {
         if !self.state_options.checkpoint_config.skip_upload {
             let Model::LLM(LLM { checkpoint, .. }) = start_coordinator_state.model;
             let credentials = match checkpoint {
-                model::Checkpoint::Hub(_) | model::Checkpoint::P2P(_) => self
+                model::Checkpoint::Hub(ref hub_repo) | model::Checkpoint::P2P(ref hub_repo) => self
                     .state_options
                     .checkpoint_config
                     .hub_token
                     .as_ref()
-                    .map(|token| UploadCredentials::HubToken(token.clone())),
+                    .map(|token| UploadCredentials::HubToken {
+                        token: token.clone(),
+                        repo: hub_repo.repo_id.to_string(),
+                    }),
                 model::Checkpoint::Gcs(GcsRepo { bucket, .. })
                 | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, .. }) => {
                     Some(UploadCredentials::GcsBucket(bucket.to_string()))

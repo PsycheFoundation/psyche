@@ -1,12 +1,11 @@
 use anyhow::{Error, Result};
 use bytemuck::Zeroable;
-use google_cloud_storage::client::Storage;
 use psyche_centralized_shared::{ClientToServerMessage, ServerToClientMessage};
 use psyche_client::{
     Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, UploadCredentials,
     read_identity_secret_key,
 };
-use psyche_coordinator::model::Checkpoint;
+use psyche_coordinator::model::{self, Checkpoint};
 use psyche_coordinator::{Coordinator, HealthChecks};
 use psyche_core::NodeIdentity;
 use psyche_metrics::ClientMetrics;
@@ -167,19 +166,43 @@ impl App {
         p2p: NC,
         state_options: RunInitConfig,
     ) -> Result<()> {
-        // Sanity checks using the checkpoint config from state_options, not the zeroed coordinator state.
-        // The coordinator_state is only populated after receiving the first ServerToClientMessage::Coordinator.
-        if !state_options.checkpoint_config.skip_upload {
-            let credentials = if let Some(ref hub_token) = state_options.checkpoint_config.hub_token
-            {
-                // Use HF_TOKEN from checkpoint_config for Hub uploads
-                Some(UploadCredentials::HubToken(hub_token.clone()))
-            } else {
-                // Check if GCS credentials are available by attempting to create a client
-                match Storage::builder().build().await {
-                    Ok(_) => Some(UploadCredentials::Gcs),
-                    Err(_) => None,
+        self.server_conn
+            .send(ClientToServerMessage::Join {
+                run_id: self.run_id.clone(),
+            })
+            .await?;
+
+        // Wait for the first coordinator state to validate upload credentials with repo info.
+        let first_coordinator_state = select! {
+            _ = self.cancel.cancelled() => {
+                return Ok(());
+            }
+            message = self.server_conn.receive() => {
+                match message? {
+                    ServerToClientMessage::Coordinator(state) => {
+                        self.coordinator_state = *state;
+                        *state
+                    }
                 }
+            }
+        };
+
+        // Validate upload credentials now that we have the coordinator state with checkpoint info.
+        if !state_options.checkpoint_config.skip_upload {
+            let model::Model::LLM(model::LLM { checkpoint, .. }) = first_coordinator_state.model;
+            let credentials = match checkpoint {
+                Checkpoint::Hub(ref hub_repo) | Checkpoint::P2P(ref hub_repo) => state_options
+                    .checkpoint_config
+                    .hub_token
+                    .as_ref()
+                    .map(|token| UploadCredentials::HubToken {
+                        token: token.clone(),
+                        repo: hub_repo.repo_id.to_string(),
+                    }),
+                Checkpoint::Gcs(ref gcs_repo) | Checkpoint::P2PGcs(ref gcs_repo) => {
+                    Some(UploadCredentials::GcsBucket(gcs_repo.bucket.to_string()))
+                }
+                _ => None,
             };
 
             match credentials {
@@ -194,13 +217,9 @@ impl App {
             }
         }
 
-        self.server_conn
-            .send(ClientToServerMessage::Join {
-                run_id: self.run_id.clone(),
-            })
-            .await?;
-
         let (tx_from_server_message, rx_from_server_message) = mpsc::unbounded_channel();
+        // Forward the first coordinator state we already received.
+        tx_from_server_message.send(first_coordinator_state)?;
         let (tx_to_server_message, mut rx_to_server_message) = mpsc::unbounded_channel();
         let mut client = Client::new(
             Backend {
