@@ -248,7 +248,10 @@ impl RunInitConfigAndIO {
         let hub_read_token = init_config.hub_read_token.clone();
         let hub_max_concurrent_downloads = init_config.hub_max_concurrent_downloads;
         let data_future = async {
-            debug!("Setting up data providers from {:?}", model_extra_data.data_locations);
+            debug!(
+                "Setting up data providers from {:?}",
+                model_extra_data.data_locations
+            );
             let mut data_providers = Vec::new();
 
             for data_location in model_extra_data.data_locations.iter() {

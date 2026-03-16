@@ -91,9 +91,7 @@ impl ModelExtraData {
                             num_files,
                             ..
                         } => url_template.is_empty() || *num_files == 0,
-                        HttpTrainingDataLocation::Gcp { bucket_name, .. } => {
-                            bucket_name.is_empty()
-                        }
+                        HttpTrainingDataLocation::Gcp { bucket_name, .. } => bucket_name.is_empty(),
                     }
                 }
                 LLMTrainingDataLocation::WeightedHttp(url) => url.is_empty(),
