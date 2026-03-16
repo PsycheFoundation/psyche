@@ -174,6 +174,7 @@ impl PythonCausalLM {
                 attn_implementation.to_pytorch_attn_impl_str().to_owned(),
                 parallelism.as_ref().map(|x| x.dp).unwrap_or(1),
                 parallelism.as_ref().map(|x| x.tp).unwrap_or(1),
+                parallelism.as_ref().map(|x| x.ep).unwrap_or(1),
                 override_max_position_embeddings,
             );
             let causal_lm = make_causal_lm.call1(args)?;
