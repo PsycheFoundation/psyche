@@ -313,7 +313,7 @@ class TorchtitanAuto(CausalLM):
         job_config.compile.enable = True
         job_config.compile.components = ["model", "loss"]
         job_config.compile.fullgraph = False
-        job_config.activation_checkpoint.mode = "full"
+        job_config.activation_checkpoint.mode = "selective" if ep > 1 else "full"
         dp_shard = dp * ep
         job_config.parallelism.data_parallel_shard_degree = dp_shard
         job_config.parallelism.tensor_parallel_degree = tp
@@ -406,12 +406,12 @@ class TorchtitanAuto(CausalLM):
         return instance
 
     def _warmup_compile(self):
-        """Run a dummy forward pass to trigger torch.compile autotuning
-        before the coordinator starts timing training steps.
+        """Run a dummy forward+backward pass to trigger torch.compile
+        autotuning before the coordinator starts timing training steps.
 
-        Only runs forward (no backward) to avoid interactions between
-        activation checkpointing recomputation and EP collectives on
-        the very first pass."""
+        Requires selective AC (not full) when EP > 1 to avoid shape
+        mismatches from non-deterministic MoE token routing during
+        AC recomputation."""
         seq_len = self.config_tt.max_seq_len
         batch_size = 2
         device = self.device
@@ -421,9 +421,15 @@ class TorchtitanAuto(CausalLM):
         dummy_ids = torch.randint(
             0, 1000, (batch_size, seq_len), device=device, dtype=torch.long
         )
+        dummy_labels = dummy_ids.clone()
 
-        with torch.no_grad():
-            self.forward(dummy_ids, labels=None)
+        loss, _ = self.forward(dummy_ids, dummy_labels)
+        if loss is not None:
+            loss.backward()
+
+        for p in self.model.parameters():
+            if p.grad is not None:
+                p.grad = None
 
         torch.cuda.synchronize()
         torch.cuda.empty_cache()
