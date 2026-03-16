@@ -194,7 +194,7 @@ impl CooldownStepMetadata {
                     trainers.push(trainer);
                     let evals = model_task_runner.start(trainers);
                     if !is_checkpointer {
-                        info!("Skipping checkpoint upload as this node is not the checkpointer for this epoch");
+                        info!("Skipping checkpoint upload as this node is not a checkpointer for this epoch");
                         return Ok(evals);
                     }
 
