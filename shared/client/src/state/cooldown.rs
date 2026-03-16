@@ -255,22 +255,22 @@ impl CooldownStepMetadata {
                     let local =
                         save_checkpoint_locally(path, variables, checkpoint_extra_files).await?;
 
-                    if let Some(uploader) = uploader {
+                    let upload_succeeded = if let Some(uploader) = uploader {
                         let manifest_metadata = GcsManifestMetadata {
                             epoch,
                             run_id: run_id.clone(),
                         };
-                        let result = upload_checkpoint(uploader, manifest_metadata, local.clone(), step as u64, cancellation_token.clone())
-                            .await;
-                        if let Err(err) = result {
-                            error!("Error uploading checkpoint: {}", err);
-                        } else {
-                            checkpoint_completed.store(true, Ordering::Release);
+                        match upload_checkpoint(uploader, manifest_metadata, local.clone(), step as u64, cancellation_token.clone()).await {
+                            Ok(()) => true,
+                            Err(err) => {
+                                error!("Error uploading checkpoint: {}", err);
+                                false
+                            }
                         }
                     } else {
-                        // No upload configured, but local save succeeded
-                        checkpoint_completed.store(true, Ordering::Release);
-                    }
+                        true
+                    };
+                    checkpoint_completed.store(upload_succeeded, Ordering::Release);
 
                     cleanup_dirs(
                         delete_queue,

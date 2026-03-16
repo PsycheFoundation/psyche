@@ -452,7 +452,7 @@ impl RunInitConfigAndIO {
                                     .collect();
                                 let tokenizer = Arc::new(auto_tokenizer(&repo_files)?);
                                 (
-                                    PretrainedSource::<AutoConfig>::RepoFiles(repo_files.to_vec()),
+                                    PretrainedSource::<AutoConfig>::RepoFiles(repo_files),
                                     tokenizer,
                                     checkpoint_extra_files,
                                 )
