@@ -84,6 +84,10 @@ struct RunArgs {
     #[arg(long, default_value = "")]
     capabilities: String,
 
+    /// gateway HTTP URL to fetch bootstrap peer from
+    #[arg(long, env = "PSYCHE_GATEWAY_URL")]
+    bootstrap_url: Option<String>,
+
     /// bootstrap peer file (JSON file with gateway endpoint address)
     #[arg(long)]
     bootstrap_peer_file: Option<PathBuf>,
@@ -140,10 +144,24 @@ async fn main() -> Result<()> {
     info!("Relay kind: {:?}", run_args.relay_kind);
     info!("Capabilities: {:?}", capabilities);
 
-    let bootstrap_peers = psyche_inference_node::load_bootstrap_peers(
+    let mut bootstrap_peers = psyche_inference_node::load_bootstrap_peers(
         run_args.bootstrap_peer_file.as_ref(),
         "No bootstrap peers configured (no env vars or CLI args)",
     )?;
+
+    if bootstrap_peers.is_empty() {
+        if let Some(ref url) = run_args.bootstrap_url {
+            match psyche_inference_node::fetch_bootstrap_peer(url).await {
+                Ok(peer) => {
+                    info!("Fetched bootstrap peer from {}", url);
+                    bootstrap_peers.push(peer);
+                }
+                Err(e) => {
+                    warn!("Failed to fetch bootstrap peer from {}: {:#}", url, e);
+                }
+            }
+        }
+    }
 
     let cancel = CancellationToken::new();
 
@@ -250,6 +268,11 @@ async fn main() -> Result<()> {
     let mut heartbeat_interval = tokio::time::interval(std::time::Duration::from_secs(30));
     heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
+    // re-bootstrap every 20 heartbeats (10 min)
+    let mut rebootstrap_interval = tokio::time::interval(std::time::Duration::from_secs(600));
+    rebootstrap_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    rebootstrap_interval.tick().await;
+
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
@@ -282,6 +305,20 @@ async fn main() -> Result<()> {
                     debug!("Re-broadcast successful (model: {})", model);
                 } else {
                     debug!("Re-broadcast successful (idle)");
+                }
+            }
+
+            _ = rebootstrap_interval.tick() => {
+                if let Some(ref url) = run_args.bootstrap_url {
+                    match psyche_inference_node::fetch_bootstrap_peer(url).await {
+                        Ok(peer) => {
+                            network.add_peers(vec![peer.id]);
+                            debug!("Re-bootstrapped from {}: peer {}", url, peer.id.fmt_short());
+                        }
+                        Err(e) => {
+                            warn!("Re-bootstrap from {} failed: {:#}", url, e);
+                        }
+                    }
                 }
             }
 
