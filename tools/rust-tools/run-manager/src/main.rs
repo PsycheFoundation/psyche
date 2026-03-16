@@ -8,7 +8,7 @@ use anchor_client::{
 use anyhow::{Context, Result, bail};
 use clap::{Args, Parser, Subcommand};
 use psyche_solana_rpc::SolanaBackend;
-use run_manager::commands::{self, Command, run::CommandUpdateConfigParams};
+use run_manager::commands::{self, Command};
 use run_manager::docker::manager::{Entrypoint, RunManager};
 use run_manager::parse_optional_pubkey;
 use std::io::Cursor;
@@ -25,7 +25,7 @@ use commands::can_join::CommandCanJoin;
 use commands::run::{
     CommandCheckpoint, CommandCloseRun, CommandCreateRun, CommandDownloadResults,
     CommandJsonDumpRun, CommandJsonDumpUser, CommandSetFutureEpochRates, CommandSetPaused,
-    CommandTick, CommandUploadData,
+    CommandTick, CommandUpdateConfig, CommandUploadData,
 };
 use commands::treasury::{CommandTreasurerClaimRewards, CommandTreasurerTopUpRewards};
 use run_manager::docker::coordinator_client::CoordinatorClient;
@@ -119,7 +119,7 @@ enum Commands {
         #[clap(flatten)]
         wallet: WalletArgs,
         #[clap(flatten)]
-        params: CommandUpdateConfigParams,
+        params: CommandUpdateConfig,
     },
     SetPaused {
         #[clap(flatten)]

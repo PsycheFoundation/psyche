@@ -203,8 +203,6 @@ pub enum HttpTrainingDataLocation {
     },
 }
 
-pub const MAX_DATA_LOCATIONS: usize = 3;
-
 #[derive(
     AnchorSerialize, AnchorDeserialize, Serialize, Deserialize, Clone, Debug, Zeroable, Copy, TS,
 )]
@@ -213,35 +211,6 @@ pub struct LLM {
     pub max_seq_len: u32,
     pub cold_start_warmup_steps: u32,
     pub checkpoint: Checkpoint,
-}
-
-#[derive(
-    AnchorSerialize, AnchorDeserialize, Serialize, Deserialize, Clone, Debug, Zeroable, Copy, TS,
-)]
-#[repr(C)]
-pub struct LLMDataLocations {
-    pub data_locations: FixedVec<LLMTrainingDataLocation, { MAX_DATA_LOCATIONS }>,
-}
-
-impl LLMDataLocations {
-    pub fn iter(&self) -> impl DoubleEndedIterator<Item = &LLMTrainingDataLocation> {
-        self.data_locations.iter()
-    }
-
-    pub fn iter_mut(&mut self) -> impl DoubleEndedIterator<Item = &mut LLMTrainingDataLocation> {
-        self.data_locations.iter_mut()
-    }
-}
-
-impl LLMDataLocations {
-    pub fn dummy() -> Self {
-        let mut data_locations: FixedVec<LLMTrainingDataLocation, { MAX_DATA_LOCATIONS }> =
-            FixedVec::new();
-        data_locations
-            .push(LLMTrainingDataLocation::Dummy(DummyType::Working))
-            .unwrap();
-        Self { data_locations }
-    }
 }
 
 impl LLM {

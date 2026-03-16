@@ -164,9 +164,8 @@ impl CoordinatorInstance {
 #[program]
 pub mod psyche_solana_coordinator {
 
-    use psyche_core::FixedString;
-
     use super::*;
+    use psyche_core::FixedString;
 
     pub fn init_coordinator(
         context: Context<InitCoordinatorAccounts>,

@@ -1,3 +1,7 @@
+use crate::commands::Command;
+use async_trait::async_trait;
+use std::path::PathBuf;
+
 use anyhow::{Context, Result, bail};
 use clap::Args;
 use psyche_coordinator::{
@@ -8,37 +12,34 @@ use psyche_coordinator::{
 use psyche_data_provider::upload_json_to_gcs;
 use psyche_solana_treasurer::logic::RunUpdateParams;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use tracing::info;
 
-use crate::commands::Command;
 use crate::{SolanaBackend, instructions};
-use async_trait::async_trait;
 
 #[derive(Debug, Clone, Args)]
 #[command()]
-pub struct CommandUpdateConfigParams {
+pub struct CommandUpdateConfig {
     #[clap(short, long, env)]
-    run_id: String,
+    pub run_id: String,
     #[clap(long, env)]
-    treasurer_index: Option<u64>,
+    pub treasurer_index: Option<u64>,
 
     #[clap(long, env)]
-    config_path: Option<PathBuf>,
+    pub config_path: Option<PathBuf>,
     #[clap(long, env)]
-    restart_from_step: Option<u32>,
+    pub restart_from_step: Option<u32>,
     #[clap(long, env)]
-    switch_to_hub: bool,
+    pub switch_to_hub: bool,
 
     // metadata
     #[clap(long)]
-    name: Option<String>,
+    pub name: Option<String>,
     #[clap(long)]
-    description: Option<String>,
+    pub description: Option<String>,
     #[clap(long)]
-    num_parameters: Option<u64>,
+    pub num_parameters: Option<u64>,
     #[clap(long)]
-    vocab_size: Option<u64>,
+    pub vocab_size: Option<u64>,
     // end metadata
     #[clap(long, env)]
     pub client_version: Option<String>,
@@ -51,7 +52,7 @@ pub struct CommandUpdateConfigParams {
 }
 
 #[async_trait]
-impl Command for CommandUpdateConfigParams {
+impl Command for CommandUpdateConfig {
     async fn execute(self, backend: SolanaBackend) -> Result<()> {
         let Self {
             run_id,
