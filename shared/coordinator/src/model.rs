@@ -227,10 +227,15 @@ impl LLM {
     PartialEq,
     TS,
 )]
+#[repr(C)]
 pub struct HubRepo {
     pub repo_id: FixedString<{ SOLANA_MAX_STRING_LEN }>,
     pub revision: Option<FixedString<{ SOLANA_MAX_STRING_LEN }>>,
 }
+
+// SAFETY: HubRepo is #[repr(C)] and all-zeros is a valid representation
+// (FixedString is Zeroable, Option discriminant zero = None).
+unsafe impl Zeroable for HubRepo {}
 
 impl HubRepo {
     pub fn dummy() -> Self {
@@ -264,10 +269,15 @@ impl FromStr for HubRepo {
     PartialEq,
     TS,
 )]
+#[repr(C)]
 pub struct GcsRepo {
     pub bucket: FixedString<{ SOLANA_MAX_STRING_LEN }>,
     pub prefix: Option<FixedString<{ SOLANA_MAX_STRING_LEN }>>,
 }
+
+// SAFETY: GcsRepo is #[repr(C)] and all-zeros is a valid representation
+// (FixedString is Zeroable, Option discriminant zero = None).
+unsafe impl Zeroable for GcsRepo {}
 
 impl GcsRepo {
     pub fn dummy() -> Self {
@@ -291,32 +301,50 @@ impl GcsRepo {
     TS,
 )]
 #[repr(C)]
+pub enum CheckpointStorage {
+    Hub(HubRepo),
+    Gcs(GcsRepo),
+}
+
+impl std::fmt::Display for CheckpointStorage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CheckpointStorage::Hub(hub_repo) => write!(f, "{}", &hub_repo.repo_id),
+            CheckpointStorage::Gcs(gcs_repo) => match &gcs_repo.prefix {
+                Some(prefix) => write!(f, "gs://{}/{}", &gcs_repo.bucket, prefix),
+                None => write!(f, "gs://{}", &gcs_repo.bucket),
+            },
+        }
+    }
+}
+
+#[derive(
+    AnchorSerialize,
+    AnchorDeserialize,
+    InitSpace,
+    Serialize,
+    Deserialize,
+    Clone,
+    Debug,
+    Zeroable,
+    Copy,
+    TS,
+)]
+#[repr(C)]
 pub enum Checkpoint {
     Ephemeral,
-    Dummy(HubRepo), // Used for testing
-    Hub(HubRepo),
-    P2P(HubRepo),
-    Gcs(GcsRepo),
-    P2PGcs(GcsRepo),
+    Dummy(HubRepo),
+    Hosted(CheckpointStorage),
+    P2P(CheckpointStorage),
 }
 
 impl std::fmt::Display for Checkpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Checkpoint::Dummy(_hub_repo) => write!(f, "Dummy"),
+            Checkpoint::Dummy(_) => write!(f, "Dummy"),
             Checkpoint::Ephemeral => write!(f, "Ephemeral"),
-            Checkpoint::Hub(hub_repo) => write!(f, "{}", &hub_repo.repo_id),
-            Checkpoint::Gcs(gcs_repo) => match &gcs_repo.prefix {
-                Some(prefix) => write!(f, "gs://{}/{}", &gcs_repo.bucket, prefix),
-                None => write!(f, "gs://{}", &gcs_repo.bucket),
-            },
-            Checkpoint::P2P(hub_repo) => {
-                write!(f, "P2P - Hub repo: {}", &hub_repo.repo_id)
-            }
-            Checkpoint::P2PGcs(gcs_repo) => match &gcs_repo.prefix {
-                Some(prefix) => write!(f, "P2P - gs://{}/{}", &gcs_repo.bucket, prefix),
-                None => write!(f, "P2P - gs://{}", &gcs_repo.bucket),
-            },
+            Checkpoint::Hosted(storage) => write!(f, "{}", storage),
+            Checkpoint::P2P(storage) => write!(f, "P2P - {}", storage),
         }
     }
 }
@@ -353,13 +381,12 @@ impl Model {
                     return false;
                 }
                 let bad_checkpoint = match llm.checkpoint {
-                    Checkpoint::Dummy(_hub_repo) => false,
+                    Checkpoint::Dummy(_) => false,
                     Checkpoint::Ephemeral => true,
-                    Checkpoint::P2P(hub_repo) => hub_repo.repo_id.is_empty(),
-                    Checkpoint::Hub(hub_repo) => hub_repo.repo_id.is_empty(),
-                    Checkpoint::Gcs(gcs_repo) | Checkpoint::P2PGcs(gcs_repo) => {
-                        gcs_repo.bucket.is_empty()
-                    }
+                    Checkpoint::Hosted(storage) | Checkpoint::P2P(storage) => match storage {
+                        CheckpointStorage::Hub(hub_repo) => hub_repo.repo_id.is_empty(),
+                        CheckpointStorage::Gcs(gcs_repo) => gcs_repo.bucket.is_empty(),
+                    },
                 };
 
                 if bad_checkpoint {

@@ -1,6 +1,6 @@
 use crate::{
     CheckpointerSelection, Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
-    model::{Checkpoint, Model},
+    model::{Checkpoint, CheckpointStorage, Model},
 };
 
 use anchor_lang::{
@@ -648,20 +648,13 @@ impl Coordinator {
 
         let Model::LLM(llm) = &mut self.model;
         match (&llm.checkpoint, checkpoint_repo) {
-            // If current is P2P, wrap the new checkpoint in P2P
-            (Checkpoint::P2P(_) | Checkpoint::P2PGcs(_), Checkpoint::Hub(hub_repo)) => {
-                llm.checkpoint = Checkpoint::P2P(hub_repo);
+            // If current is P2P, wrap the new storage in P2P
+            (Checkpoint::P2P(_), Checkpoint::Hosted(storage)) => {
+                llm.checkpoint = Checkpoint::P2P(storage);
             }
-            (Checkpoint::P2P(_) | Checkpoint::P2PGcs(_), Checkpoint::Gcs(gcs_repo)) => {
-                llm.checkpoint = Checkpoint::P2PGcs(gcs_repo);
-            }
-            // If current is Hub, only accept Hub updates
-            (Checkpoint::Hub(_), Checkpoint::Hub(hub_repo)) => {
-                llm.checkpoint = Checkpoint::Hub(hub_repo);
-            }
-            // If current is Gcs, only accept Gcs updates
-            (Checkpoint::Gcs(_), Checkpoint::Gcs(gcs_repo)) => {
-                llm.checkpoint = Checkpoint::Gcs(gcs_repo);
+            // If current is Hosted, only accept Hosted updates
+            (Checkpoint::Hosted(_), Checkpoint::Hosted(storage)) => {
+                llm.checkpoint = Checkpoint::Hosted(storage);
             }
             // Ignore other combinations
             _ => {}
@@ -994,10 +987,8 @@ impl Coordinator {
                 .any(|client| pending_clients_unordered.contains(&client.id));
             if all_prev_clients_disconnected {
                 let Model::LLM(llm) = &mut self.model;
-                match llm.checkpoint {
-                    Checkpoint::P2P(hub_repo) => llm.checkpoint = Checkpoint::Hub(hub_repo),
-                    Checkpoint::P2PGcs(gcs_repo) => llm.checkpoint = Checkpoint::Gcs(gcs_repo),
-                    _ => {}
+                if let Checkpoint::P2P(storage) = llm.checkpoint {
+                    llm.checkpoint = Checkpoint::Hosted(storage);
                 }
             }
 
@@ -1128,10 +1119,10 @@ impl Coordinator {
             // we've completed an epoch, switch to P2P from now on
             let Model::LLM(llm) = &mut self.model;
             match llm.checkpoint {
-                Checkpoint::Hub(hub_repo) | Checkpoint::Dummy(hub_repo) => {
-                    llm.checkpoint = Checkpoint::P2P(hub_repo)
+                Checkpoint::Hosted(storage) => llm.checkpoint = Checkpoint::P2P(storage),
+                Checkpoint::Dummy(hub_repo) => {
+                    llm.checkpoint = Checkpoint::P2P(CheckpointStorage::Hub(hub_repo))
                 }
-                Checkpoint::Gcs(gcs_repo) => llm.checkpoint = Checkpoint::P2PGcs(gcs_repo),
                 _ => {}
             }
 

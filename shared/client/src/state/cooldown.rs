@@ -1,7 +1,7 @@
 use crate::CheckpointUploader;
 use psyche_coordinator::{
     CheckpointerSelection, Coordinator,
-    model::{self, HubRepo, LLM, Model},
+    model::{self, CheckpointStorage, HubRepo, LLM, Model},
 };
 use psyche_data_provider::{GcsManifestMetadata, UploadError, upload_to_gcs, upload_to_hub};
 #[cfg(feature = "python")]
@@ -214,14 +214,14 @@ impl CooldownStepMetadata {
                     }
 
                     let uploader = match checkpoint {
-                        model::Checkpoint::Hub(HubRepo {
+                        model::Checkpoint::Hosted(CheckpointStorage::Hub(HubRepo {
                             repo_id,
                             revision: _,
-                        })
-                        | model::Checkpoint::P2P(HubRepo {
+                        }))
+                        | model::Checkpoint::P2P(CheckpointStorage::Hub(HubRepo {
                             repo_id,
                             revision: _,
-                        }) => {
+                        })) => {
                             if let Some(token) = hub_token {
                                 match CheckpointUploader::new_hub(repo_id.to_string(), token).await {
                                     Ok(uploader) => Some(uploader),
@@ -235,8 +235,8 @@ impl CooldownStepMetadata {
                                 None
                             }
                         }
-                        model::Checkpoint::Gcs(model::GcsRepo { bucket, prefix })
-                        | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, prefix }) => {
+                        model::Checkpoint::Hosted(CheckpointStorage::Gcs(model::GcsRepo { bucket, prefix }))
+                        | model::Checkpoint::P2P(CheckpointStorage::Gcs(model::GcsRepo { bucket, prefix })) => {
                             match CheckpointUploader::new_gcs(
                                 bucket.to_string(),
                                 prefix.as_ref().map(|p| p.to_string()),

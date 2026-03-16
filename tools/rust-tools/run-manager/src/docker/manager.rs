@@ -2,7 +2,7 @@ use anchor_client::solana_sdk::bs58;
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anchor_client::solana_sdk::signature::{EncodableKey, Keypair, Signer};
 use anyhow::{Context, Result, anyhow, bail};
-use psyche_coordinator::model::Checkpoint;
+use psyche_coordinator::model::{Checkpoint, CheckpointStorage};
 use std::io::{BufRead, BufReader, Cursor};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -361,7 +361,8 @@ impl RunManager {
         let checkpoint = self.coordinator_client.get_checkpoint_type(&self.run_id)?;
 
         match checkpoint {
-            Checkpoint::Gcs(_) | Checkpoint::P2PGcs(_) => {
+            Checkpoint::Hosted(CheckpointStorage::Gcs(_))
+            | Checkpoint::P2P(CheckpointStorage::Gcs(_)) => {
                 if self.gcs_credentials_path.is_none() {
                     bail!(
                         "This run uses GCS checkpointing but no GCS credentials found. \
@@ -370,7 +371,8 @@ impl RunManager {
                 }
                 info!("GCS credentials validated for checkpoint upload");
             }
-            Checkpoint::Hub(_) | Checkpoint::P2P(_) => {
+            Checkpoint::Hosted(CheckpointStorage::Hub(_))
+            | Checkpoint::P2P(CheckpointStorage::Hub(_)) => {
                 // HF_TOKEN should be in the env file
                 if std::env::var("HF_TOKEN").is_err() {
                     bail!(

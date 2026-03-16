@@ -1,7 +1,9 @@
 use anyhow::{Result, anyhow, bail};
 use async_trait::async_trait;
 use psyche_centralized_shared::{ClientToServerMessage, ServerToClientMessage};
-use psyche_coordinator::model::{Checkpoint, LLM, LLMTrainingDataLocation, Model};
+use psyche_coordinator::model::{
+    Checkpoint, CheckpointStorage, LLM, LLMTrainingDataLocation, Model,
+};
 use psyche_coordinator::{
     Client, ClientState, Coordinator, CoordinatorError, HealthChecks, Round, RunState,
     SOLANA_MAX_NUM_CLIENTS, TickResult,
@@ -183,7 +185,7 @@ impl App {
                 }) => {
                     if let LLMTrainingDataLocation::Server(url) = data_location {
                         match checkpoint {
-                            Checkpoint::Hub(hub_repo) => {
+                            Checkpoint::Hosted(CheckpointStorage::Hub(hub_repo)) => {
                                 let repo_id = String::from(&hub_repo.repo_id);
                                 let revision = hub_repo.revision.map(|bytes| (&bytes).into());
                                 if revision.is_some()
@@ -201,10 +203,10 @@ impl App {
                             Checkpoint::Dummy(_) => {
                                 // ok!
                             }
-                            Checkpoint::P2P(_) | Checkpoint::P2PGcs(_) => {
+                            Checkpoint::P2P(_) => {
                                 bail!("Can't start up a run with a P2P checkpoint.")
                             }
-                            Checkpoint::Gcs(gcs_repo) => {
+                            Checkpoint::Hosted(CheckpointStorage::Gcs(gcs_repo)) => {
                                 let bucket: String = (&gcs_repo.bucket).into();
                                 let prefix: Option<String> =
                                     gcs_repo.prefix.map(|p| (&p).into());

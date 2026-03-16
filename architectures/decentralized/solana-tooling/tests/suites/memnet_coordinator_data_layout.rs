@@ -1,11 +1,11 @@
 use psyche_coordinator::Round;
 use psyche_coordinator::RunState;
-use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::model::HttpTrainingDataLocation;
 use psyche_coordinator::model::LLMArchitecture;
 use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::LLMTrainingDataType;
 use psyche_coordinator::model::Model;
+use psyche_coordinator::model::{Checkpoint, CheckpointStorage};
 use psyche_core::CosineLR;
 use psyche_core::FixedString;
 use psyche_core::FixedVec;
@@ -50,7 +50,7 @@ pub async fn run() {
             assert_eq!(llm.cold_start_warmup_steps, 0);
             assert_eq!(llm.architecture, LLMArchitecture::HfLlama);
             match llm.checkpoint {
-                Checkpoint::Hub(hub) => {
+                Checkpoint::Hosted(CheckpointStorage::Hub(hub)) => {
                     assert_eq!(
                         hub.repo_id,
                         fixed_str("emozilla/llama2-1.1b-gqa-init")
