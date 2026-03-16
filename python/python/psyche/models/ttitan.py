@@ -397,9 +397,40 @@ class TorchtitanAuto(CausalLM):
 
         loss_fn = build_cross_entropy_loss(job_config)
 
-        return TorchtitanAuto(
+        instance = TorchtitanAuto(
             model, loss_fn, config, config_tt, job_config, device, amp, parallel_dims
         )
+
+        instance._warmup_compile()
+
+        return instance
+
+    def _warmup_compile(self):
+        """Run a dummy forward+backward pass to trigger torch.compile autotuning
+        before the coordinator starts timing training steps."""
+        seq_len = self.config_tt.max_seq_len
+        batch_size = 2
+        device = self.device
+
+        print(f"Warming up torch.compile (seq_len={seq_len})...")
+
+        dummy_ids = torch.randint(
+            0, 1000, (batch_size, seq_len), device=device, dtype=torch.long
+        )
+        dummy_labels = dummy_ids.clone()
+
+        loss, _ = self.forward(dummy_ids, dummy_labels)
+        if loss is not None:
+            loss.backward()
+
+        for p in self.model.parameters():
+            if p.grad is not None:
+                p.grad = None
+
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
+
+        print("Compile warmup complete.")
 
     def named_parameters(self) -> dict[str, torch.Tensor]:
         params = dict(self.model.named_parameters())
