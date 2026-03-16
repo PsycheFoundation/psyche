@@ -9,8 +9,8 @@ pub use cli::{TrainArgs, prepare_environment, print_identity_keys, read_identity
 pub use client::Client;
 pub use protocol::{Broadcast, BroadcastType, Finished, NC, TrainingResult};
 pub use state::{
-    CheckpointConfig, GcsUploadInfo, HubUploadInfo, InitRunError, RoundState, RunInitConfig,
-    RunInitConfigAndIO, UploadCredentials, UploadInfo,
+    CheckpointConfig, CheckpointUploader, InitRunError, RoundState, RunInitConfig,
+    RunInitConfigAndIO,
 };
 pub use tui::{ClientTUI, ClientTUIState};
 

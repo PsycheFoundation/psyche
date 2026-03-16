@@ -1,11 +1,9 @@
-use crate::UploadInfo;
+use crate::CheckpointUploader;
 use psyche_coordinator::{
     CheckpointerSelection, Coordinator,
     model::{self, HubRepo, LLM, Model},
 };
-use psyche_data_provider::{
-    GcsManifestMetadata, GcsUploadInfo, HubUploadInfo, UploadError, upload_to_gcs, upload_to_hub,
-};
+use psyche_data_provider::{GcsManifestMetadata, UploadError, upload_to_gcs, upload_to_hub};
 #[cfg(feature = "python")]
 use psyche_modeling::CausalLM;
 use psyche_modeling::{
@@ -215,7 +213,7 @@ impl CooldownStepMetadata {
                         return Ok(evals);
                     }
 
-                    let upload_info = match checkpoint {
+                    let uploader = match checkpoint {
                         model::Checkpoint::Hub(HubRepo {
                             repo_id,
                             revision: _,
@@ -225,10 +223,13 @@ impl CooldownStepMetadata {
                             revision: _,
                         }) => {
                             if let Some(token) = hub_token {
-                                Some(UploadInfo::Hub(HubUploadInfo {
-                                    hub_repo: repo_id.to_string(),
-                                    hub_token: token,
-                                }))
+                                match CheckpointUploader::new_hub(repo_id.to_string(), token).await {
+                                    Ok(uploader) => Some(uploader),
+                                    Err(err) => {
+                                        error!("Failed to create HF uploader: {}", err);
+                                        None
+                                    }
+                                }
                             } else {
                                 warn!("HF_TOKEN env not provided, skipping upload to HuggingFace Hub");
                                 None
@@ -236,10 +237,16 @@ impl CooldownStepMetadata {
                         }
                         model::Checkpoint::Gcs(model::GcsRepo { bucket, prefix })
                         | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, prefix }) => {
-                            Some(UploadInfo::Gcs(GcsUploadInfo {
-                                gcs_bucket: bucket.to_string(),
-                                gcs_prefix: prefix.as_ref().map(|p| p.to_string()),
-                            }))
+                            match CheckpointUploader::new_gcs(
+                                bucket.to_string(),
+                                prefix.as_ref().map(|p| p.to_string()),
+                            ).await {
+                                Ok(uploader) => Some(uploader),
+                                Err(err) => {
+                                    error!("Failed to create GCS uploader: {}", err);
+                                    None
+                                }
+                            }
                         }
                         _ => None,
                     };
@@ -248,12 +255,12 @@ impl CooldownStepMetadata {
                     let local =
                         save_checkpoint_locally(path, variables, checkpoint_extra_files).await?;
 
-                    if let Some(upload_info) = upload_info {
+                    if let Some(uploader) = uploader {
                         let manifest_metadata = GcsManifestMetadata {
                             epoch,
                             run_id: run_id.clone(),
                         };
-                        let result = upload_checkpoint(upload_info, manifest_metadata, local.clone(), step as u64, cancellation_token.clone())
+                        let result = upload_checkpoint(uploader, manifest_metadata, local.clone(), step as u64, cancellation_token.clone())
                             .await;
                         if let Err(err) = result {
                             error!("Error uploading checkpoint: {}", err);
@@ -313,22 +320,24 @@ async fn save_checkpoint_locally(
 }
 
 async fn upload_checkpoint(
-    upload_info: UploadInfo,
+    uploader: CheckpointUploader,
     manifest_metadata: GcsManifestMetadata,
     local: Vec<PathBuf>,
     step: u64,
     cancellation_token: tokio_util::sync::CancellationToken,
 ) -> Result<(), CheckpointError> {
-    match upload_info {
-        UploadInfo::Gcs(gcs_info) => {
+    match uploader {
+        CheckpointUploader::Gcs(gcs_info) => {
             upload_to_gcs(gcs_info, manifest_metadata, local, step, cancellation_token)
                 .await
                 .map_err(CheckpointError::UploadError)
         }
-        UploadInfo::Hub(hub_info) => upload_to_hub(hub_info, local, step, cancellation_token)
-            .await
-            .map_err(CheckpointError::UploadError),
-        UploadInfo::Dummy() => {
+        CheckpointUploader::Hub(hub_info) => {
+            upload_to_hub(hub_info, local, step, cancellation_token)
+                .await
+                .map_err(CheckpointError::UploadError)
+        }
+        CheckpointUploader::Dummy => {
             info!("Dummy upload info provided; skipping upload");
             Ok(())
         }

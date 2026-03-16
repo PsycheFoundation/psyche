@@ -2,7 +2,7 @@ use anyhow::{Error, Result};
 use bytemuck::Zeroable;
 use psyche_centralized_shared::{ClientToServerMessage, ServerToClientMessage};
 use psyche_client::{
-    Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, UploadCredentials,
+    CheckpointUploader, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs,
     read_identity_secret_key,
 };
 use psyche_coordinator::model::{self, Checkpoint};
@@ -190,30 +190,26 @@ impl App {
         // Validate upload credentials now that we have the coordinator state with checkpoint info.
         if !state_options.checkpoint_config.skip_upload {
             let model::Model::LLM(model::LLM { checkpoint, .. }) = first_coordinator_state.model;
-            let credentials = match checkpoint {
-                Checkpoint::Hub(ref hub_repo) | Checkpoint::P2P(ref hub_repo) => state_options
-                    .checkpoint_config
-                    .hub_token
-                    .as_ref()
-                    .map(|token| UploadCredentials::HubToken {
-                        token: token.clone(),
-                        repo: hub_repo.repo_id.to_string(),
-                    }),
+            match checkpoint {
+                Checkpoint::Hub(ref hub_repo) | Checkpoint::P2P(ref hub_repo) => {
+                    let token = state_options.checkpoint_config.hub_token.as_ref()
+                        .ok_or_else(|| anyhow::anyhow!(
+                            "No HF_TOKEN found for checkpointing to Hub repo {}. Set HF_TOKEN environment variable.",
+                            hub_repo.repo_id
+                        ))?;
+                    // Validate write permissions — the uploader is dropped after validation,
+                    // it will be re-created during cooldown with the current coordinator state.
+                    CheckpointUploader::new_hub(hub_repo.repo_id.to_string(), token.clone())
+                        .await?;
+                }
                 Checkpoint::Gcs(ref gcs_repo) | Checkpoint::P2PGcs(ref gcs_repo) => {
-                    Some(UploadCredentials::GcsBucket(gcs_repo.bucket.to_string()))
+                    CheckpointUploader::new_gcs(
+                        gcs_repo.bucket.to_string(),
+                        gcs_repo.prefix.as_ref().map(|p| p.to_string()),
+                    )
+                    .await?;
                 }
-                _ => None,
-            };
-
-            match credentials {
-                Some(creds) => {
-                    creds.validate().await?;
-                }
-                None => {
-                    anyhow::bail!(
-                        "No upload credentials found for checkpointing. Set HF_TOKEN for HuggingFace Hub or configure GCS credentials."
-                    );
-                }
+                _ => {}
             }
         }
 

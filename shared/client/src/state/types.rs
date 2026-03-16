@@ -10,115 +10,76 @@ use tch::TchError;
 use thiserror::Error;
 use tokio::task::JoinHandle;
 
-/// Upload info with full details needed for actual uploads.
+/// Validated checkpoint uploader. Can only be constructed via async methods
+/// that validate credentials and permissions on creation.
 #[derive(Debug, Clone)]
-pub enum UploadInfo {
+pub enum CheckpointUploader {
     Hub(HubUploadInfo),
     Gcs(GcsUploadInfo),
-    Dummy(),
+    Dummy,
 }
 
-/// Credentials for upload validation without requiring full upload details.
-#[derive(Debug, Clone)]
-pub enum UploadCredentials {
-    /// HuggingFace Hub token and repo for write permission validation
-    HubToken { token: String, repo: String },
-    /// GCS credentials (validated via environment variable)
-    Gcs,
-    /// GCS credentials with bucket for full permission validation
-    GcsBucket(String),
-    /// Skip validation (for testing)
-    Skip,
-}
-
-impl UploadCredentials {
-    /// Validates that the upload credentials are valid.
-    pub async fn validate(&self) -> anyhow::Result<()> {
-        match self {
-            UploadCredentials::HubToken { token, repo } => {
-                let api = hf_hub::api::tokio::ApiBuilder::new()
-                    .with_token(Some(token.clone()))
-                    .build()?;
-                let api_repo = api.repo(hf_hub::Repo::model(repo.clone()));
-                if !api_repo.is_writable().await {
-                    anyhow::bail!(
-                        "Checkpoint upload repo {} is not writable with the provided HF token.",
-                        repo
-                    );
-                }
-                Ok(())
-            }
-            UploadCredentials::Gcs => {
-                let _storage = Storage::builder()
-                    .build()
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to create GCS client: {}", e))?;
-
-                let _storage_control = StorageControl::builder()
-                    .build()
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to create GCS control client: {}", e))?;
-                Ok(())
-            }
-            UploadCredentials::GcsBucket(bucket) => {
-                let _storage = Storage::builder()
-                    .build()
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to create GCS client: {}", e))?;
-
-                let client = StorageControl::builder()
-                    .build()
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to create GCS control client: {}", e))?;
-
-                let permissions_to_test = vec![
-                    "storage.objects.list",
-                    "storage.objects.get",
-                    "storage.objects.create",
-                    "storage.objects.delete",
-                ];
-
-                let resource = format!("projects/_/buckets/{}", bucket);
-                let perms_vec: Vec<String> =
-                    permissions_to_test.iter().map(|s| s.to_string()).collect();
-                let response = client
-                    .test_iam_permissions()
-                    .set_resource(&resource)
-                    .set_permissions(perms_vec)
-                    .send()
-                    .await?;
-
-                let correct_permissions = permissions_to_test
-                    .into_iter()
-                    .all(|p| response.permissions.contains(&p.to_string()));
-                if !correct_permissions {
-                    anyhow::bail!(
-                        "GCS bucket {} does not have the required permissions for checkpoint upload. Make sure to set GOOGLE_APPLICATION_CREDENTIALS environment variable correctly and have the correct permissions to the bucket.",
-                        bucket
-                    )
-                }
-                Ok(())
-            }
-            UploadCredentials::Skip => Ok(()),
+impl CheckpointUploader {
+    /// Creates a new HF Hub uploader after validating write permissions to the repo.
+    pub async fn new_hub(repo: String, token: String) -> anyhow::Result<Self> {
+        let api = hf_hub::api::tokio::ApiBuilder::new()
+            .with_token(Some(token.clone()))
+            .build()?;
+        let api_repo = api.repo(hf_hub::Repo::model(repo.clone()));
+        if !api_repo.is_writable().await {
+            anyhow::bail!(
+                "Checkpoint upload repo {} is not writable with the provided HF token.",
+                repo
+            );
         }
+        Ok(Self::Hub(HubUploadInfo {
+            hub_repo: repo,
+            hub_token: token,
+        }))
     }
-}
 
-impl From<&UploadInfo> for UploadCredentials {
-    fn from(info: &UploadInfo) -> Self {
-        match info {
-            UploadInfo::Hub(HubUploadInfo {
-                hub_repo,
-                hub_token,
-            }) => UploadCredentials::HubToken {
-                token: hub_token.clone(),
-                repo: hub_repo.clone(),
-            },
-            UploadInfo::Gcs(GcsUploadInfo { gcs_bucket, .. }) => {
-                UploadCredentials::GcsBucket(gcs_bucket.clone())
-            }
-            UploadInfo::Dummy() => UploadCredentials::Skip,
+    /// Creates a new GCS uploader after validating bucket permissions.
+    pub async fn new_gcs(bucket: String, prefix: Option<String>) -> anyhow::Result<Self> {
+        let _storage = Storage::builder()
+            .build()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create GCS client: {}", e))?;
+
+        let client = StorageControl::builder()
+            .build()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create GCS control client: {}", e))?;
+
+        let permissions_to_test = vec![
+            "storage.objects.list",
+            "storage.objects.get",
+            "storage.objects.create",
+            "storage.objects.delete",
+        ];
+
+        let resource = format!("projects/_/buckets/{}", bucket);
+        let perms_vec: Vec<String> = permissions_to_test.iter().map(|s| s.to_string()).collect();
+        let response = client
+            .test_iam_permissions()
+            .set_resource(&resource)
+            .set_permissions(perms_vec)
+            .send()
+            .await?;
+
+        let correct_permissions = permissions_to_test
+            .into_iter()
+            .all(|p| response.permissions.contains(&p.to_string()));
+        if !correct_permissions {
+            anyhow::bail!(
+                "GCS bucket {} does not have the required permissions for checkpoint upload. Make sure to set GOOGLE_APPLICATION_CREDENTIALS environment variable correctly and have the correct permissions to the bucket.",
+                bucket
+            )
         }
+
+        Ok(Self::Gcs(GcsUploadInfo {
+            gcs_bucket: bucket,
+            gcs_prefix: prefix,
+        }))
     }
 }
 
