@@ -53,7 +53,6 @@ impl Command for CommandSetPaused {
                     epoch_slashing_rate_per_client: None,
                     paused: Some(paused),
                     client_version: None,
-                    data_location: None,
                 },
             )
         } else {

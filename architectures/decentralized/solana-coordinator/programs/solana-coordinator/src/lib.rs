@@ -182,25 +182,6 @@ pub mod psyche_solana_coordinator {
         free_coordinator_processor(context, params)
     }
 
-    pub fn update_data_locations(
-        ctx: Context<OwnerCoordinatorAccounts>,
-        data_location: Option<
-            psyche_coordinator::model::LLMTrainingDataLocation,
-        >,
-    ) -> Result<()> {
-        let mut account = ctx.accounts.coordinator_account.load_mut()?;
-        account.increment_nonce();
-        account.state.update_data_locations(data_location)
-    }
-
-    pub fn clear_data_locations(
-        ctx: Context<OwnerCoordinatorAccounts>,
-    ) -> Result<()> {
-        let mut account = ctx.accounts.coordinator_account.load_mut()?;
-        account.increment_nonce();
-        account.state.clear_data_locations()
-    }
-
     pub fn update(
         ctx: Context<OwnerCoordinatorAccounts>,
         metadata: Option<RunMetadata>,

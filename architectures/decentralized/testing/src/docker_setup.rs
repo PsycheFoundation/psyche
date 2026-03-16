@@ -4,7 +4,7 @@ use bollard::{
         Config, CreateContainerOptions, KillContainerOptions, ListContainersOptions,
         RemoveContainerOptions,
     },
-    models::DeviceRequest,
+    models::{DeviceRequest, Mount, MountTypeEnum},
     secret::{ContainerSummary, HostConfig},
 };
 use psyche_coordinator::model::LLMTrainingDataLocation;
@@ -167,6 +167,23 @@ pub async fn spawn_new_client(
     // Setting extra hosts and optionally nvidia request
     let network_name = "test_psyche-test-network";
 
+    // Mount the config file from the host
+    let config_mount = Mount {
+        target: Some("/usr/local/config.toml".to_string()),
+        source: Some(
+            std::env::current_dir()
+                .unwrap()
+                .join("../../../config/solana-test/test-config.toml")
+                .canonicalize()
+                .unwrap()
+                .to_string_lossy()
+                .to_string(),
+        ),
+        typ: Some(MountTypeEnum::BIND),
+        read_only: Some(true),
+        ..Default::default()
+    };
+
     // Build volume binds and extra env vars for keypair
     let (binds, extra_env) = if let Some(path) = keypair_path {
         let abs_path = std::fs::canonicalize(path).expect("Failed to canonicalize keypair path");
@@ -191,13 +208,15 @@ pub async fn spawn_new_client(
             device_requests: Some(vec![device_request]),
             extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
             network_mode: Some(network_name.to_string()),
-            binds,
+            mounts: Some(vec![config_mount.clone()]),
+            binds: binds.clone(),
             ..Default::default()
         }
     } else {
         HostConfig {
             extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
             network_mode: Some(network_name.to_string()),
+            mounts: Some(vec![config_mount]),
             binds,
             ..Default::default()
         }

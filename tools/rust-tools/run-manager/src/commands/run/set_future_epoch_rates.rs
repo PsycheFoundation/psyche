@@ -73,7 +73,6 @@ impl Command for CommandSetFutureEpochRates {
                     .map(|amount| ui_amount_to_native_amount(amount, mint_decimals)),
                 paused: None,
                 client_version: None,
-                data_location: None,
             },
         );
 

@@ -22,6 +22,7 @@ psyche-solana-authorizer.workspace = true
 psyche-solana-treasurer.workspace = true
 psyche-coordinator.workspace = true
 psyche-core.workspace = true
+psyche-data-provider.workspace = true
 anchor-client.workspace = true
 anchor-lang.workspace = true
 anchor-spl.workspace = true

@@ -6,16 +6,8 @@ use psyche_coordinator::model::Checkpoint;
 use psyche_coordinator::model::DummyType;
 use psyche_coordinator::model::HubRepo;
 use psyche_coordinator::model::LLM;
-use psyche_coordinator::model::LLMArchitecture;
-use psyche_coordinator::model::LLMTrainingDataLocation;
-use psyche_coordinator::model::LLMTrainingDataType;
-use psyche_coordinator::model::MAX_DATA_LOCATIONS;
 use psyche_coordinator::model::Model;
-use psyche_core::ConstantLR;
-use psyche_core::FixedVec;
-use psyche_core::LearningRateSchedule;
 use psyche_core::NodeIdentity;
-use psyche_core::OptimizerDefinition;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
 use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::instruction::Witness;
@@ -30,7 +22,6 @@ use psyche_solana_tooling::process_coordinator_instructions::process_coordinator
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_set_paused;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_tick;
 use psyche_solana_tooling::process_coordinator_instructions::process_coordinator_witness;
-use psyche_solana_tooling::process_coordinator_instructions::process_data_locations_update;
 use psyche_solana_tooling::process_coordinator_instructions::process_update;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
@@ -115,33 +106,11 @@ pub async fn run() {
             waiting_for_members_extra_time: 3,
         }),
         Some(Model::LLM(LLM {
-            architecture: LLMArchitecture::HfLlama,
             checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
             max_seq_len: 4096,
-            data_type: LLMTrainingDataType::Pretraining,
-            lr_schedule: LearningRateSchedule::Constant(ConstantLR::default()),
-            optimizer: OptimizerDefinition::Distro {
-                clip_grad_norm: None,
-                compression_decay: 1.0,
-                compression_topk: 1,
-                compression_chunk: 1,
-                quantize_1bit: false,
-                weight_decay: None,
-            },
             cold_start_warmup_steps: 0,
         })),
         None, // no explicit progress
-    )
-    .await
-    .unwrap();
-
-    process_data_locations_update(
-        &mut endpoint,
-        &payer,
-        &main_authority,
-        &coordinator_instance,
-        &coordinator_account,
-        Some(LLMTrainingDataLocation::default()),
     )
     .await
     .unwrap();
