@@ -436,6 +436,7 @@ class TorchtitanAuto(CausalLM):
         from torch.nn.attention.flex_attention import create_block_mask
 
         seq_len = input_ids.shape[1]
+        block_size = 64
 
         if sequence_lengths is not None:
             batch_size = input_ids.shape[0]
@@ -462,6 +463,7 @@ class TorchtitanAuto(CausalLM):
                     H=None,
                     Q_LEN=seq_len,
                     KV_LEN=seq_len,
+                    BLOCK_SIZE=block_size,
                 )
             return {"flex_attn": block_mask}
 
@@ -470,7 +472,12 @@ class TorchtitanAuto(CausalLM):
 
         with torch.no_grad():
             block_mask = create_block_mask(
-                self._causal_mask, B=1, H=None, Q_LEN=seq_len, KV_LEN=seq_len
+                self._causal_mask,
+                B=1,
+                H=None,
+                Q_LEN=seq_len,
+                KV_LEN=seq_len,
+                BLOCK_SIZE=block_size,
             )
 
         attention_masks = {"flex_attn": block_mask}
