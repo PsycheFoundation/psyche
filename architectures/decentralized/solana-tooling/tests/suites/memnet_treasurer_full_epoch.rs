@@ -3,7 +3,6 @@ use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::SOLANA_MAX_NUM_WITNESSES;
 use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
 use psyche_coordinator::model::Checkpoint;
-use psyche_coordinator::model::DummyType;
 use psyche_coordinator::model::HubRepo;
 use psyche_coordinator::model::LLM;
 use psyche_coordinator::model::Model;
