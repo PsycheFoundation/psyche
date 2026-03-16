@@ -406,8 +406,12 @@ class TorchtitanAuto(CausalLM):
         return instance
 
     def _warmup_compile(self):
-        """Run a dummy forward+backward pass to trigger torch.compile autotuning
-        before the coordinator starts timing training steps."""
+        """Run a dummy forward pass to trigger torch.compile autotuning
+        before the coordinator starts timing training steps.
+
+        Only runs forward (no backward) to avoid interactions between
+        activation checkpointing recomputation and EP collectives on
+        the very first pass."""
         seq_len = self.config_tt.max_seq_len
         batch_size = 2
         device = self.device
@@ -417,15 +421,9 @@ class TorchtitanAuto(CausalLM):
         dummy_ids = torch.randint(
             0, 1000, (batch_size, seq_len), device=device, dtype=torch.long
         )
-        dummy_labels = dummy_ids.clone()
 
-        loss, _ = self.forward(dummy_ids, dummy_labels)
-        if loss is not None:
-            loss.backward()
-
-        for p in self.model.parameters():
-            if p.grad is not None:
-                p.grad = None
+        with torch.no_grad():
+            self.forward(dummy_ids, labels=None)
 
         torch.cuda.synchronize()
         torch.cuda.empty_cache()
