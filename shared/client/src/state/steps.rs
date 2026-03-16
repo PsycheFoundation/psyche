@@ -356,7 +356,7 @@ impl StepStateMachine {
             }
         }
 
-        // Original behavior: panic if client not found (should never happen)
+        // Panic if client not found (should never happen)
         let client_index = self
             .get_client_index()
             .expect("client should be in epoch_state.clients");
