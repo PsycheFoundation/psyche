@@ -1,11 +1,12 @@
 use psyche_coordinator::Round;
 use psyche_coordinator::RunState;
-use psyche_coordinator::model::Checkpoint;
+use psyche_coordinator::model::CheckpointSource;
 use psyche_coordinator::model::HttpTrainingDataLocation;
 use psyche_coordinator::model::LLMArchitecture;
 use psyche_coordinator::model::LLMTrainingDataLocation;
 use psyche_coordinator::model::LLMTrainingDataType;
 use psyche_coordinator::model::Model;
+use psyche_coordinator::model_extra_data::CheckpointData;
 use psyche_core::CosineLR;
 use psyche_core::FixedString;
 use psyche_core::FixedVec;
@@ -49,16 +50,19 @@ pub async fn run() {
             assert_eq!(llm.max_seq_len, 2048);
             assert_eq!(llm.cold_start_warmup_steps, 0);
             assert_eq!(llm.architecture, LLMArchitecture::HfLlama);
-            match llm.checkpoint {
-                Checkpoint::Hub(hub) => {
-                    assert_eq!(
-                        hub.repo_id,
-                        fixed_str("emozilla/llama2-1.1b-gqa-init")
-                    );
-                    assert_eq!(hub.revision, None);
-                },
-                _ => panic!("Expected Hub checkpoint"),
-            };
+            assert_eq!(llm.checkpoint_source, CheckpointSource::Stored);
+            {
+                let checkpoint_data =
+                    CheckpointData::from_fixed_vec(&llm.checkpoint_data)
+                        .unwrap();
+                match checkpoint_data {
+                    CheckpointData::Hub { repo_id, revision } => {
+                        assert_eq!(repo_id, "emozilla/llama2-1.1b-gqa-init");
+                        assert_eq!(revision, None);
+                    },
+                    _ => panic!("Expected Hub checkpoint data"),
+                }
+            }
             assert_eq!(llm.data_type, LLMTrainingDataType::Pretraining);
             match llm.data_location {
                 LLMTrainingDataLocation::Http(http) => {

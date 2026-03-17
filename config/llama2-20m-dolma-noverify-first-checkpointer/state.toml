@@ -24,8 +24,6 @@ max_seq_len = 2048
 cold_start_warmup_steps = 0
 [model.LLM.data_location]
 Server = "127.0.0.1:20001"
-[model.LLM.checkpoint.Hub]
-repo_id = "emozilla/llama2-20m-init"
 [model.LLM.lr_schedule.Cosine]
 base_lr = 4.0e-4
 warmup_steps = 500
@@ -37,3 +35,6 @@ compression_decay = 0.999
 compression_chunk = 64
 compression_topk = 8
 quantize_1bit = true
+
+[model_extra_data.checkpoint.Hub]
+repo_id = "emozilla/llama2-20m-init"

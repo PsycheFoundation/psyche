@@ -25,13 +25,12 @@ data_location = "Dummy"
 cold_start_warmup_steps = 0
 
 
-[model.LLM.checkpoint.Dummy]
-repo_id = ""
-
-
 [model.LLM.lr_schedule.Cosine]
 base_lr = 4.0e-4
 warmup_steps = 20
 warmup_init_lr = 0.0
 total_steps = 2000
 final_lr = 4.0e-5
+
+[model_extra_data.checkpoint.Dummy]
+repo_id = ""

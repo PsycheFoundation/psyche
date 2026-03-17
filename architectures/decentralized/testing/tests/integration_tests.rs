@@ -10,7 +10,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use anchor_client::solana_sdk::signature::{Keypair, Signer};
 use bollard::container::StartContainerOptions;
 use bollard::{Docker, container::KillContainerOptions};
-use psyche_coordinator::{RunState, model::Checkpoint};
+use psyche_coordinator::{RunState, model::CheckpointSource};
 use psyche_core::IntegrationTestLogMarker;
 use psyche_decentralized_testing::docker_setup::e2e_testing_setup_rpc_fallback;
 use psyche_decentralized_testing::{
@@ -601,7 +601,7 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
                 if !has_checked_p2p_checkpoint && current_epoch == 1 {
                     let checkpoint = solana_client.get_checkpoint().await;
                     // Assert checkpoint is P2P
-                    if matches!(checkpoint, Checkpoint::P2P(_)) {
+                    if matches!(checkpoint, CheckpointSource::P2P) {
                         println!("Checkpoint was P2P");
                         has_checked_p2p_checkpoint = true;
                     } else {
@@ -630,7 +630,7 @@ async fn test_when_all_clients_disconnect_checkpoint_is_hub() {
                 if has_spawned_new_client_yet {
                     // Get checkpoint and check if it's Hub, in that case end gracefully
                     let checkpoint = solana_client.get_checkpoint().await;
-                    if matches!(checkpoint, Checkpoint::Hub(_)) {
+                    if matches!(checkpoint, CheckpointSource::Stored) {
                         println!("Checkpoint is Hub, test succesful");
                         return;
                     } else {

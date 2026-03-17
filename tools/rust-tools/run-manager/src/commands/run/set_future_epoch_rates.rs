@@ -63,7 +63,6 @@ impl Command for CommandSetFutureEpochRates {
             &coordinator_account,
             &main_authority,
             RunUpdateParams {
-                metadata: None,
                 config: None,
                 model: None,
                 progress: None,

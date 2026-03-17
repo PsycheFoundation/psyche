@@ -502,10 +502,7 @@ impl TrainingStepMetadata {
         let (cold_start_warmup_steps, checkpoint_is_p2p) = match &state.model {
             model::Model::LLM(llm) => (
                 llm.cold_start_warmup_steps,
-                matches!(
-                    llm.checkpoint,
-                    model::Checkpoint::P2P(_) | model::Checkpoint::P2PGcs(_)
-                ),
+                matches!(llm.checkpoint_source, model::CheckpointSource::P2P),
             ),
         };
         let warmup_lr_between = state.get_cold_start_warmup_bounds();

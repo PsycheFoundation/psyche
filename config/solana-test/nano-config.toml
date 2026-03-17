@@ -18,14 +18,14 @@ waiting_for_members_extra_time = 3
 max_seq_len = 64
 cold_start_warmup_steps = 0
 
-[model.LLM.checkpoint.Hub]
-repo_id = "pefontana/Nano-Llama"
-revision = "cf48eac4944f6e954a3d9c9c30e8c865e64e7d03"
-
 [model_extra_data]
 version = 1
 architecture = "HfLlama"
 data_type = "Pretraining"
+
+[model_extra_data.checkpoint.Hub]
+repo_id = "pefontana/Nano-Llama"
+revision = "cf48eac4944f6e954a3d9c9c30e8c865e64e7d03"
 
 [model_extra_data.data_location.Http]
 token_size_in_bytes = "TwoBytes"

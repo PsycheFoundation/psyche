@@ -1,7 +1,8 @@
 use anyhow::{Result, bail};
 use async_trait::async_trait;
 use psyche_centralized_shared::{ClientToServerMessage, ServerToClientMessage};
-use psyche_coordinator::model::{self, Checkpoint, Model};
+use psyche_coordinator::model::{self, CheckpointSource, Model};
+use psyche_coordinator::model_extra_data::CheckpointData;
 use psyche_coordinator::{
     Client, ClientState, Coordinator, CoordinatorError, HealthChecks, Round, RunState,
     SOLANA_MAX_NUM_CLIENTS, TickResult,
@@ -81,7 +82,7 @@ impl psyche_watcher::Backend for ChannelCoordinatorBackend {
         bail!("Server does not send health checks");
     }
 
-    async fn send_checkpoint(&mut self, _checkpoint: model::Checkpoint) -> Result<()> {
+    async fn send_checkpoint(&mut self, _checkpoint: model::CheckpointBytes) -> Result<()> {
         bail!("Server does not send checkpoints");
     }
 }
@@ -132,9 +133,9 @@ impl App {
         self.coordinator.progress.epoch
     }
 
-    pub fn get_checkpoint(&self) -> Checkpoint {
+    pub fn get_checkpoint(&self) -> CheckpointSource {
         match self.coordinator.model {
-            Model::LLM(llm) => llm.checkpoint,
+            Model::LLM(llm) => llm.checkpoint_source,
         }
     }
 
@@ -191,10 +192,14 @@ impl App {
             {
                 // Download model if needed based on checkpoint type
                 let Model::LLM(llm) = &coordinator.model;
-                match &llm.checkpoint {
-                    Checkpoint::Hub(hub_repo) => {
-                        let repo_id = String::from(&hub_repo.repo_id);
-                        let revision = hub_repo.revision.map(|bytes| (&bytes).into());
+                if llm.checkpoint_source == CheckpointSource::Ephemeral {
+                    bail!("Can't start up a run with an Ephemeral checkpoint.")
+                }
+                if llm.checkpoint_source == CheckpointSource::P2P {
+                    bail!("Can't start up a run with a P2P checkpoint.")
+                }
+                match CheckpointData::from_fixed_vec(&llm.checkpoint_data) {
+                    Ok(CheckpointData::Hub { repo_id, revision }) => {
                         if revision.is_some()
                             || !tokio::fs::try_exists(PathBuf::from(repo_id.clone()))
                                 .await
@@ -204,19 +209,12 @@ impl App {
                                 .await?;
                         }
                     }
-                    Checkpoint::Ephemeral => {
-                        bail!("Can't start up a run with an Ephemeral checkpoint.")
-                    }
-                    Checkpoint::Dummy(_) => {
-                        // ok!
-                    }
-                    Checkpoint::P2P(_) | Checkpoint::P2PDummy | Checkpoint::P2PGcs(_) => {
-                        bail!("Can't start up a run with a P2P checkpoint.")
-                    }
-                    Checkpoint::Gcs(gcs_repo) => {
-                        let bucket: String = (&gcs_repo.bucket).into();
-                        let prefix: Option<String> = gcs_repo.prefix.map(|p| (&p).into());
+                    Ok(CheckpointData::Gcs { bucket, prefix }) => {
                         download_model_from_gcs_async(&bucket, prefix.as_deref()).await?;
+                    }
+                    Ok(CheckpointData::Dummy) => {}
+                    Err(e) => {
+                        bail!("Failed to deserialize checkpoint data: {e}")
                     }
                 }
 
@@ -423,7 +421,7 @@ impl App {
                     Some(index) => {
                         if let Err(error) =
                             self.coordinator
-                                .checkpoint(&from_identity, index as u64, checkpoint)
+                                .checkpoint(&from_identity, index as u64, *checkpoint)
                         {
                             warn!("Error when processing checkpoint: {error}");
                         }

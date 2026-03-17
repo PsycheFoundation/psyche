@@ -20,9 +20,6 @@ data_type = "Pretraining"
 max_seq_len = 2048
 cold_start_warmup_steps = 0
 
-[model.LLM.checkpoint.Hub]
-repo_id = "emozilla/llama2-1.1b-gqa-init"
-
 [model.LLM.data_location.Http]
 token_size_in_bytes = "TwoBytes"
 shuffle = "DontShuffle"
@@ -44,3 +41,6 @@ compression_decay = 0.999
 compression_chunk = 64
 compression_topk = 2
 quantize_1bit = false
+
+[model_extra_data.checkpoint.Hub]
+repo_id = "emozilla/llama2-1.1b-gqa-init"

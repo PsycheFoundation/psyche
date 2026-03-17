@@ -183,7 +183,12 @@ impl From<&Coordinator> for CoordinatorTuiState {
                 .map(|c| format!("{:?}", c.id))
                 .collect(),
             model_checkpoint: match &value.model {
-                Model::LLM(l) => format!("{}", l.checkpoint),
+                Model::LLM(l) => format!(
+                    "{} ({})",
+                    l.checkpoint_source,
+                    l.decode_checkpoint()
+                        .map_or("unknown".to_string(), |d| format!("{:?}", d))
+                ),
             },
             exited_clients: value.epoch_state.exited_clients.len(),
             pending_pause: value.pending_pause.is_true(),

@@ -3,7 +3,7 @@ pub use psyche_coordinator::model_extra_data::ModelExtraData;
 use psyche_coordinator::{
     Coordinator, HealthChecks,
     model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
-    model_extra_data::{CONFIG_PREFIX, MODEL_CONFIG_FILENAME},
+    model_extra_data::{CONFIG_PREFIX, CheckpointData, MODEL_CONFIG_FILENAME},
 };
 use psyche_core::{
     Barrier, CancellableBarrier, IntegrationTestLogMarker, NodeIdentity, Shuffle, TokenSize,
@@ -164,7 +164,7 @@ pub struct RunInitConfigAndIO {
 
     pub tx_health_check: UnboundedSender<HealthChecks>,
     pub tx_witness: UnboundedSender<OpportunisticData>,
-    pub tx_checkpoint: UnboundedSender<model::Checkpoint>,
+    pub tx_checkpoint: UnboundedSender<model::CheckpointBytes>,
     pub tx_model: UnboundedSender<HashMap<String, Tensor>>,
     pub tx_parameters_req: UnboundedSender<(Vec<String>, OneshotModelParameterSender)>,
     pub tx_config: UnboundedSender<(String, String)>,
@@ -205,6 +205,10 @@ impl RunInitConfigAndIO {
 
         let model::Model::LLM(llm) = state.model;
 
+        if matches!(llm.checkpoint_source, model::CheckpointSource::Ephemeral) {
+            return Err(InitRunError::ModelIsEphemeral);
+        }
+
         // Use model extra data override if provided (only meant for testing/debugging),
         // otherwise fetch from GCS/Hub
         let model_extra_data: ModelExtraData = if let Some(config) =
@@ -213,16 +217,13 @@ impl RunInitConfigAndIO {
             info!("Using model extra data override from CLI");
             config
         } else {
-            match llm.checkpoint {
-                model::Checkpoint::Gcs(gcs_repo) | model::Checkpoint::P2PGcs(gcs_repo) => {
-                    let bucket = gcs_repo.bucket.to_string();
+            match llm.decode_checkpoint() {
+                Some(CheckpointData::Gcs { bucket, .. }) => {
                     let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
                     debug!("Fetching model extra data from gs://{}/{}", bucket, path);
                     fetch_json_from_gcs(&bucket, &path).await?
                 }
-                model::Checkpoint::Hub(repo) | model::Checkpoint::P2P(repo) => {
-                    let repo_id: String = (&repo.repo_id).into();
-                    let revision = repo.revision.map(|bytes| (&bytes).into());
+                Some(CheckpointData::Hub { repo_id, revision }) => {
                     let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
                     debug!("Fetching model extra data from Hub: {}/{}", repo_id, path);
                     match fetch_json_from_hub(
@@ -243,7 +244,7 @@ impl RunInitConfigAndIO {
                         }
                     }
                 }
-                // Dummy/Ephemeral checkpoints use default model extra data (for testing)
+                // Dummy/Ephemeral/unknown checkpoints use default model extra data (for testing)
                 _ => ModelExtraData::default(),
             }
         };
@@ -325,210 +326,206 @@ impl RunInitConfigAndIO {
             model::LLMArchitecture::HfLlama
             | model::LLMArchitecture::HfDeepseek
             | model::LLMArchitecture::HfAuto
-            | model::LLMArchitecture::Torchtitan => match &llm.checkpoint {
-                model::Checkpoint::Dummy(_) => tokio::spawn(async move {
-                    let tokenizer = Arc::new(Tokenizer::new(ModelWrapper::WordLevel(
-                        WordLevel::builder().build().unwrap(),
-                    )));
+            | model::LLMArchitecture::Torchtitan => {
+                let checkpoint_data = llm.decode_checkpoint();
+                let is_dummy = matches!(checkpoint_data, Some(CheckpointData::Dummy));
+                let is_p2p = matches!(llm.checkpoint_source, model::CheckpointSource::P2P);
 
-                    let model = RawLoadedModel {
-                        models: RawLoadedModelType::ParallelNativeModels(
-                            (0..(init_config.data_parallelism * init_config.tensor_parallelism))
-                                .map(|_| {
-                                    if let Some(training_delay) =
-                                        init_config.dummy_training_delay_secs
-                                    {
-                                        Box::new(DummyModel::new(training_delay))
-                                            as Box<dyn CausalLM>
-                                    } else {
-                                        Box::new(DummyModel::default()) as Box<dyn CausalLM>
-                                    }
-                                })
-                                .collect(),
-                        ),
-                        tokenizer: tokenizer.clone(),
-                        checkpoint_extra_files: vec![],
-                        model_task_runner: ModelTaskRunner::new(
-                            vec![],
-                            false,
-                            tokenizer.clone(),
-                            None,
-                            0,
-                        ),
-                    };
-                    #[allow(clippy::arc_with_non_send_sync)]
-                    let config = &PretrainedSource::ConfigAndTensors(
-                        AutoConfig::Llama(LlamaConfig::dummy()),
-                        Arc::new(psyche_modeling::get_dummy_parameters()),
-                    )
-                    .serialize_config()?;
-                    let tokenizer = tokenizer.to_string(false).unwrap();
-                    info!("Config Uploaded: {}", config);
-                    tx_config.send((config.to_string(), tokenizer)).unwrap();
-                    Ok(model)
-                }),
-                model::Checkpoint::Hub(_)
-                | model::Checkpoint::P2P(_)
-                | model::Checkpoint::P2PDummy
-                | model::Checkpoint::P2PGcs(_)
-                | model::Checkpoint::Gcs(_) => {
-                    let checkpoint = llm.checkpoint;
+                if is_dummy {
                     tokio::spawn(async move {
-                        let (source, tokenizer, checkpoint_extra_files) = match checkpoint {
-                            model::Checkpoint::Hub(hub_repo) => {
-                                let repo_id: String = (&hub_repo.repo_id).into();
-                                let potential_local_path = PathBuf::from(repo_id.clone());
-                                let revision = hub_repo.revision.map(|bytes| (&bytes).into());
+                        let tokenizer = Arc::new(Tokenizer::new(ModelWrapper::WordLevel(
+                            WordLevel::builder().build().unwrap(),
+                        )));
 
-                                let model_is_local = if revision.is_none()
-                                    && tokio::fs::try_exists(potential_local_path.clone())
-                                        .await
-                                        .unwrap_or_default()
-                                {
-                                    let mut ret = Vec::new();
-                                    let mut read_dir =
-                                        tokio::fs::read_dir(potential_local_path).await?;
-                                    while let Some(dir_entry) = read_dir.next_entry().await? {
-                                        ret.push(dir_entry.path())
+                        let model = RawLoadedModel {
+                            models: RawLoadedModelType::ParallelNativeModels(
+                                (0..(init_config.data_parallelism
+                                    * init_config.tensor_parallelism))
+                                    .map(|_| {
+                                        if let Some(training_delay) =
+                                            init_config.dummy_training_delay_secs
+                                        {
+                                            Box::new(DummyModel::new(training_delay))
+                                                as Box<dyn CausalLM>
+                                        } else {
+                                            Box::new(DummyModel::default()) as Box<dyn CausalLM>
+                                        }
+                                    })
+                                    .collect(),
+                            ),
+                            tokenizer: tokenizer.clone(),
+                            checkpoint_extra_files: vec![],
+                            model_task_runner: ModelTaskRunner::new(
+                                vec![],
+                                false,
+                                tokenizer.clone(),
+                                None,
+                                0,
+                            ),
+                        };
+                        #[allow(clippy::arc_with_non_send_sync)]
+                        let config = &PretrainedSource::ConfigAndTensors(
+                            AutoConfig::Llama(LlamaConfig::dummy()),
+                            Arc::new(psyche_modeling::get_dummy_parameters()),
+                        )
+                        .serialize_config()?;
+                        let tokenizer = tokenizer.to_string(false).unwrap();
+                        info!("Config Uploaded: {}", config);
+                        tx_config.send((config.to_string(), tokenizer)).unwrap();
+                        Ok(model)
+                    })
+                } else {
+                    let checkpoint_data = checkpoint_data.unwrap_or(CheckpointData::Dummy);
+                    tokio::spawn(async move {
+                        let (source, tokenizer, checkpoint_extra_files) = if is_p2p {
+                            let (tx_model_config_response, rx_model_config_response) =
+                                oneshot::channel();
+                            info!("Checkpoint is p2p, requesting model config over network");
+
+                            tx_request_model_config
+                                .send(tx_model_config_response)
+                                .unwrap();
+
+                            let (model_config, tokenizer, parameter_names) =
+                                rx_model_config_response
+                                    .await
+                                    .map_err(|_| InitRunError::P2PModelLoad)?;
+                            debug!("Got p2p info, model_config: {}", model_config);
+
+                            let model_config = match model_extra_data.architecture {
+                                model::LLMArchitecture::HfLlama => {
+                                    AutoConfig::Llama(serde_json::from_str(&model_config)?)
+                                }
+                                model::LLMArchitecture::HfDeepseek => {
+                                    AutoConfig::Deepseek(serde_json::from_str(&model_config)?)
+                                }
+                                model::LLMArchitecture::HfAuto
+                                | model::LLMArchitecture::Torchtitan => {
+                                    #[cfg(feature = "python")]
+                                    {
+                                        AutoConfig::Auto(serde_json::from_str::<
+                                            psyche_modeling::PythonModelConfig,
+                                        >(
+                                            &model_config
+                                        )?)
                                     }
-                                    ret
-                                } else {
-                                    info!(
-                                        "Downloading {}, revision: {:?} (if needed)",
-                                        hub_repo.repo_id, revision
-                                    );
-                                    download_model_repo_async(
-                                        &repo_id,
-                                        revision,
-                                        None,
-                                        init_config.hub_read_token,
-                                        Some(init_config.hub_max_concurrent_downloads),
-                                        false,
+
+                                    #[cfg(not(feature = "python"))]
+                                    {
+                                        return Err(InitRunError::UnsupportedArchitecture(
+                                            model_extra_data.architecture.to_string(),
+                                        ));
+                                    }
+                                }
+                            };
+                            info!(
+                                "Requesting {} parameters over p2p network",
+                                parameter_names.len()
+                            );
+
+                            let (tx_params_response, rx_params_response) = oneshot::channel();
+                            tx_parameters_req
+                                .send((parameter_names, tx_params_response))
+                                .unwrap();
+                            #[allow(clippy::arc_with_non_send_sync)]
+                            let parameters = Arc::new(
+                                rx_params_response
+                                    .await
+                                    .map_err(|_| InitRunError::P2PModelLoad)?,
+                            );
+
+                            (
+                                PretrainedSource::<AutoConfig>::ConfigAndTensors(
+                                    model_config,
+                                    parameters,
+                                ),
+                                Arc::new(tokenizer),
+                                vec![],
+                            )
+                        } else {
+                            match checkpoint_data {
+                                CheckpointData::Hub { repo_id, revision } => {
+                                    let potential_local_path = PathBuf::from(repo_id.clone());
+
+                                    let model_is_local = if revision.is_none()
+                                        && tokio::fs::try_exists(potential_local_path.clone())
+                                            .await
+                                            .unwrap_or_default()
+                                    {
+                                        let mut ret = Vec::new();
+                                        let mut read_dir =
+                                            tokio::fs::read_dir(potential_local_path).await?;
+                                        while let Some(dir_entry) = read_dir.next_entry().await? {
+                                            ret.push(dir_entry.path())
+                                        }
+                                        ret
+                                    } else {
+                                        info!(
+                                            "Downloading {}, revision: {:?} (if needed)",
+                                            repo_id, revision
+                                        );
+                                        download_model_repo_async(
+                                            &repo_id,
+                                            revision,
+                                            None,
+                                            init_config.hub_read_token,
+                                            Some(init_config.hub_max_concurrent_downloads),
+                                            false,
+                                        )
+                                        .await?
+                                    };
+                                    let repo_files = model_is_local;
+                                    let checkpoint_extra_files = repo_files
+                                        .iter()
+                                        .filter(|file| {
+                                            file.ends_with("config.json")
+                                                || file.ends_with("tokenizer.json")
+                                                || file.ends_with("tokenizer_config.json")
+                                                || file.ends_with("special_tokens_map.json")
+                                                || file.ends_with("generation_config.json")
+                                                || file.ends_with(".py")
+                                        })
+                                        .cloned()
+                                        .collect();
+                                    let tokenizer = Arc::new(auto_tokenizer(&repo_files)?);
+                                    (
+                                        PretrainedSource::<AutoConfig>::RepoFiles(repo_files),
+                                        tokenizer,
+                                        checkpoint_extra_files,
                                     )
-                                    .await?
-                                };
-                                let repo_files = model_is_local;
-                                let checkpoint_extra_files = repo_files
-                                    .iter()
-                                    .filter(|file| {
-                                        file.ends_with("config.json")
-                                            || file.ends_with("tokenizer.json")
-                                            || file.ends_with("tokenizer_config.json")
-                                            || file.ends_with("special_tokens_map.json")
-                                            || file.ends_with("generation_config.json")
-                                            || file.ends_with(".py")
-                                    })
-                                    .cloned()
-                                    .collect();
-                                let tokenizer = Arc::new(auto_tokenizer(&repo_files)?);
-                                (
-                                    PretrainedSource::<AutoConfig>::RepoFiles(repo_files),
-                                    tokenizer,
-                                    checkpoint_extra_files,
-                                )
+                                }
+                                CheckpointData::Gcs { bucket, prefix } => {
+                                    info!(
+                                        "Downloading model from gs://{}/{}",
+                                        bucket,
+                                        prefix.as_deref().unwrap_or("")
+                                    );
+
+                                    let repo_files =
+                                        download_model_from_gcs_async(&bucket, prefix.as_deref())
+                                            .await?;
+
+                                    let checkpoint_extra_files = repo_files
+                                        .iter()
+                                        .filter(|file| {
+                                            file.ends_with("config.json")
+                                                || file.ends_with("tokenizer.json")
+                                                || file.ends_with("tokenizer_config.json")
+                                                || file.ends_with("special_tokens_map.json")
+                                                || file.ends_with("generation_config.json")
+                                                || file.ends_with(".py")
+                                        })
+                                        .cloned()
+                                        .collect();
+                                    let tokenizer = Arc::new(auto_tokenizer(&repo_files)?);
+                                    (
+                                        PretrainedSource::<AutoConfig>::RepoFiles(repo_files),
+                                        tokenizer,
+                                        checkpoint_extra_files,
+                                    )
+                                }
+                                CheckpointData::Dummy => unreachable!(),
                             }
-                            model::Checkpoint::P2P(_)
-                            | model::Checkpoint::P2PDummy
-                            | model::Checkpoint::P2PGcs(_) => {
-                                let (tx_model_config_response, rx_model_config_response) =
-                                    oneshot::channel();
-                                info!("Checkpoint is p2p, requesting model config over network");
-
-                                tx_request_model_config
-                                    .send(tx_model_config_response)
-                                    .unwrap();
-
-                                let (model_config, tokenizer, parameter_names) =
-                                    rx_model_config_response
-                                        .await
-                                        .map_err(|_| InitRunError::P2PModelLoad)?;
-                                debug!("Got p2p info, model_config: {}", model_config);
-
-                                let model_config = match model_extra_data.architecture {
-                                    model::LLMArchitecture::HfLlama => {
-                                        AutoConfig::Llama(serde_json::from_str(&model_config)?)
-                                    }
-                                    model::LLMArchitecture::HfDeepseek => {
-                                        AutoConfig::Deepseek(serde_json::from_str(&model_config)?)
-                                    }
-                                    model::LLMArchitecture::HfAuto
-                                    | model::LLMArchitecture::Torchtitan => {
-                                        #[cfg(feature = "python")]
-                                        {
-                                            AutoConfig::Auto(serde_json::from_str::<
-                                                psyche_modeling::PythonModelConfig,
-                                            >(
-                                                &model_config
-                                            )?)
-                                        }
-
-                                        #[cfg(not(feature = "python"))]
-                                        {
-                                            return Err(InitRunError::UnsupportedArchitecture(
-                                                model_extra_data.architecture.to_string(),
-                                            ));
-                                        }
-                                    }
-                                };
-                                info!(
-                                    "Requesting {} parameters over p2p network",
-                                    parameter_names.len()
-                                );
-
-                                let (tx_params_response, rx_params_response) = oneshot::channel();
-                                tx_parameters_req
-                                    .send((parameter_names, tx_params_response))
-                                    .unwrap();
-                                #[allow(clippy::arc_with_non_send_sync)]
-                                let parameters = Arc::new(
-                                    rx_params_response
-                                        .await
-                                        .map_err(|_| InitRunError::P2PModelLoad)?,
-                                );
-
-                                (
-                                    PretrainedSource::<AutoConfig>::ConfigAndTensors(
-                                        model_config,
-                                        parameters,
-                                    ),
-                                    Arc::new(tokenizer),
-                                    vec![],
-                                )
-                            }
-                            model::Checkpoint::Gcs(gcs_repo) => {
-                                let bucket: String = (&gcs_repo.bucket).into();
-                                let prefix: Option<String> = gcs_repo.prefix.map(|p| (&p).into());
-
-                                info!(
-                                    "Downloading model from gs://{}/{}",
-                                    bucket,
-                                    prefix.as_deref().unwrap_or("")
-                                );
-
-                                let repo_files =
-                                    download_model_from_gcs_async(&bucket, prefix.as_deref())
-                                        .await?;
-
-                                let checkpoint_extra_files = repo_files
-                                    .iter()
-                                    .filter(|file| {
-                                        file.ends_with("config.json")
-                                            || file.ends_with("tokenizer.json")
-                                            || file.ends_with("tokenizer_config.json")
-                                            || file.ends_with("special_tokens_map.json")
-                                            || file.ends_with("generation_config.json")
-                                            || file.ends_with(".py")
-                                    })
-                                    .cloned()
-                                    .collect();
-                                let tokenizer = Arc::new(auto_tokenizer(&repo_files)?);
-                                (
-                                    PretrainedSource::<AutoConfig>::RepoFiles(repo_files),
-                                    tokenizer,
-                                    checkpoint_extra_files,
-                                )
-                            }
-                            _ => unreachable!(),
                         };
 
                         info!("Loading model...");
@@ -707,7 +704,7 @@ impl RunInitConfigAndIO {
 
                         info!(
                             integration_test_log_marker = %IntegrationTestLogMarker::LoadedModel,
-                            checkpoint = %llm.checkpoint,
+                            checkpoint_source = ?llm.checkpoint_source,
                             gpus = init_config.data_parallelism * init_config.tensor_parallelism,
                             dp = init_config.data_parallelism,
                             tp = init_config.tensor_parallelism,
@@ -722,8 +719,7 @@ impl RunInitConfigAndIO {
                         })
                     })
                 }
-                model::Checkpoint::Ephemeral => return Err(InitRunError::ModelIsEphemeral),
-            },
+            }
         };
 
         let wandb_future: JoinHandle<Result<Option<wandb::Run>, wandb::ApiError>> = tokio::spawn({

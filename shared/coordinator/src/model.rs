@@ -1,3 +1,4 @@
+use crate::model_extra_data::{CHECKPOINT_DATA_MAX_LEN, CheckpointData};
 use crate::{SOLANA_MAX_STRING_LEN, coordinator::SOLANA_MAX_URL_STRING_LEN};
 
 use anchor_lang::{
@@ -8,6 +9,9 @@ use bytemuck::{Zeroable, ZeroableInOption};
 use psyche_core::{FixedString, FixedVec, Shuffle, TokenSize};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+
+/// Opaque byte blob holding borsh-serialized [`CheckpointData`].
+pub type CheckpointBytes = FixedVec<u8, CHECKPOINT_DATA_MAX_LEN>;
 
 #[derive(
     Clone, Debug, Copy, Zeroable, AnchorDeserialize, AnchorSerialize, Serialize, Deserialize, TS,
@@ -187,75 +191,29 @@ pub enum HttpTrainingDataLocation {
 pub struct LLM {
     pub max_seq_len: u32,
     pub cold_start_warmup_steps: u32,
-    pub checkpoint: Checkpoint,
+    pub checkpoint_source: CheckpointSource,
+    pub checkpoint_data: CheckpointBytes,
 }
 
 impl LLM {
     pub fn dummy() -> Self {
         Self {
-            checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
+            checkpoint_source: CheckpointSource::Stored,
+            checkpoint_data: CheckpointData::Dummy.to_fixed_vec(),
             max_seq_len: 2048,
             cold_start_warmup_steps: 0,
         }
     }
-}
 
-#[derive(
-    Clone,
-    Debug,
-    Copy,
-    AnchorDeserialize,
-    AnchorSerialize,
-    InitSpace,
-    Serialize,
-    Deserialize,
-    PartialEq,
-    TS,
-)]
-pub struct HubRepo {
-    pub repo_id: FixedString<{ SOLANA_MAX_STRING_LEN }>,
-    pub revision: Option<FixedString<{ SOLANA_MAX_STRING_LEN }>>,
-}
-
-impl HubRepo {
-    pub fn dummy() -> Self {
-        Self {
-            repo_id: FixedString::new(),
-            revision: None,
-        }
-    }
-}
-
-#[derive(
-    Clone,
-    Debug,
-    Copy,
-    AnchorDeserialize,
-    AnchorSerialize,
-    InitSpace,
-    Serialize,
-    Deserialize,
-    PartialEq,
-    TS,
-)]
-pub struct GcsRepo {
-    pub bucket: FixedString<{ SOLANA_MAX_STRING_LEN }>,
-    pub prefix: Option<FixedString<{ SOLANA_MAX_STRING_LEN }>>,
-}
-
-impl GcsRepo {
-    pub fn dummy() -> Self {
-        Self {
-            bucket: FixedString::new(),
-            prefix: None,
-        }
+    /// Decode the opaque checkpoint bytes into a [`CheckpointData`].
+    pub fn decode_checkpoint(&self) -> Option<CheckpointData> {
+        CheckpointData::from_fixed_vec(&self.checkpoint_data).ok()
     }
 }
 
 #[derive(
     AnchorSerialize,
     AnchorDeserialize,
-    InitSpace,
     Serialize,
     Deserialize,
     Clone,
@@ -263,32 +221,23 @@ impl GcsRepo {
     Zeroable,
     Copy,
     TS,
+    PartialEq,
+    Default,
 )]
 #[repr(C)]
-pub enum Checkpoint {
+pub enum CheckpointSource {
     Ephemeral,
-    Dummy(HubRepo),
-    Hub(HubRepo),
-    P2P(HubRepo),
-    /// P2P checkpoint that originated from a Dummy checkpoint (for testing)
-    P2PDummy,
-    Gcs(GcsRepo),
-    P2PGcs(GcsRepo),
+    #[default]
+    Stored,
+    P2P,
 }
 
-impl std::fmt::Display for Checkpoint {
+impl std::fmt::Display for CheckpointSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Checkpoint::Dummy(_) | Checkpoint::P2PDummy => write!(f, "Dummy"),
-            Checkpoint::Ephemeral => write!(f, "Ephemeral"),
-            Checkpoint::Hub(hub_repo) => write!(f, "{}", &hub_repo.repo_id),
-            Checkpoint::P2P(hub_repo) => {
-                write!(f, "P2P - Hub repo: {}", &hub_repo.repo_id)
-            }
-            Checkpoint::Gcs(gcs_repo) | Checkpoint::P2PGcs(gcs_repo) => match &gcs_repo.prefix {
-                Some(prefix) => write!(f, "gs://{}/{}", &gcs_repo.bucket, prefix),
-                None => write!(f, "gs://{}", &gcs_repo.bucket),
-            },
+            CheckpointSource::Ephemeral => write!(f, "Ephemeral"),
+            CheckpointSource::Stored => write!(f, "Stored"),
+            CheckpointSource::P2P => write!(f, "P2P"),
         }
     }
 }
@@ -302,13 +251,18 @@ impl Model {
                     return false;
                 }
 
-                let bad_checkpoint = match llm.checkpoint {
-                    Checkpoint::Dummy(_) | Checkpoint::P2PDummy => false,
-                    Checkpoint::Ephemeral => true,
-                    Checkpoint::Hub(hub_repo) => hub_repo.repo_id.is_empty(),
-                    Checkpoint::P2P(hub_repo) => hub_repo.repo_id.is_empty(),
-                    Checkpoint::Gcs(gcs_repo) | Checkpoint::P2PGcs(gcs_repo) => {
-                        gcs_repo.bucket.is_empty()
+                if matches!(llm.checkpoint_source, CheckpointSource::Ephemeral) {
+                    msg!("model check failed: bad checkpoint (ephemeral)");
+                    return false;
+                }
+
+                let bad_checkpoint = match CheckpointData::from_fixed_vec(&llm.checkpoint_data) {
+                    Ok(CheckpointData::Dummy) => false,
+                    Ok(CheckpointData::Hub { repo_id, .. }) => repo_id.is_empty(),
+                    Ok(CheckpointData::Gcs { bucket, .. }) => bucket.is_empty(),
+                    Err(_) => {
+                        msg!("model check failed: could not deserialize checkpoint data");
+                        true
                     }
                 };
 

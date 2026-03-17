@@ -1,9 +1,9 @@
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
-use psyche_coordinator::model::Checkpoint;
-use psyche_coordinator::model::HubRepo;
+use psyche_coordinator::model::CheckpointSource;
 use psyche_coordinator::model::LLM;
 use psyche_coordinator::model::Model;
+use psyche_coordinator::model_extra_data::CheckpointData;
 use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
 use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_run_create;
@@ -30,7 +30,6 @@ pub async fn run() {
     let index = 42;
     let run_id = "This is my run's dummy run_id".to_string();
     let run_update_params = RunUpdateParams {
-        metadata: None,
         config: Some(CoordinatorConfig {
             warmup_time: 10,
             cooldown_time: 88,
@@ -49,7 +48,8 @@ pub async fn run() {
                 as u8,
         }),
         model: Some(Model::LLM(LLM {
-            checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
+            checkpoint_source: CheckpointSource::Stored,
+            checkpoint_data: CheckpointData::Dummy.to_fixed_vec(),
             max_seq_len: 4096,
             cold_start_warmup_steps: 0,
         })),

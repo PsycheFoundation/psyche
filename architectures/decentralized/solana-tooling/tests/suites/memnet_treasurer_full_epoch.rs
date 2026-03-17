@@ -4,10 +4,10 @@ use psyche_coordinator::CommitteeSelection;
 use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::SOLANA_MAX_NUM_WITNESSES;
 use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
-use psyche_coordinator::model::Checkpoint;
-use psyche_coordinator::model::HubRepo;
+use psyche_coordinator::model::CheckpointSource;
 use psyche_coordinator::model::LLM;
 use psyche_coordinator::model::Model;
+use psyche_coordinator::model_extra_data::CheckpointData;
 use psyche_core::NodeIdentity;
 use psyche_solana_authorizer::logic::AuthorizationGranteeUpdateParams;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
@@ -206,7 +206,6 @@ pub async fn run() {
         &coordinator_instance,
         &coordinator_account,
         RunUpdateParams {
-            metadata: None,
             config: Some(CoordinatorConfig {
                 warmup_time,
                 cooldown_time,
@@ -224,7 +223,8 @@ pub async fn run() {
                 waiting_for_members_extra_time: 3,
             }),
             model: Some(Model::LLM(LLM {
-                checkpoint: Checkpoint::Dummy(HubRepo::dummy()),
+                checkpoint_source: CheckpointSource::Stored,
+                checkpoint_data: CheckpointData::Dummy.to_fixed_vec(),
                 max_seq_len: 4096,
                 cold_start_warmup_steps: 0,
             })),

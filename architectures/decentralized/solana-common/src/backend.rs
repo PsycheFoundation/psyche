@@ -20,7 +20,7 @@ use anchor_client::{
 };
 use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
-use psyche_coordinator::model::{self, Checkpoint};
+use psyche_coordinator::model::{self, CheckpointBytes};
 use psyche_coordinator::{CommitteeProof, Coordinator, HealthChecks};
 use psyche_core::IntegrationTestLogMarker;
 use psyche_watcher::{Backend as WatcherBackend, OpportunisticData};
@@ -341,14 +341,14 @@ impl SolanaBackend {
         &self,
         coordinator_instance: Pubkey,
         coordinator_account: Pubkey,
-        repo: Checkpoint,
+        data: CheckpointBytes,
     ) {
         let user = self.get_payer();
         let instruction = instructions::coordinator_checkpoint(
             &coordinator_instance,
             &coordinator_account,
             &user,
-            repo,
+            data,
         );
         self.spawn_scheduled_send("Checkpoint", &[instruction], &[]);
     }
@@ -650,7 +650,7 @@ impl WatcherBackend for SolanaBackendRunner {
         Ok(())
     }
 
-    async fn send_checkpoint(&mut self, checkpoint: model::Checkpoint) -> Result<()> {
+    async fn send_checkpoint(&mut self, checkpoint: model::CheckpointBytes) -> Result<()> {
         self.backend
             .send_checkpoint(self.instance, self.account, checkpoint);
         Ok(())

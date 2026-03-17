@@ -1,5 +1,4 @@
 use crate::errors::{DownloadError, UploadError};
-use crate::hub::model::HubRepo;
 use hf_hub::{
     Cache, Repo, RepoType,
     api::{
@@ -8,8 +7,8 @@ use hf_hub::{
     },
 };
 use psyche_coordinator::model;
+use psyche_coordinator::model_extra_data::CheckpointData;
 use psyche_coordinator::model_extra_data::ModelExtraData;
-use psyche_core::FixedString;
 use std::{path::PathBuf, time::Instant};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
@@ -271,7 +270,7 @@ pub async fn upload_to_hub(
     hub_info: HubUploadInfo,
     local: Vec<PathBuf>,
     step: u64,
-    tx_checkpoint: mpsc::UnboundedSender<model::Checkpoint>,
+    tx_checkpoint: mpsc::UnboundedSender<model::CheckpointBytes>,
 ) -> Result<(), UploadError> {
     let HubUploadInfo {
         hub_repo,
@@ -323,10 +322,13 @@ pub async fn upload_to_hub(
     );
 
     tx_checkpoint
-        .send(model::Checkpoint::Hub(HubRepo {
-            repo_id: FixedString::from_str_truncated(&hub_repo),
-            revision: Some(FixedString::from_str_truncated(&revision)),
-        }))
+        .send(
+            CheckpointData::Hub {
+                repo_id: hub_repo.clone(),
+                revision: Some(revision),
+            }
+            .to_fixed_vec(),
+        )
         .map_err(|_| UploadError::SendCheckpoint)?;
 
     Ok(())
