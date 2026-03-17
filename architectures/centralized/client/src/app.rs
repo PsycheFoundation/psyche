@@ -2,10 +2,10 @@ use anyhow::{Error, Result};
 use bytemuck::Zeroable;
 use psyche_centralized_shared::{ClientToServerMessage, ServerToClientMessage};
 use psyche_client::{
-    Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, UploadCredentials,
+    CheckpointUploader, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs,
     read_identity_secret_key,
 };
-use psyche_coordinator::model::Checkpoint;
+use psyche_coordinator::model::{self, Checkpoint};
 use psyche_coordinator::{Coordinator, HealthChecks};
 use psyche_core::NodeIdentity;
 use psyche_metrics::ClientMetrics;
@@ -166,37 +166,55 @@ impl App {
         p2p: NC,
         state_options: RunInitConfig,
     ) -> Result<()> {
-        // Sanity checks using the checkpoint config from state_options, not the zeroed coordinator state.
-        // The coordinator_state is only populated after receiving the first ServerToClientMessage::Coordinator.
-        if !state_options.checkpoint_config.skip_upload {
-            let credentials = if let Some(ref hub_token) = state_options.checkpoint_config.hub_token
-            {
-                // Use HF_TOKEN from checkpoint_config for Hub uploads
-                Some(UploadCredentials::HubToken(hub_token.clone()))
-            } else {
-                // GCS uploads now go through run-down signed URLs; auth validated at request time
-                Some(UploadCredentials::Skip)
-            };
-
-            match credentials {
-                Some(creds) => {
-                    creds.validate().await?;
-                }
-                None => {
-                    anyhow::bail!(
-                        "No upload credentials found for checkpointing. Set HF_TOKEN for HuggingFace Hub or configure GCS credentials."
-                    );
-                }
-            }
-        }
-
         self.server_conn
             .send(ClientToServerMessage::Join {
                 run_id: self.run_id.clone(),
             })
             .await?;
 
+        // Wait for the first coordinator state to validate upload credentials with repo info.
+        let first_coordinator_state = select! {
+            _ = self.cancel.cancelled() => {
+                return Ok(());
+            }
+            message = self.server_conn.receive() => {
+                match message? {
+                    ServerToClientMessage::Coordinator(state) => {
+                        self.coordinator_state = *state;
+                        *state
+                    }
+                }
+            }
+        };
+
+        // Validate upload credentials now that we have the coordinator state with checkpoint info.
+        if !state_options.checkpoint_config.skip_upload {
+            let model::Model::LLM(model::LLM { checkpoint, .. }) = first_coordinator_state.model;
+            match checkpoint {
+                Checkpoint::Hub(ref hub_repo) | Checkpoint::P2P(ref hub_repo) => {
+                    let token = state_options.checkpoint_config.hub_token.as_ref()
+                        .ok_or_else(|| anyhow::anyhow!(
+                            "No HF_TOKEN found for checkpointing to Hub repo {}. Set HF_TOKEN environment variable.",
+                            hub_repo.repo_id
+                        ))?;
+                    // Validate write permissions — the uploader is dropped after validation,
+                    // it will be re-created during cooldown with the current coordinator state.
+                    CheckpointUploader::new_hub(hub_repo.repo_id.to_string(), token.clone())
+                        .await?;
+                }
+                Checkpoint::Gcs(_) | Checkpoint::P2PGcs(_) => {
+                    // GCS uploads use run-down signed URLs; auth is validated at request time.
+                    if state_options.checkpoint_config.run_down_client.is_none() {
+                        anyhow::bail!("RunDownClient not configured for GCS checkpoint upload");
+                    }
+                }
+                _ => {}
+            }
+        }
+
         let (tx_from_server_message, rx_from_server_message) = mpsc::unbounded_channel();
+        // Forward the first coordinator state we already received.
+        tx_from_server_message.send(first_coordinator_state)?;
         let (tx_to_server_message, mut rx_to_server_message) = mpsc::unbounded_channel();
         let mut client = Client::new(
             Backend {

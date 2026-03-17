@@ -21,13 +21,19 @@ impl WarmupStepMetadata {
         let evals = self
             .model_task_runner
             .start_if_not_running(evals_or_trainers.into());
-        WarmupStep { evals }
+        WarmupStep {
+            evals,
+            sent_finished: false,
+            sent_witness: false,
+        }
     }
 }
 
 #[derive(Debug)]
 pub struct WarmupStep {
     evals: RunningEvals,
+    pub sent_finished: bool,
+    pub sent_witness: bool,
 }
 
 impl WarmupStep {

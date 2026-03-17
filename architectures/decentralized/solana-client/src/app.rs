@@ -10,13 +10,14 @@ use anchor_client::{
 };
 use anyhow::{Result, anyhow};
 use psyche_client::{
-    Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs, UploadCredentials,
+    CheckpointUploader, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs,
     read_identity_secret_key,
 };
 use psyche_coordinator::{
     ClientState, Coordinator, CoordinatorError, RunState,
     model::{self, LLM, Model},
 };
+
 use psyche_core::sha256;
 use psyche_data_provider::RunDownClient;
 use psyche_metrics::ClientMetrics;
@@ -248,21 +249,28 @@ impl App {
         // sanity checks — skip credential validation when checkpoint upload is disabled
         if !self.state_options.checkpoint_config.skip_upload {
             let Model::LLM(LLM { checkpoint, .. }) = start_coordinator_state.model;
-            let credentials = match checkpoint {
-                model::Checkpoint::Hub(_) | model::Checkpoint::P2P(_) => self
-                    .state_options
-                    .checkpoint_config
-                    .hub_token
-                    .as_ref()
-                    .map(|token| UploadCredentials::HubToken(token.clone())),
-                model::Checkpoint::Gcs(_) | model::Checkpoint::P2PGcs(_) => {
-                    // GCS uses run-down signed URLs; auth validated at request time
-                    None
+            match checkpoint {
+                model::Checkpoint::Hub(ref hub_repo) | model::Checkpoint::P2P(ref hub_repo) => {
+                    let token = self.state_options.checkpoint_config.hub_token.as_ref()
+                        .ok_or_else(|| anyhow!(
+                            "No HF_TOKEN found for checkpointing to Hub repo {}. Set HF_TOKEN environment variable.",
+                            hub_repo.repo_id
+                        ))?;
+                    CheckpointUploader::new_hub(hub_repo.repo_id.to_string(), token.clone())
+                        .await?;
                 }
-                _ => None,
-            };
-            if let Some(ref creds) = credentials {
-                creds.validate().await?;
+                model::Checkpoint::Gcs(_) | model::Checkpoint::P2PGcs(_) => {
+                    // GCS uploads use run-down signed URLs; auth is validated at request time.
+                    if self
+                        .state_options
+                        .checkpoint_config
+                        .run_down_client
+                        .is_none()
+                    {
+                        anyhow::bail!("RunDownClient not configured for GCS checkpoint upload");
+                    }
+                }
+                _ => {}
             }
         }
 

@@ -92,10 +92,9 @@ impl Command for CommandUpdateConfig {
             let Model::LLM(mut llm) =
                 model.unwrap_or(coordinator_account_state.state.coordinator.model);
             match llm.checkpoint {
-                Checkpoint::P2P(hub_repo) | Checkpoint::Dummy(hub_repo) => {
-                    llm.checkpoint = Checkpoint::Hub(hub_repo)
-                }
+                Checkpoint::P2P(hub_repo) => llm.checkpoint = Checkpoint::Hub(hub_repo),
                 Checkpoint::P2PGcs(gcs_repo) => llm.checkpoint = Checkpoint::Gcs(gcs_repo),
+                Checkpoint::Dummy(hub_repo) => llm.checkpoint = Checkpoint::Hub(hub_repo),
                 _ => {}
             }
             Some(Model::LLM(llm))

@@ -648,20 +648,16 @@ impl Coordinator {
 
         let Model::LLM(llm) = &mut self.model;
         match (&llm.checkpoint, checkpoint_repo) {
-            // If current is P2P, wrap the new checkpoint in P2P
-            (Checkpoint::P2P(_) | Checkpoint::P2PGcs(_), Checkpoint::Hub(hub_repo)) => {
-                llm.checkpoint = Checkpoint::P2P(hub_repo);
+            // If current is P2P, wrap the new checkpoint in its P2P equivalent
+            (Checkpoint::P2P(_) | Checkpoint::P2PGcs(_), new) => {
+                llm.checkpoint = new.to_p2p();
             }
-            (Checkpoint::P2P(_) | Checkpoint::P2PGcs(_), Checkpoint::Gcs(gcs_repo)) => {
-                llm.checkpoint = Checkpoint::P2PGcs(gcs_repo);
-            }
-            // If current is Hub, only accept Hub updates
-            (Checkpoint::Hub(_), Checkpoint::Hub(hub_repo)) => {
-                llm.checkpoint = Checkpoint::Hub(hub_repo);
-            }
-            // If current is Gcs, only accept Gcs updates
-            (Checkpoint::Gcs(_), Checkpoint::Gcs(gcs_repo)) => {
-                llm.checkpoint = Checkpoint::Gcs(gcs_repo);
+            // If current is hosted (Hub/Gcs), accept hosted updates directly
+            (
+                Checkpoint::Hub(_) | Checkpoint::Gcs(_),
+                new @ (Checkpoint::Hub(_) | Checkpoint::Gcs(_)),
+            ) => {
+                llm.checkpoint = new;
             }
             // Ignore other combinations
             _ => {}
@@ -994,11 +990,7 @@ impl Coordinator {
                 .any(|client| pending_clients_unordered.contains(&client.id));
             if all_prev_clients_disconnected {
                 let Model::LLM(llm) = &mut self.model;
-                match llm.checkpoint {
-                    Checkpoint::P2P(hub_repo) => llm.checkpoint = Checkpoint::Hub(hub_repo),
-                    Checkpoint::P2PGcs(gcs_repo) => llm.checkpoint = Checkpoint::Gcs(gcs_repo),
-                    _ => {}
-                }
+                llm.checkpoint = llm.checkpoint.to_hosted();
             }
 
             let cold_start_epoch = self.epoch_state.cold_start_epoch;
@@ -1127,13 +1119,7 @@ impl Coordinator {
 
             // we've completed an epoch, switch to P2P from now on
             let Model::LLM(llm) = &mut self.model;
-            match llm.checkpoint {
-                Checkpoint::Hub(hub_repo) | Checkpoint::Dummy(hub_repo) => {
-                    llm.checkpoint = Checkpoint::P2P(hub_repo)
-                }
-                Checkpoint::Gcs(gcs_repo) => llm.checkpoint = Checkpoint::P2PGcs(gcs_repo),
-                _ => {}
-            }
+            llm.checkpoint = llm.checkpoint.to_p2p();
 
             if self.pending_pause.is_true() {
                 self.withdraw_all();

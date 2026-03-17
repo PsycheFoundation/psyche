@@ -1,19 +1,16 @@
 #![allow(unexpected_cfgs)]
 
-mod checkpointer;
+mod checkpointer_selection;
 mod commitment;
-mod committee;
+mod committee_selection;
 mod coordinator;
 mod data_selection;
 pub mod model;
 mod types;
 
-#[cfg(test)]
-mod tests;
-
-pub use checkpointer::CheckpointerSelection;
+pub use checkpointer_selection::CheckpointerSelection;
 pub use commitment::Commitment;
-pub use committee::CommitteeSelection;
+pub use committee_selection::CommitteeSelection;
 pub use coordinator::{
     BLOOM_FALSE_RATE, Client, ClientState, Coordinator, CoordinatorConfig, CoordinatorEpochState,
     CoordinatorError, CoordinatorProgress, HealthChecks, MAX_TOKENS_TO_SEND, NUM_STORED_ROUNDS,

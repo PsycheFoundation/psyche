@@ -10,41 +10,38 @@ use tch::TchError;
 use thiserror::Error;
 use tokio::task::JoinHandle;
 
+/// Validated checkpoint uploader. Can only be constructed via async methods
+/// that validate credentials and permissions on creation.
 #[derive(Debug, Clone)]
-pub enum UploadInfo {
+pub enum CheckpointUploader {
     Hub(HubUploadInfo),
     Gcs(Arc<RunDownClient>),
-    Dummy(),
+    Dummy,
 }
 
-#[derive(Debug, Clone)]
-pub enum UploadCredentials {
-    HubToken(String),
-    Skip,
-}
-
-impl UploadCredentials {
-    pub async fn validate(&self) -> anyhow::Result<()> {
-        match self {
-            UploadCredentials::HubToken(token) => {
-                let _api = hf_hub::api::tokio::ApiBuilder::new()
-                    .with_token(Some(token.clone()))
-                    .build()?;
-                Ok(())
-            }
-            UploadCredentials::Skip => Ok(()),
+impl CheckpointUploader {
+    /// Creates a new HF Hub uploader after validating write permissions to the repo.
+    pub async fn new_hub(repo: String, token: String) -> anyhow::Result<Self> {
+        let api = hf_hub::api::tokio::ApiBuilder::new()
+            .with_token(Some(token.clone()))
+            .build()?;
+        let api_repo = api.repo(hf_hub::Repo::model(repo.clone()));
+        if !api_repo.is_writable().await {
+            anyhow::bail!(
+                "Checkpoint upload repo {} is not writable with the provided HF token.",
+                repo
+            );
         }
+        Ok(Self::Hub(HubUploadInfo {
+            hub_repo: repo,
+            hub_token: token,
+        }))
     }
-}
 
-impl From<&UploadInfo> for UploadCredentials {
-    fn from(info: &UploadInfo) -> Self {
-        match info {
-            UploadInfo::Hub(HubUploadInfo { hub_token, .. }) => {
-                UploadCredentials::HubToken(hub_token.clone())
-            }
-            UploadInfo::Gcs(_) | UploadInfo::Dummy() => UploadCredentials::Skip,
-        }
+    /// Creates a new GCS uploader using run-down signed URLs.
+    /// Auth is validated at upload time via signed URLs.
+    pub fn new_gcs(run_down_client: Arc<RunDownClient>) -> Self {
+        Self::Gcs(run_down_client)
     }
 }
 

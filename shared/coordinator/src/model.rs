@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use crate::{SOLANA_MAX_STRING_LEN, coordinator::SOLANA_MAX_URL_STRING_LEN};
 
 use anchor_lang::{
@@ -241,17 +239,6 @@ impl HubRepo {
     }
 }
 
-impl FromStr for HubRepo {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(HubRepo {
-            repo_id: FixedString::from_str_truncated(s),
-            revision: None,
-        })
-    }
-}
-
 #[derive(
     Clone,
     Debug,
@@ -293,17 +280,58 @@ impl GcsRepo {
 #[repr(C)]
 pub enum Checkpoint {
     Ephemeral,
-    Dummy(HubRepo), // Used for testing
+    Dummy(HubRepo),
     Hub(HubRepo),
     P2P(HubRepo),
     Gcs(GcsRepo),
     P2PGcs(GcsRepo),
 }
 
+impl Checkpoint {
+    /// Returns the HubRepo if this is a Hub or P2P checkpoint.
+    pub fn hub_repo(&self) -> Option<&HubRepo> {
+        match self {
+            Checkpoint::Hub(repo) | Checkpoint::P2P(repo) | Checkpoint::Dummy(repo) => Some(repo),
+            _ => None,
+        }
+    }
+
+    /// Returns the GcsRepo if this is a Gcs or P2PGcs checkpoint.
+    pub fn gcs_repo(&self) -> Option<&GcsRepo> {
+        match self {
+            Checkpoint::Gcs(repo) | Checkpoint::P2PGcs(repo) => Some(repo),
+            _ => None,
+        }
+    }
+
+    /// Returns true if this checkpoint uses P2P model sharing.
+    pub fn is_p2p(&self) -> bool {
+        matches!(self, Checkpoint::P2P(_) | Checkpoint::P2PGcs(_))
+    }
+
+    /// Converts a hosted checkpoint to its P2P variant.
+    pub fn to_p2p(self) -> Self {
+        match self {
+            Checkpoint::Hub(repo) | Checkpoint::Dummy(repo) => Checkpoint::P2P(repo),
+            Checkpoint::Gcs(repo) => Checkpoint::P2PGcs(repo),
+            other => other,
+        }
+    }
+
+    /// Converts a P2P checkpoint back to its hosted variant.
+    pub fn to_hosted(self) -> Self {
+        match self {
+            Checkpoint::P2P(repo) => Checkpoint::Hub(repo),
+            Checkpoint::P2PGcs(repo) => Checkpoint::Gcs(repo),
+            other => other,
+        }
+    }
+}
+
 impl std::fmt::Display for Checkpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Checkpoint::Dummy(_hub_repo) => write!(f, "Dummy"),
+            Checkpoint::Dummy(_) => write!(f, "Dummy"),
             Checkpoint::Ephemeral => write!(f, "Ephemeral"),
             Checkpoint::Hub(hub_repo) => write!(f, "{}", &hub_repo.repo_id),
             Checkpoint::Gcs(gcs_repo) => match &gcs_repo.prefix {
@@ -353,11 +381,11 @@ impl Model {
                     return false;
                 }
                 let bad_checkpoint = match llm.checkpoint {
-                    Checkpoint::Dummy(_hub_repo) => false,
-                    Checkpoint::Ephemeral => true,
-                    Checkpoint::P2P(hub_repo) => hub_repo.repo_id.is_empty(),
-                    Checkpoint::Hub(hub_repo) => hub_repo.repo_id.is_empty(),
-                    Checkpoint::Gcs(gcs_repo) | Checkpoint::P2PGcs(gcs_repo) => {
+                    Checkpoint::Dummy(_) | Checkpoint::Ephemeral => false,
+                    Checkpoint::Hub(ref hub_repo) | Checkpoint::P2P(ref hub_repo) => {
+                        hub_repo.repo_id.is_empty()
+                    }
+                    Checkpoint::Gcs(ref gcs_repo) | Checkpoint::P2PGcs(ref gcs_repo) => {
                         gcs_repo.bucket.is_empty()
                     }
                 };

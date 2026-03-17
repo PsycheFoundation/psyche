@@ -35,8 +35,8 @@ fi
 DP=${DP:-"8"}
 TP=${TP:-"1"}
 BATCH_SIZE=${BATCH_SIZE:-"1"}
-HF_TOKEN=${HF_TOKEN:-""}
-GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-""}
+export HF_TOKEN=${HF_TOKEN:-""}
+export GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-""}
 
 # fine if this fails
 solana airdrop 10 "$(solana-keygen pubkey ${WALLET_FILE})" --url "${RPC}" || true
@@ -44,7 +44,7 @@ solana airdrop 10 "$(solana-keygen pubkey ${WALLET_FILE})" --url "${RPC}" || tru
 export RUST_LOG="info,psyche=debug"
 
 if [[ "$OTLP_METRICS_URL" == "" ]]; then
-    HF_TOKEN=${HF_TOKEN} GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS} cargo run --release --bin psyche-solana-client -- \
+    cargo run --release --bin psyche-solana-client -- \
         train \
         --wallet-private-key-path ${WALLET_FILE} \
         --rpc ${RPC} \
@@ -58,7 +58,7 @@ if [[ "$OTLP_METRICS_URL" == "" ]]; then
         $( [[ "$CHECKPOINT" != "true" ]] && echo "--skip-checkpoint-upload" ) \
         "$@"
 else
-    HF_TOKEN=${HF_TOKEN} GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS} cargo run --release --bin psyche-solana-client -- \
+    cargo run --release --bin psyche-solana-client -- \
         train \
         --wallet-private-key-path ${WALLET_FILE} \
         --rpc ${RPC} \
