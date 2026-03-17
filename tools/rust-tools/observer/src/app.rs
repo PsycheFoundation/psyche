@@ -425,7 +425,7 @@ mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
     use psyche_core::{BatchId, ClosedInterval};
-    use psyche_event_sourcing::events::{EpochStarted, Event, EventData, Train, train};
+    use psyche_event_sourcing::events::{Event, EventData, Train, train};
     use std::time::Instant;
 
     /// Build a timeline with `n` fake node events across `num_nodes` nodes.
@@ -449,8 +449,14 @@ mod tests {
                     loss: Some(1.0 / (1.0 + i as f64)),
                 }))
             } else {
-                EventData::EpochStarted(EpochStarted {
-                    epoch_number: (i / 100) as u64,
+                EventData::ResourceSnapshot(psyche_event_sourcing::events::ResourceSnapshot {
+                    gpu_mem_used_bytes: None,
+                    gpu_utilization_percent: None,
+                    cpu_mem_used_bytes: 0,
+                    cpu_utilization_percent: 0.0,
+                    network_bytes_sent_total: 0,
+                    network_bytes_recv_total: 0,
+                    disk_space_available_bytes: 0,
                 })
             };
             let event = Event {

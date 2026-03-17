@@ -34,8 +34,6 @@ pub enum EventData {
     #[display("{_0}")]
     RunStarted(RunStarted),
     #[display("{_0}")]
-    EpochStarted(EpochStarted),
-    #[display("{_0}")]
     CoordinatorEvent(CoordinatorEvent),
     #[display("{_0}")]
     Client(Client),
@@ -63,18 +61,6 @@ pub struct RunStarted {
 impl From<RunStarted> for EventData {
     fn from(value: RunStarted) -> Self {
         EventData::RunStarted(value)
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Display)]
-#[display("epoch {epoch_number} started")]
-pub struct EpochStarted {
-    pub epoch_number: u64,
-}
-
-impl From<EpochStarted> for EventData {
-    fn from(value: EpochStarted) -> Self {
-        EventData::EpochStarted(value)
     }
 }
 

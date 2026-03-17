@@ -1,4 +1,4 @@
-use crate::events::{EpochStarted, Event, EventData, RunStarted};
+use crate::events::{Client, Event, EventData, RunStarted};
 use chrono::{DateTime, Utc};
 use parking_lot::{Mutex, RwLock};
 use std::any::Any;
@@ -74,20 +74,19 @@ impl FileBackend {
             .expect("FileBackend requires a tokio runtime")
             .spawn(async move {
                 while let Some(msg) = rx.recv().await {
-                    match msg.data {
-                        EventData::EpochStarted(EpochStarted { epoch_number }) => {
+                    if let EventData::Client(Client::StateChanged(ref sc)) = msg.data {
+                        if sc.epoch > filewriter.current_epoch {
                             if let Err(e) = filewriter.write_event(&msg) {
-                                error!("Failed to write EpochStarted event: {}", e);
+                                error!("Failed to write StateChanged event: {}", e);
                             }
-                            if let Err(e) = filewriter.rotate(epoch_number) {
+                            if let Err(e) = filewriter.rotate(sc.epoch) {
                                 error!("Failed to rotate file: {}", e);
                             }
+                            continue;
                         }
-                        _ => {
-                            if let Err(e) = filewriter.write_event(&msg) {
-                                error!("Failed to write event to disk: {}", e);
-                            }
-                        }
+                    }
+                    if let Err(e) = filewriter.write_event(&msg) {
+                        error!("Failed to write event to disk: {}", e);
                     }
                 }
             });
@@ -251,14 +250,6 @@ impl FileWriterState {
         };
         file.write_all(&postcard::to_stdvec_cobs(&run_started).map_err(std::io::Error::other)?)?;
 
-        let epoch_started = Event {
-            timestamp: Utc::now(),
-            data: EventData::EpochStarted(EpochStarted {
-                epoch_number: epoch,
-            }),
-        };
-        file.write_all(&postcard::to_stdvec_cobs(&epoch_started).map_err(std::io::Error::other)?)?;
-
         created_files.push_back(file_path);
 
         Ok(file)
@@ -294,6 +285,8 @@ impl FileWriterState {
 mod tests {
     use super::*;
     use crate::{event, events::*};
+    use psyche_coordinator::RunState;
+    use psyche_core::{BatchId, ClosedInterval};
     use serial_test::serial;
     use std::fs;
     use std::sync::LazyLock;
@@ -312,8 +305,8 @@ mod tests {
         }
     }
 
-    fn test_batch_id() -> psyche_core::BatchId {
-        psyche_core::BatchId(psyche_core::ClosedInterval::new(1, 1))
+    fn test_batch_id() -> BatchId {
+        BatchId(ClosedInterval::new(1, 1))
     }
 
     #[test]
@@ -386,7 +379,12 @@ mod tests {
             batch_id: test_batch_id()
         });
 
-        event!(EpochStarted { epoch_number: 1 });
+        event!(client::StateChanged {
+            old_state: RunState::RoundTrain,
+            new_state: RunState::Cooldown,
+            epoch: 1,
+            step: 10,
+        });
 
         event!(train::TrainingFinished {
             batch_id: test_batch_id(),
@@ -444,19 +442,18 @@ mod tests {
 
         let count =
             EventStore::with_backend::<InMemoryBackend, _, _>(|b| b.with_events(|e| e.len()));
-        assert_eq!(count, Some(4));
+        assert_eq!(count, Some(3));
 
         let events =
             EventStore::with_backend::<InMemoryBackend, _, _>(|b| b.with_events(|e| e.to_vec()))
                 .unwrap();
         assert!(matches!(events[0].data, EventData::RunStarted(_)));
-        assert!(matches!(events[1].data, EventData::EpochStarted(_)));
         assert!(matches!(
-            events[2].data,
+            events[1].data,
             EventData::Train(Train::TrainingStarted(_))
         ));
         assert!(matches!(
-            events[3].data,
+            events[2].data,
             EventData::Train(Train::TrainingFinished(_))
         ));
     }
@@ -496,8 +493,11 @@ mod tests {
 
         // epoch 0, 1, 2, 3: should keep only 2,3
         for epoch in 1u64..=3 {
-            event!(EpochStarted {
-                epoch_number: epoch
+            event!(client::StateChanged {
+                old_state: RunState::RoundTrain,
+                new_state: RunState::Cooldown,
+                epoch,
+                step: epoch * 10,
             });
         }
 
