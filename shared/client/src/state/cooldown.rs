@@ -291,6 +291,7 @@ impl CooldownStepMetadata {
             checkpointing_and_evals,
             cancellation_token,
             checkpoint_completed,
+            sent_witness: false,
         })
     }
 }
@@ -349,6 +350,7 @@ pub struct CooldownStep {
     checkpointing_and_evals: JoinHandle<Result<RunningEvals, CheckpointError>>,
     cancellation_token: tokio_util::sync::CancellationToken,
     checkpoint_completed: Arc<AtomicBool>,
+    pub sent_witness: bool,
 }
 
 impl CooldownStep {

@@ -55,9 +55,6 @@ pub struct StepStateMachine {
     current_round: RoundState,
     previous_round: RoundState,
     step_finish_time: Option<Instant>,
-    sent_warmup_finished: bool,
-    sent_warmup_witness: bool,
-    sent_cooldown_witness: bool,
 
     coordinator_state: Coordinator,
 }
@@ -159,9 +156,6 @@ impl StepStateMachine {
             coordinator_state,
 
             step_finish_time: None,
-            sent_warmup_finished: false,
-            sent_warmup_witness: false,
-            sent_cooldown_witness: false,
         }
     }
 
@@ -288,8 +282,12 @@ impl StepStateMachine {
     }
 
     fn try_send_warmup_witness(&mut self) -> Result<(), OpportunisticWitnessError> {
+        let ActiveStep::Warmup(ref warmup) = self.active_step else {
+            return Ok(());
+        };
+
         // Send warmup finished broadcast if we haven't yet
-        if !self.sent_warmup_finished {
+        if !warmup.sent_finished {
             let merkle = self.get_merkle_root(&self.current_round.broadcasts);
 
             info!(name: "send_warmup_broadcast", epoch = self.coordinator_state.progress.epoch, "Sending warmup ready broadcast");
@@ -303,7 +301,9 @@ impl StepStateMachine {
                 })
                 .map_err(|_| OpportunisticWitnessError::Finished)?;
 
-            self.sent_warmup_finished = true;
+            if let ActiveStep::Warmup(ref mut warmup) = self.active_step {
+                warmup.sent_finished = true;
+            }
             return Ok(());
         }
 
@@ -319,7 +319,7 @@ impl StepStateMachine {
         }
 
         // Send warmup witness if we haven't yet
-        if self.sent_warmup_witness {
+        if warmup.sent_witness {
             return Ok(());
         }
 
@@ -345,13 +345,15 @@ impl StepStateMachine {
             .send(OpportunisticData::WarmupStep(witness))
             .map_err(|_| OpportunisticWitnessError::Send)?;
 
-        self.sent_warmup_witness = true;
+        if let ActiveStep::Warmup(ref mut warmup) = self.active_step {
+            warmup.sent_witness = true;
+        }
         Ok(())
     }
 
     fn try_send_cooldown_witness(&mut self) -> Result<(), OpportunisticWitnessError> {
-        if let ActiveStep::Cooldown(active_step) = &self.active_step {
-            if !active_step.checkpoint_complete() || self.sent_cooldown_witness {
+        if let ActiveStep::Cooldown(ref active_step) = self.active_step {
+            if !active_step.checkpoint_complete() || active_step.sent_witness {
                 return Ok(());
             }
         }
@@ -389,7 +391,9 @@ impl StepStateMachine {
             .send(OpportunisticData::CooldownStep(witness))
             .map_err(|_| OpportunisticWitnessError::Send)?;
 
-        self.sent_cooldown_witness = true;
+        if let ActiveStep::Cooldown(ref mut active_step) = self.active_step {
+            active_step.sent_witness = true;
+        }
         Ok(())
     }
 
@@ -811,8 +815,6 @@ impl StepStateMachine {
             (ActiveStep::Warmup(warmup), RunState::RoundTrain) => {
                 let trainers = warmup.finish().stop_evals().await?;
                 self.step_finish_time = None;
-                self.sent_warmup_finished = false;
-                self.sent_warmup_witness = false;
                 self.stats_logger
                     .lock()
                     .map_err(|_| StepError::StatsLoggerMutex)?
@@ -893,9 +895,7 @@ impl StepStateMachine {
                 // If we reach this state it means at least one of the clients has successfully uploaded the model checkpoint.
                 // We can cancel any of the other uploads in progress.
                 cooldown.cancel();
-
                 let trainers = cooldown.finish().await?;
-                self.sent_cooldown_witness = false;
                 ActiveStep::Warmup(self.warmup.start(
                     trainers,
                     &mut self.previous_round,
@@ -905,7 +905,6 @@ impl StepStateMachine {
             // On pause, wait for the checkpoint upload to finish before transitioning.
             (ActiveStep::Cooldown(cooldown), RunState::Paused) => {
                 let trainers = cooldown.finish().await?;
-                self.sent_cooldown_witness = false;
                 ActiveStep::Warmup(self.warmup.start(
                     trainers,
                     &mut self.previous_round,
