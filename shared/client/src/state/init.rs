@@ -122,6 +122,9 @@ pub enum InitRunError {
     #[error("could not parse config: {0}")]
     FailedToParseConfig(#[from] serde_json::Error),
 
+    #[error("P2P model load failed: could not fetch model from peers after exhausting all retries")]
+    P2PModelLoad,
+
     #[error("Unsupported architecture: {0}")]
     UnsupportedArchitecture(String),
 
@@ -436,7 +439,9 @@ impl RunInitConfigAndIO {
                                     .unwrap();
 
                                 let (model_config, tokenizer, parameter_names) =
-                                    rx_model_config_response.await.unwrap();
+                                    rx_model_config_response
+                                        .await
+                                        .map_err(|_| InitRunError::P2PModelLoad)?;
                                 debug!("Got p2p info, model_config: {}", model_config);
 
                                 let model_config = match model_extra_data.architecture {
@@ -475,7 +480,11 @@ impl RunInitConfigAndIO {
                                     .send((parameter_names, tx_params_response))
                                     .unwrap();
                                 #[allow(clippy::arc_with_non_send_sync)]
-                                let parameters = Arc::new(rx_params_response.await.unwrap());
+                                let parameters = Arc::new(
+                                    rx_params_response
+                                        .await
+                                        .map_err(|_| InitRunError::P2PModelLoad)?,
+                                );
 
                                 (
                                     PretrainedSource::<AutoConfig>::ConfigAndTensors(
