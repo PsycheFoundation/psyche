@@ -203,6 +203,9 @@ pub async fn spawn_new_client(
         })
         .collect();
 
+    // Skip checkpoint upload validation in tests
+    env_vars.push("SKIP_CHECKPOINT_UPLOAD=true".to_string());
+
     // Add extra env vars for keypair if provided
     env_vars.extend(extra_env);
 

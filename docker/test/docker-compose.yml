@@ -12,6 +12,7 @@ services:
       - '../../config/client/.env.local'
     environment:
       - HF_TOKEN=${HF_TOKEN:-}
+      - SKIP_CHECKPOINT_UPLOAD=true
     networks:
       - psyche-test-network
 
