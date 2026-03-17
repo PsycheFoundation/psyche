@@ -244,15 +244,6 @@ impl HubRepo {
     }
 }
 
-impl From<&str> for HubRepo {
-    fn from(s: &str) -> Self {
-        HubRepo {
-            repo_id: FixedString::from_str_truncated(s),
-            revision: None,
-        }
-    }
-}
-
 #[derive(
     Clone,
     Debug,

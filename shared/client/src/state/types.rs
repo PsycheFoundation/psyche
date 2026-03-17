@@ -93,18 +93,6 @@ pub struct CheckpointConfig {
     pub skip_upload: bool,
 }
 
-impl CheckpointConfig {
-    pub fn dummy() -> Self {
-        Self {
-            checkpoint_dir: PathBuf::from("./checkpoints"),
-            delete_old_steps: false,
-            keep_steps: 1,
-            hub_token: None,
-            skip_upload: false,
-        }
-    }
-}
-
 #[derive(Debug)]
 pub enum PayloadState {
     Downloading((NodeIdentity, BatchId, BlobTicket)),
