@@ -369,22 +369,33 @@
 						"axisCenteredZero": false,
 						"axisColorMode": "text",
 						"axisLabel": "",
-						"axisPlacement": "left",
-						"fillOpacity": 50,
+						"axisPlacement": "auto",
+						"barAlignment": 0,
+						"barWidthFactor": 0.6,
+						"drawStyle": "line",
+						"fillOpacity": 0,
+						"gradientMode": "none",
 						"hideFrom": {
 							"legend": false,
 							"tooltip": false,
 							"viz": false
 						},
-						"pointShape": "circle",
-						"pointSize": {
-							"fixed": 5
-						},
-						"pointStrokeWidth": 3,
+						"insertNulls": false,
+						"lineInterpolation": "linear",
+						"lineWidth": 1,
+						"pointSize": 5,
 						"scaleDistribution": {
 							"type": "linear"
 						},
-						"show": "points+lines"
+						"showPoints": "auto",
+						"spanNulls": false,
+						"stacking": {
+							"group": "A",
+							"mode": "none"
+						},
+						"thresholdsStyle": {
+							"mode": "off"
+						}
 					},
 					"mappings": [],
 					"thresholds": {
@@ -392,10 +403,11 @@
 						"steps": [
 							{
 								"color": "green",
-								"value": 0
+								"value": null
 							}
 						]
-					}
+					},
+					"unit": "s"
 				},
 				"overrides": []
 			},
@@ -411,10 +423,8 @@
 					"calcs": [],
 					"displayMode": "list",
 					"placement": "bottom",
-					"showLegend": false
+					"showLegend": true
 				},
-				"mapping": "auto",
-				"series": [{}],
 				"tooltip": {
 					"hideZeros": false,
 					"mode": "single",
@@ -435,23 +445,15 @@
 					"hide": false,
 					"includeNullMetadata": true,
 					"instant": false,
-					"legendFormat": "time",
+					"legendFormat": "{{instance}}",
 					"range": true,
 					"refId": "B",
 					"useBackend": false
 				}
 			],
 			"title": "Training round duration",
-			"transformations": [
-				{
-					"id": "concatenate",
-					"options": {
-						"frameNameLabel": "Hola",
-						"frameNameMode": "field"
-					}
-				}
-			],
-			"type": "xychart"
+			"transformations": [],
+			"type": "timeseries"
 		},
 		{
 			"datasource": {
