@@ -15,7 +15,7 @@ use psyche_client::{
 };
 use psyche_coordinator::{
     ClientState, Coordinator, CoordinatorError, RunState,
-    model::{self, CheckpointStorage, GcsRepo, LLM, Model},
+    model::{self, GcsRepo, LLM, Model},
 };
 use psyche_core::sha256;
 use psyche_metrics::ClientMetrics;
@@ -238,8 +238,7 @@ impl App {
         if !self.state_options.checkpoint_config.skip_upload {
             let Model::LLM(LLM { checkpoint, .. }) = start_coordinator_state.model;
             match checkpoint {
-                model::Checkpoint::Hosted(CheckpointStorage::Hub(ref hub_repo))
-                | model::Checkpoint::P2P(CheckpointStorage::Hub(ref hub_repo)) => {
+                model::Checkpoint::Hub(ref hub_repo) | model::Checkpoint::P2P(ref hub_repo) => {
                     let token = self.state_options.checkpoint_config.hub_token.as_ref()
                         .ok_or_else(|| anyhow!(
                             "No HF_TOKEN found for checkpointing to Hub repo {}. Set HF_TOKEN environment variable.",
@@ -248,16 +247,12 @@ impl App {
                     CheckpointUploader::new_hub(hub_repo.repo_id.to_string(), token.clone())
                         .await?;
                 }
-                model::Checkpoint::Hosted(CheckpointStorage::Gcs(GcsRepo {
-                    bucket,
-                    ref prefix,
-                    ..
-                }))
-                | model::Checkpoint::P2P(CheckpointStorage::Gcs(model::GcsRepo {
-                    bucket,
-                    ref prefix,
-                    ..
-                })) => {
+                model::Checkpoint::Gcs(GcsRepo {
+                    bucket, ref prefix, ..
+                })
+                | model::Checkpoint::P2PGcs(model::GcsRepo {
+                    bucket, ref prefix, ..
+                }) => {
                     CheckpointUploader::new_gcs(
                         bucket.to_string(),
                         prefix.as_ref().map(|p| p.to_string()),

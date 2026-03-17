@@ -6,7 +6,7 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 use psyche_coordinator::{
     CoordinatorConfig, CoordinatorProgress, get_data_index_for_step,
-    model::{Checkpoint, CheckpointStorage, Model},
+    model::{Checkpoint, Model},
 };
 use psyche_solana_treasurer::logic::RunUpdateParams;
 use serde::{Deserialize, Serialize};
@@ -92,10 +92,9 @@ impl Command for CommandUpdateConfig {
             let Model::LLM(mut llm) =
                 model.unwrap_or(coordinator_account_state.state.coordinator.model);
             match llm.checkpoint {
-                Checkpoint::P2P(storage) => llm.checkpoint = Checkpoint::Hosted(storage),
-                Checkpoint::Dummy(hub_repo) => {
-                    llm.checkpoint = Checkpoint::Hosted(CheckpointStorage::Hub(hub_repo))
-                }
+                Checkpoint::P2P(hub_repo) => llm.checkpoint = Checkpoint::Hub(hub_repo),
+                Checkpoint::P2PGcs(gcs_repo) => llm.checkpoint = Checkpoint::Gcs(gcs_repo),
+                Checkpoint::Dummy(hub_repo) => llm.checkpoint = Checkpoint::Hub(hub_repo),
                 _ => {}
             }
             Some(Model::LLM(llm))

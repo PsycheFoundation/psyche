@@ -11,7 +11,7 @@ use psyche_centralized_testing::{
 };
 use psyche_coordinator::{
     RunState,
-    model::{Checkpoint, CheckpointStorage, HubRepo},
+    model::{Checkpoint, HubRepo},
 };
 use tracing::info;
 
@@ -639,7 +639,7 @@ async fn client_join_in_training_and_get_model_using_p2p() {
 
     assert_with_retries(
         || server_handle.get_checkpoint(),
-        std::mem::discriminant(&Checkpoint::P2P(CheckpointStorage::Hub(HubRepo::dummy()))),
+        std::mem::discriminant(&Checkpoint::P2P(HubRepo::dummy())),
     )
     .await;
 
@@ -722,7 +722,7 @@ async fn two_clients_join_in_training_and_get_model_using_p2p() {
 
     assert_with_retries(
         || server_handle.get_checkpoint(),
-        std::mem::discriminant(&Checkpoint::P2P(CheckpointStorage::Hub(HubRepo::dummy()))),
+        std::mem::discriminant(&Checkpoint::P2P(HubRepo::dummy())),
     )
     .await;
 

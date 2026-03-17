@@ -12,7 +12,7 @@ use anchor_client::{
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
 use psyche_client::{TrainArgs, print_identity_keys};
-use psyche_coordinator::model::{Checkpoint, CheckpointStorage, Model};
+use psyche_coordinator::model::{Checkpoint, Model};
 use psyche_network::SecretKey;
 use psyche_solana_rpc::SolanaBackend;
 use psyche_tui::{
@@ -286,8 +286,8 @@ async fn async_main() -> Result<()> {
                         bail!("Can't predownload model with ephemeral checkpoint.")
                     }
                     Checkpoint::Dummy(hub_repo)
-                    | Checkpoint::Hosted(CheckpointStorage::Hub(hub_repo))
-                    | Checkpoint::P2P(CheckpointStorage::Hub(hub_repo)) => {
+                    | Checkpoint::Hub(hub_repo)
+                    | Checkpoint::P2P(hub_repo) => {
                         let repo_id = hub_repo.repo_id.to_string();
                         let revision = hub_repo.revision.map(|s| s.to_string());
                         println!(
@@ -308,8 +308,7 @@ async fn async_main() -> Result<()> {
                         )
                         .await?;
                     }
-                    Checkpoint::Hosted(CheckpointStorage::Gcs(gcs_repo))
-                    | Checkpoint::P2P(CheckpointStorage::Gcs(gcs_repo)) => {
+                    Checkpoint::Gcs(gcs_repo) | Checkpoint::P2PGcs(gcs_repo) => {
                         let bucket = gcs_repo.bucket.to_string();
                         let prefix: Option<String> = gcs_repo.prefix.map(|p| p.to_string());
                         println!(
