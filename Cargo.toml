@@ -69,10 +69,10 @@ futures-util = "0.3.30"
 chrono = { version = "0.4.38", features = ["clock"] }
 fast-math = "0.1"
 async-trait = "0.1.82"
-iroh = { version = "0.96.0", features = ["metrics"] }
-iroh-relay = { version = "0.96.0", features = ["metrics"] }
-iroh-blobs = { version = "0.98", features = ["metrics"] }
-iroh-gossip = { version = "0.96.0" }
+iroh = { version = "0.97.0", features = ["metrics"] }
+iroh-relay = { version = "0.97.0", features = ["metrics"] }
+iroh-blobs = { version = "0.99", features = ["metrics"] }
+iroh-gossip = { version = "0.97.0" }
 axum = "0.7"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace"] }
@@ -130,8 +130,6 @@ opt-level = 1
 [profile.test]
 opt-level = 1
 
-[patch.crates-io]
-iroh-blobs = { git = "https://github.com/pefontana/iroh-blobs.git", rev = "3600dbc" }
 
 [workspace.metadata.release]
 tag-name = "v{{version}}"

@@ -353,7 +353,7 @@ where
             };
             debug!("Using relay servers: {}", fmt_relay_mode(&relay_mode));
 
-            let endpoint = Endpoint::builder()
+            let endpoint = Endpoint::builder(iroh::endpoint::presets::N0)
                 .secret_key(secret_key)
                 .relay_mode(relay_mode)
                 .transport_config(transport_config)
@@ -452,7 +452,7 @@ where
             max_connections: 1024,
             on_connected: None,
         };
-        let downloader = Downloader::with_pool_options(&store, &endpoint, pool_options);
+        let downloader = Downloader::new_with_opts(&store, &endpoint, pool_options);
         trace!("blobs store created!");
 
         trace!("creating gossip...");

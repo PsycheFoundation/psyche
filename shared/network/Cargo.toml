@@ -34,7 +34,7 @@ tokenizers.workspace = true
 get_if_addrs = "0.5.3"
 n0-future = "0.3.2"
 url = { version = "2.5", features = ["serde"] }
-iroh-services = { version = "0.11", features = [
+iroh-services = { version = "0.12", features = [
   "client_host",
   "net_diagnostics",
 ] }
