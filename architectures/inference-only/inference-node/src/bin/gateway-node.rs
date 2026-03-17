@@ -14,9 +14,10 @@ use axum::{
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::post,
+    routing::{get, post},
 };
 use clap::Parser;
+use iroh::EndpointAddr;
 use psyche_inference::{
     INFERENCE_ALPN, InferenceGossipMessage, InferenceMessage, InferenceRequest, InferenceResponse,
 };
@@ -68,6 +69,7 @@ struct GatewayState {
     pending_requests: RwLock<HashMap<String, mpsc::Sender<InferenceResponse>>>,
     network_tx: mpsc::Sender<(EndpointId, InferenceMessage)>,
     gossip_tx: mpsc::Sender<InferenceGossipMessage>,
+    endpoint_addr: EndpointAddr,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
@@ -271,6 +273,15 @@ async fn handle_load_model(
     ))
 }
 
+#[axum::debug_handler]
+async fn handle_bootstrap(State(state): State<Arc<GatewayState>>) -> Json<EndpointAddr> {
+    info!(
+        "Bootstrap request: returning endpoint addr {}",
+        state.endpoint_addr.id.fmt_short()
+    );
+    Json(state.endpoint_addr.clone())
+}
+
 #[derive(Debug)]
 enum AppError {
     NoNodesAvailable,
@@ -435,11 +446,15 @@ async fn run_gateway() -> Result<()> {
 
     let (network_tx, mut network_rx) = mpsc::channel::<(EndpointId, InferenceMessage)>(100);
     let (gossip_tx, mut gossip_rx) = mpsc::channel::<InferenceGossipMessage>(100);
+
+    let endpoint_addr = network.router().endpoint().addr();
+
     let state = Arc::new(GatewayState {
         available_nodes: RwLock::new(HashMap::new()),
         pending_requests: RwLock::new(HashMap::new()),
         network_tx,
         gossip_tx,
+        endpoint_addr,
     });
 
     info!("Gateway ready! Listening on http://{}", args.listen_addr);
@@ -594,6 +609,7 @@ async fn run_gateway() -> Result<()> {
     let app = Router::new()
         .route("/v1/chat/completions", post(handle_inference))
         .route("/admin/load-model", post(handle_load_model))
+        .route("/bootstrap", get(handle_bootstrap))
         .with_state(state.clone());
 
     let listener = tokio::net::TcpListener::bind(&args.listen_addr)
