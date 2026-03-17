@@ -2,6 +2,7 @@ use crate::events::{EpochStarted, Event, EventData, RunStarted};
 use chrono::{DateTime, Utc};
 use parking_lot::{Mutex, RwLock};
 use std::any::Any;
+use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -55,14 +56,19 @@ impl FileBackend {
         base_path: &Path,
         initial_epoch: u64,
         run_context: RunStarted,
+        keep_event_files: Option<usize>,
     ) -> std::io::Result<Self> {
         if let Some(parent) = base_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
 
         let (tx, mut rx) = mpsc::unbounded_channel::<Event>();
-        let mut filewriter =
-            FileWriterState::new(base_path.to_path_buf(), initial_epoch, run_context)?;
+        let mut filewriter = FileWriterState::new(
+            base_path.to_path_buf(),
+            initial_epoch,
+            run_context,
+            keep_event_files,
+        )?;
 
         tokio::runtime::Handle::try_current()
             .expect("FileBackend requires a tokio runtime")
@@ -196,6 +202,8 @@ struct FileWriterState {
     base_path: PathBuf,
     current_epoch: u64,
     run_context: RunStarted,
+    keep_files: Option<usize>,
+    created_files: VecDeque<PathBuf>,
 }
 
 impl FileWriterState {
@@ -203,12 +211,22 @@ impl FileWriterState {
         base_path: PathBuf,
         initial_epoch: u64,
         run_context: RunStarted,
+        keep_files: Option<usize>,
     ) -> std::io::Result<Self> {
+        let mut created_files = VecDeque::new();
+        let output_file = Self::open_new_file(
+            &base_path,
+            initial_epoch,
+            run_context.clone(),
+            &mut created_files,
+        )?;
         Ok(Self {
-            output_file: Self::open_new_file(&base_path, initial_epoch, run_context.clone())?,
+            output_file,
             base_path,
             current_epoch: initial_epoch,
             run_context,
+            keep_files,
+            created_files,
         })
     }
 
@@ -216,6 +234,7 @@ impl FileWriterState {
         base_path: &Path,
         epoch: u64,
         run_context: RunStarted,
+        created_files: &mut VecDeque<PathBuf>,
     ) -> std::io::Result<File> {
         let timestamp = Utc::now().format("%Y-%m-%dT%H-%M-%SZ");
         let filename = format!("events-epoch-{}-{}.postcard", epoch, timestamp);
@@ -240,6 +259,8 @@ impl FileWriterState {
         };
         file.write_all(&postcard::to_stdvec_cobs(&epoch_started).map_err(std::io::Error::other)?)?;
 
+        created_files.push_back(file_path);
+
         Ok(file)
     }
 
@@ -254,7 +275,17 @@ impl FileWriterState {
             &self.base_path,
             self.current_epoch,
             self.run_context.clone(),
+            &mut self.created_files,
         )?;
+        while self
+            .keep_files
+            .is_some_and(|keep| self.created_files.len() > keep)
+        {
+            let old = self.created_files.pop_front().unwrap();
+            if let Err(e) = std::fs::remove_file(&old) {
+                error!("Failed to delete old events file {}: {}", old.display(), e);
+            }
+        }
         Ok(())
     }
 }
@@ -315,7 +346,7 @@ mod tests {
 
         EventStore::init(vec![
             Box::new(InMemoryBackend::default()),
-            Box::new(FileBackend::new(temp_dir.path(), 0, test_run_context()).unwrap()),
+            Box::new(FileBackend::new(temp_dir.path(), 0, test_run_context(), Some(5)).unwrap()),
         ]);
 
         event!(train::TrainingStarted {
@@ -348,7 +379,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         EventStore::init(vec![Box::new(
-            FileBackend::new(temp_dir.path(), 0, test_run_context()).unwrap(),
+            FileBackend::new(temp_dir.path(), 0, test_run_context(), Some(5)).unwrap(),
         )]);
 
         event!(train::TrainingStarted {
@@ -386,7 +417,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         EventStore::init(vec![Box::new(
-            FileBackend::new(temp_dir.path(), 0, test_run_context()).unwrap(),
+            FileBackend::new(temp_dir.path(), 0, test_run_context(), Some(5)).unwrap(),
         )]);
 
         let batch_id = test_batch_id();
@@ -455,6 +486,37 @@ mod tests {
 
     #[test]
     #[serial]
+    fn test_file_backend_retention() {
+        let _guard = TEST_RUNTIME.enter();
+        let temp_dir = TempDir::new().unwrap();
+
+        EventStore::init(vec![Box::new(
+            FileBackend::new(temp_dir.path(), 0, test_run_context(), Some(2)).unwrap(),
+        )]);
+
+        // epoch 0, 1, 2, 3: should keep only 2,3
+        for epoch in 1u64..=3 {
+            event!(EpochStarted {
+                epoch_number: epoch
+            });
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(200));
+
+        let mut files: Vec<_> = fs::read_dir(temp_dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        files.sort();
+
+        assert_eq!(files.len(), 2, "expected 2 files, got: {:?}", files);
+        assert!(files.iter().any(|f| f.contains("epoch-2")));
+        assert!(files.iter().any(|f| f.contains("epoch-3")));
+    }
+
+    #[test]
+    #[serial]
     fn test_no_backends_initialized() {
         EventStore::init(vec![]);
 
@@ -474,7 +536,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
 
         EventStore::init(vec![Box::new(
-            FileBackend::new(temp_dir.path(), 0, test_run_context()).unwrap(),
+            FileBackend::new(temp_dir.path(), 0, test_run_context(), Some(5)).unwrap(),
         )]);
 
         event!(train::TrainingStarted {

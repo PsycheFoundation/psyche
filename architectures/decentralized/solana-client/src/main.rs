@@ -194,6 +194,7 @@ async fn async_main() -> Result<()> {
                     &node_events_dir,
                     0,
                     run_context,
+                    args.keep_event_files,
                 )?)]);
             }
 
