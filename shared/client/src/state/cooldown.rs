@@ -355,16 +355,13 @@ pub struct CooldownStep {
 
 impl CooldownStep {
     pub async fn finish(self) -> Result<RunningEvals, CooldownError> {
+        self.cancellation_token.cancel();
         let running_evals = self
             .checkpointing_and_evals
             .await
             .map_err(|_| CooldownError::CheckpointThreadCrashed)??;
 
         Ok(running_evals)
-    }
-
-    pub fn cancel(&self) {
-        self.cancellation_token.cancel();
     }
 
     pub fn is_finished(&self) -> bool {

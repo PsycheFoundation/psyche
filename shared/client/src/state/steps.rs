@@ -889,21 +889,12 @@ impl StepStateMachine {
 
                 ActiveStep::Cooldown(self.cooldown.start(trainers, client_index, &state)?)
             }
-            // cooldown is done, we consider waiting for members and warmup to be basically the same
+            // Cooldown is done — at least one checkpointer has successfully uploaded
+            // (the coordinator only transitions out of Cooldown after receiving a witness).
+            // Safe to cancel our own upload if still in progress.
             (ActiveStep::Cooldown(cooldown), RunState::WaitingForMembers)
-            | (ActiveStep::Cooldown(cooldown), RunState::Warmup) => {
-                // If we reach this state it means at least one of the clients has successfully uploaded the model checkpoint.
-                // We can cancel any of the other uploads in progress.
-                cooldown.cancel();
-                let trainers = cooldown.finish().await?;
-                ActiveStep::Warmup(self.warmup.start(
-                    trainers,
-                    &mut self.previous_round,
-                    &mut self.current_round,
-                ))
-            }
-            // On pause, wait for the checkpoint upload to finish before transitioning.
-            (ActiveStep::Cooldown(cooldown), RunState::Paused) => {
+            | (ActiveStep::Cooldown(cooldown), RunState::Warmup)
+            | (ActiveStep::Cooldown(cooldown), RunState::Paused) => {
                 let trainers = cooldown.finish().await?;
                 ActiveStep::Warmup(self.warmup.start(
                     trainers,
