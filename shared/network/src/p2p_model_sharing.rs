@@ -459,12 +459,6 @@ impl SharableModel {
                     let mut param_value_buffer = Vec::new();
 
                     param_name_buffer.write_all(param_name.as_bytes())?;
-                    // Cast fp32/fp64 parameters to bf16 before serialization to save bandwidth.
-                    // It will be casted back to the original dtype by the clients after downloading if TorchTitan is being used.
-                    let parameter = match parameter.kind() {
-                        Kind::Float | Kind::Double => parameter.to_kind(Kind::BFloat16),
-                        _ => parameter,
-                    };
                     parameter.save_to_stream(&mut param_value_buffer)?;
 
                     let transmittable_parameter =

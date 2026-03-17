@@ -149,7 +149,11 @@ impl CooldownStepMetadata {
                 info!("Extracting full model...");
                 let (variables, trainer) =
                     tokio::task::spawn_blocking::<_, Result<_, CheckpointError>>(|| {
-                        let variables = trainer.extract()?;
+                        let variables: HashMap<String, Tensor> = trainer
+                            .extract()?
+                            .into_iter()
+                            .map(|(name, tensor)| (name, tensor.to_kind(tch::Kind::BFloat16)))
+                            .collect();
                         info!("Model extracted; {} parameters", variables.len());
                         Ok((variables, trainer))
                     })
