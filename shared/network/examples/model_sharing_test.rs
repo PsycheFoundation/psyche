@@ -25,8 +25,6 @@ use tracing::{error, info, warn};
 
 #[derive(Debug, Clone, ValueEnum)]
 enum RunMode {
-    /// Run everything in one process (default, original behavior)
-    All,
     /// Run as a sharer only — prints endpoint address JSON to stdout for downloaders
     Sharer,
     /// Run as a downloader only — requires --sharer-addr
@@ -37,17 +35,14 @@ enum RunMode {
 #[command(name = "model_sharing_test")]
 #[command(about = "Test harness for P2P model sharing flow")]
 struct CliArgs {
-    /// Run mode: "all" (default), "sharer", or "downloader"
-    #[clap(long, value_enum, default_value_t = RunMode::All)]
+    /// Run mode: "sharer" or "downloader"
+    #[clap(long, value_enum)]
     mode: RunMode,
 
-    /// JSON-encoded sharer endpoint address (required in downloader mode).
-    /// Can also be a path to a file containing the JSON.
+    /// JSON-encoded sharer endpoint address, or path to a file/directory containing address JSON.
+    /// In downloader mode with multiple sharers, point to the directory containing all address files.
     #[clap(long)]
     sharer_addr: Option<String>,
-
-    #[clap(long, default_value_t = 1)]
-    num_sharers: usize,
 
     #[clap(long, default_value_t = 2)]
     num_downloaders: usize,
@@ -70,17 +65,21 @@ struct CliArgs {
     #[clap(long, default_value = "psyche")]
     relay_kind: String,
 
-    /// Number of sharers that should be slow (throttled). These will be the last N sharers.
-    #[clap(long, default_value_t = 0)]
-    slow_sharers: usize,
-
-    /// Bandwidth limit for slow sharers in KB/s
-    #[clap(long, default_value_t = 100)]
-    slow_sharer_rate_kb: u64,
-
     /// Force all blob downloads to go through the relay (strip direct IP addresses from tickets)
     #[clap(long, default_value_t = false)]
     relay_only: bool,
+
+    /// Sharer instance ID (used to write unique address files when running multiple sharers)
+    #[clap(long, default_value_t = 0)]
+    sharer_id: usize,
+
+    /// Whether this sharer should be slow (throttled)
+    #[clap(long, default_value_t = false)]
+    slow: bool,
+
+    /// Bandwidth limit for slow sharers in KB/s
+    #[clap(long, default_value_t = 100)]
+    slow_rate_kb: u64,
 }
 
 /// Required by NetworkConnection generics but unused in this example.
@@ -649,7 +648,7 @@ fn print_report(reports: &[DownloaderReport], param_size_bytes: usize) {
     println!("\n{separator}");
 }
 
-/// Parse sharer address from a JSON string or a file path containing JSON.
+/// Parse a single sharer address from a JSON string or a file path containing JSON.
 fn parse_sharer_addr(raw: &str) -> Result<EndpointAddr> {
     // Try parsing as JSON first
     if let Ok(addr) = serde_json::from_str::<EndpointAddr>(raw) {
@@ -660,6 +659,48 @@ fn parse_sharer_addr(raw: &str) -> Result<EndpointAddr> {
         .map_err(|e| anyhow::anyhow!("Failed to read sharer-addr file '{raw}': {e}"))?;
     serde_json::from_str::<EndpointAddr>(content.trim())
         .map_err(|e| anyhow::anyhow!("Failed to parse sharer-addr JSON: {e}"))
+}
+
+/// Parse one or more sharer addresses. Accepts a JSON string, a single file, or a directory
+/// containing multiple `sharer_addr_*.json` files.
+fn parse_sharer_addrs(raw: &str) -> Result<Vec<EndpointAddr>> {
+    // Try as JSON first
+    if let Ok(addr) = serde_json::from_str::<EndpointAddr>(raw) {
+        return Ok(vec![addr]);
+    }
+
+    let path = std::path::Path::new(raw);
+
+    // If it's a directory, read all sharer_addr_*.json files in it
+    if path.is_dir() {
+        let mut addrs = Vec::new();
+        let mut entries: Vec<_> = std::fs::read_dir(path)?
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.file_name()
+                    .to_str()
+                    .is_some_and(|n| n.starts_with("sharer_addr_") && n.ends_with(".json"))
+            })
+            .collect();
+        entries.sort_by_key(|e| e.file_name());
+
+        for entry in entries {
+            let content = std::fs::read_to_string(entry.path())?;
+            let addr: EndpointAddr = serde_json::from_str(content.trim())
+                .map_err(|e| anyhow::anyhow!("Failed to parse {:?}: {e}", entry.path()))?;
+            addrs.push(addr);
+        }
+
+        if addrs.is_empty() {
+            return Err(anyhow::anyhow!(
+                "No sharer_addr_*.json files found in directory '{raw}'"
+            ));
+        }
+        Ok(addrs)
+    } else {
+        // Single file
+        Ok(vec![parse_sharer_addr(raw)?])
+    }
 }
 
 #[tokio::main]
@@ -704,18 +745,27 @@ async fn main() -> Result<()> {
 
     match args.mode {
         RunMode::Sharer => {
-            // Single sharer mode: create sharer, write endpoint addr to stdout and optionally file
-            let store = FakeStore::builder()
-                .with_unique_blobs(args.num_parameters, param_size_bytes as u64)
-                .build();
-            let network = create_peer(
-                "Sharer-0",
-                discovery_mode,
-                relay_kind,
-                Some(&store),
-                relay_only,
-            )
-            .await?;
+            let sharer_id = args.sharer_id;
+            let mut builder = FakeStore::builder()
+                .with_unique_blobs(args.num_parameters, param_size_bytes as u64);
+            if args.slow {
+                builder = builder.with_throttle(
+                    std::num::NonZeroU64::new(args.slow_rate_kb * 1024)
+                        .expect("slow_rate_kb must be > 0"),
+                );
+                info!(
+                    "Sharer-{sharer_id}: throttled to {} KB/s",
+                    args.slow_rate_kb
+                );
+            }
+            let store = builder.build();
+            let label = if args.slow {
+                format!("Sharer-{sharer_id}-SLOW")
+            } else {
+                format!("Sharer-{sharer_id}")
+            };
+            let network =
+                create_peer(&label, discovery_mode, relay_kind, Some(&store), relay_only).await?;
 
             let endpoint_addr = network.endpoint_addr().await;
             let addr_json = serde_json::to_string(&endpoint_addr)?;
@@ -723,12 +773,13 @@ async fn main() -> Result<()> {
             // Print with marker so it can be parsed from logs
             println!("SHARER_ADDR_JSON:{addr_json}");
 
-            // Also write to /tmp/sharer_addr.json for Docker volume sharing
-            if let Err(e) = std::fs::write("/tmp/sharer_addr.json", &addr_json) {
-                warn!("Could not write sharer addr to /tmp/sharer_addr.json: {e}");
+            // Write to /tmp/sharer_addr_{id}.json for Docker volume sharing
+            let addr_file = format!("/tmp/sharer_addr_{sharer_id}.json");
+            if let Err(e) = std::fs::write(&addr_file, &addr_json) {
+                warn!("Could not write sharer addr to {addr_file}: {e}");
             }
 
-            info!("Sharer running, endpoint: {}", network.endpoint_id());
+            info!("{label} running, endpoint: {}", network.endpoint_id());
             run_sharer(
                 network,
                 store,
@@ -745,106 +796,19 @@ async fn main() -> Result<()> {
                 .sharer_addr
                 .as_deref()
                 .ok_or_else(|| anyhow::anyhow!("--sharer-addr is required in downloader mode"))?;
-            let sharer_addr = parse_sharer_addr(sharer_addr_raw)?;
-            let sharer_id = sharer_addr.id;
-            info!("Downloader targeting sharer: {}", sharer_id.fmt_short());
 
-            let mut downloader_handles = Vec::new();
-            for i in 0..args.num_downloaders {
-                let network = create_peer(
-                    &format!("Downloader-{i}"),
-                    discovery_mode,
-                    relay_kind,
-                    None,
-                    relay_only,
-                )
-                .await?;
-                let sharer_ids = vec![sharer_id];
-                let cancel = cancel.clone();
-                let expected = args.num_parameters;
-                let max_concurrent = args.max_concurrent_downloads;
-                downloader_handles.push(tokio::spawn(async move {
-                    run_downloader(
-                        network,
-                        sharer_ids,
-                        expected,
-                        max_concurrent,
-                        param_size_bytes,
-                        cancel,
-                    )
-                    .await
-                }));
-            }
-
-            let mut reports = Vec::new();
-            for handle in downloader_handles {
-                match handle.await? {
-                    Ok(report) => reports.push(report),
-                    Err(e) => error!("Downloader failed: {e:#}"),
-                }
-            }
-
-            cancel.cancel();
-            print_report(&reports, param_size_bytes);
-        }
-
-        RunMode::All => {
-            // Original behavior: everything in one process
-            println!("  Sharers:              {}", args.num_sharers);
-            println!("  Downloaders:          {}", args.num_downloaders);
-            if args.slow_sharers > 0 {
-                println!(
-                    "  Slow sharers:         {} (throttled to {} KB/s)",
-                    args.slow_sharers, args.slow_sharer_rate_kb
-                );
-            }
-            println!();
-
-            let num_fast = args.num_sharers.saturating_sub(args.slow_sharers);
-            let mut sharer_handles = Vec::new();
-            let mut sharer_ids = Vec::new();
-
-            for i in 0..args.num_sharers {
-                let is_slow = i >= num_fast;
-                let store = if is_slow {
-                    FakeStore::builder()
-                        .with_unique_blobs(args.num_parameters, param_size_bytes as u64)
-                        .with_throttle(
-                            std::num::NonZeroU64::new(args.slow_sharer_rate_kb * 1024)
-                                .expect("slow_sharer_rate_kb must be > 0"),
-                        )
-                        .build()
-                } else {
-                    FakeStore::builder()
-                        .with_unique_blobs(args.num_parameters, param_size_bytes as u64)
-                        .build()
-                };
-                let label = if is_slow {
-                    format!("Sharer-{i}-SLOW")
-                } else {
-                    format!("Sharer-{i}")
-                };
-                let network =
-                    create_peer(&label, discovery_mode, relay_kind, Some(&store), relay_only)
-                        .await?;
-                sharer_ids.push(network.endpoint_id());
-
-                let param_names = param_names.clone();
-                let cancel = cancel.clone();
-                sharer_handles.push(tokio::spawn(async move {
-                    run_sharer(
-                        network,
-                        store,
-                        param_names,
-                        param_size_bytes,
-                        relay_only,
-                        cancel,
-                    )
-                    .await
-                }));
-            }
-
-            tokio::time::sleep(Duration::from_secs(2)).await;
+            // Load sharer addresses: supports a single file/JSON or a directory of address files
+            let sharer_addrs = parse_sharer_addrs(sharer_addr_raw)?;
+            let sharer_ids: Vec<EndpointId> = sharer_addrs.iter().map(|a| a.id).collect();
+            info!(
+                "Downloader targeting {} sharer(s): {}",
+                sharer_ids.len(),
+                sharer_ids
+                    .iter()
+                    .map(|id| id.fmt_short().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
 
             let mut downloader_handles = Vec::new();
             for i in 0..args.num_downloaders {
@@ -882,10 +846,6 @@ async fn main() -> Result<()> {
             }
 
             cancel.cancel();
-            for handle in sharer_handles {
-                let _ = handle.await;
-            }
-
             print_report(&reports, param_size_bytes);
         }
     }

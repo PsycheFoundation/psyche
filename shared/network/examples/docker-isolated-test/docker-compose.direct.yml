@@ -1,10 +1,12 @@
-# Docker Compose for direct-connection model sharing test.
+# Docker Compose for direct-connection model sharing test (single sharer).
 #
 # Same setup as docker-compose.yml but sharer and downloaders share a single
 # network, so holepunching succeeds and data flows via direct UDP connections.
 #
+# For multi-sharer tests, use run.sh --direct instead.
+#
 # Usage:
-#   docker compose -f shared/network/examples/docker-isolated-test/docker-compose.direct.yml up
+#   docker compose -f shared/network/examples/docker-isolated-test/docker-compose.direct.yml up --build
 
 services:
   sharer:
@@ -15,13 +17,14 @@ services:
     command:
       - |
         model_sharing_test --mode=sharer \
+          --sharer-id=0 \
           --num-parameters=${NUM_PARAMS:-10} \
           --parameter-size-mb=${PARAM_SIZE_MB:-200} \
           --discovery-mode=${DISCOVERY_MODE:-n0} \
           --relay-kind=${RELAY_KIND:-psyche} &
         PID=$$!
-        while [ ! -f /tmp/sharer_addr.json ]; do sleep 0.5; done
-        cp /tmp/sharer_addr.json /shared/sharer_addr.json
+        while [ ! -f /tmp/sharer_addr_0.json ]; do sleep 0.5; done
+        cp /tmp/sharer_addr_0.json /shared/sharer_addr_0.json
         wait $$PID
     volumes:
       - sharer-addr:/shared
@@ -30,7 +33,7 @@ services:
     networks:
       - shared-net
     healthcheck:
-      test: ['CMD-SHELL', 'test -f /shared/sharer_addr.json']
+      test: ['CMD-SHELL', 'test -f /shared/sharer_addr_0.json']
       interval: 2s
       timeout: 2s
       retries: 60
@@ -48,7 +51,7 @@ services:
       - '--max-concurrent-downloads=${MAX_CONCURRENT:-4}'
       - '--discovery-mode=${DISCOVERY_MODE:-n0}'
       - '--relay-kind=${RELAY_KIND:-psyche}'
-      - '--sharer-addr=/shared/sharer_addr.json'
+      - '--sharer-addr=/shared'
     volumes:
       - sharer-addr:/shared:ro
     environment:
@@ -65,6 +68,5 @@ volumes:
   sharer-addr:
 
 networks:
-  # Single shared network — sharer and downloaders can reach each other directly
   shared-net:
     driver: bridge
