@@ -3,7 +3,6 @@ import {
 	CoordinatorConfig,
 	Model,
 	PsycheCoordinator,
-	RunMetadata,
 } from 'psyche-deserialize-zerocopy-wasm'
 import {
 	RunSummary,
@@ -77,7 +76,6 @@ interface RunHistoryV2 {
 		timestamp: ChainTimestamp
 		model: Model
 		config: CoordinatorConfig
-		metadata: RunMetadata
 	}>
 
 	trainingStep?: {
@@ -295,7 +293,6 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				timestamp: eventTime,
 				config: newState.coordinator.config,
 				model: newState.coordinator.model,
-				metadata: newState.metadata,
 			})
 		}
 
@@ -633,15 +630,9 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				} satisfies RunRoundClient
 			})
 
-			const checkpoint = (() => {
-				const cp = c.coordinator.model.LLM.checkpoint
-				if (typeof cp !== 'object') return null
-				if ('Hub' in cp) return { Hub: cp.Hub }
-				if ('P2P' in cp) return { Hub: cp.P2P }
-				if ('Gcs' in cp) return { Gcs: cp.Gcs }
-				if ('P2PGcs' in cp) return { Gcs: cp.P2PGcs }
-				return null
-			})()
+			// Checkpoint details are now stored off-chain as opaque bytes;
+			// the on-chain LLM only has checkpoint_source (Stored/P2P/Ephemeral).
+			const checkpoint = null
 
 			const config = c.coordinator.config
 
@@ -748,8 +739,8 @@ function makeRunSummary(
 		id: c.run_id,
 		index: index,
 		isOnlyRunAtThisIndex,
-		name: run.lastState.metadata.name,
-		description: run.lastState.metadata.description,
+		name: '',
+		description: '',
 		status: run.destroyedAt
 			? {
 					type: 'completed',
@@ -772,7 +763,7 @@ function makeRunSummary(
 		pauseHistory: run.pauseTimestamps,
 		totalTokens,
 		lastUpdate: run.lastUpdated,
-		size: run.lastState.metadata.num_parameters,
+		size: 0n,
 		trainingStep,
 		type: 'text', // TODO add type / tags? :)
 	}
