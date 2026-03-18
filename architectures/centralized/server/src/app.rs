@@ -7,10 +7,10 @@ use psyche_coordinator::{
     SOLANA_MAX_NUM_CLIENTS, TickResult,
 };
 
-use psyche_core::{FixedVec, NodeIdentity, Shuffle, SizedIterator, TokenSize};
+use psyche_core::{FixedVec, NodeIdentity, Shuffle, SizedIterator};
 use psyche_data_provider::{
-    DataProviderTcpServer, DataServerTui, LocalDataProvider, download_model_from_gcs_async,
-    download_model_repo_async,
+    DataProviderTcpServer, DataServerConfig, DataServerTui, LocalDataProvider,
+    download_model_from_gcs_async, download_model_repo_async,
 };
 use psyche_network::{ClientNotification, PublicKey, TcpServer};
 use psyche_tui::{
@@ -18,7 +18,6 @@ use psyche_tui::{
 };
 use psyche_watcher::{CoordinatorTui, OpportunisticData};
 use rand::RngCore;
-use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::ops::ControlFlow;
@@ -147,20 +146,12 @@ impl App {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct DataServerInfo {
-    pub dir: PathBuf,
-    pub token_size: TokenSize,
-    pub seq_len: usize,
-    pub shuffle_seed: [u8; 32],
-}
-
 impl App {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         tui: bool,
         mut coordinator: Coordinator,
-        data_server_config: Option<DataServerInfo>,
+        data_server_config: Option<DataServerConfig>,
         coordinator_server_port: Option<u16>,
         save_state_dir: Option<PathBuf>,
         init_warmup_time: Option<u64>,
@@ -216,7 +207,7 @@ impl App {
                             anyhow!("Failed to parse training data server URL {:?}: {}", url, e)
                         })?;
                         let data_server_port = server_addr.port();
-                        let DataServerInfo {
+                        let DataServerConfig {
                             dir,
                             seq_len,
                             shuffle_seed,

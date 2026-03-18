@@ -23,6 +23,7 @@
   - [Running on-chain](./development/running-onchain.md)
   - [Running off-chain](./development/running-offchain.md)
   - [Implementing Models](./development/models.md)
+  - [make-tiny-init.py](./development/make-tiny-init.md)
   - [Python](./development/python.md)
   - [Secrets](./development/agenix.md)
   - [Building these docs](./development/book.md)
