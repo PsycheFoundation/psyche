@@ -192,7 +192,8 @@ pub struct LLM {
     pub max_seq_len: u32,
     pub cold_start_warmup_steps: u32,
     pub checkpoint_source: CheckpointSource,
-    pub checkpoint_data: CheckpointBytes,
+    #[serde(default)]
+    pub checkpoint_data: FixedVec<u8, { CHECKPOINT_DATA_MAX_LEN }>,
 }
 
 impl LLM {
