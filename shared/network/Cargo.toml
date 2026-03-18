@@ -38,6 +38,7 @@ iroh-services = { version = "0.11", features = [
   "client_host",
   "net_diagnostics",
 ] }
+psyche-event-sourcing.workspace = true
 
 [dev-dependencies]
 # for examples

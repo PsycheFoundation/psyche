@@ -204,6 +204,14 @@ pub struct TrainArgs {
 
     #[clap(long, default_value_t = 3, env)]
     pub keep_steps: u32,
+
+    /// If provided, events will be written to a subdir in here, named after the node's ID.
+    #[clap(long, env)]
+    pub events_dir: Option<PathBuf>,
+
+    /// Number of epoch event files to keep on disk. Older files are deleted during rotation.
+    #[clap(long, env, default_value = "5")]
+    pub keep_event_files: Option<usize>,
 }
 
 impl TrainArgs {
