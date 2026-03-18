@@ -17,6 +17,7 @@ waiting_for_members_extra_time = 3
 [model.LLM]
 max_seq_len = 64
 cold_start_warmup_steps = 0
+checkpoint_source = "Stored"
 
 [model_extra_data]
 version = 1
