@@ -202,12 +202,11 @@ impl App {
                     CheckpointUploader::new_hub(hub_repo.repo_id.to_string(), token.clone())
                         .await?;
                 }
-                Checkpoint::Gcs(ref gcs_repo) | Checkpoint::P2PGcs(ref gcs_repo) => {
-                    CheckpointUploader::new_gcs(
-                        gcs_repo.bucket.to_string(),
-                        gcs_repo.prefix.as_ref().map(|p| p.to_string()),
-                    )
-                    .await?;
+                Checkpoint::Gcs(_) | Checkpoint::P2PGcs(_) => {
+                    // GCS uploads use run-down signed URLs; auth is validated at request time.
+                    if state_options.checkpoint_config.run_down_client.is_none() {
+                        anyhow::bail!("RunDownClient not configured for GCS checkpoint upload");
+                    }
                 }
                 _ => {}
             }

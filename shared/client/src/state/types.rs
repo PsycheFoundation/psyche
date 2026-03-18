@@ -1,9 +1,9 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use google_cloud_storage::client::{Storage, StorageControl};
 use psyche_coordinator::CommitteeProof;
 use psyche_core::{BatchId, MerkleRoot, NodeIdentity};
-use psyche_data_provider::{GcsUploadInfo, HubUploadInfo};
+use psyche_data_provider::{HubUploadInfo, RunDownClient};
 use psyche_modeling::DistroResult;
 use psyche_network::{BlobTicket, TransmittableDistroResult};
 use tch::TchError;
@@ -15,7 +15,7 @@ use tokio::task::JoinHandle;
 #[derive(Debug, Clone)]
 pub enum CheckpointUploader {
     Hub(HubUploadInfo),
-    Gcs(GcsUploadInfo),
+    Gcs(Arc<RunDownClient>),
     Dummy,
 }
 
@@ -38,48 +38,10 @@ impl CheckpointUploader {
         }))
     }
 
-    /// Creates a new GCS uploader after validating bucket permissions.
-    pub async fn new_gcs(bucket: String, prefix: Option<String>) -> anyhow::Result<Self> {
-        let _storage = Storage::builder()
-            .build()
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to create GCS client: {}", e))?;
-
-        let client = StorageControl::builder()
-            .build()
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to create GCS control client: {}", e))?;
-
-        let permissions_to_test = vec![
-            "storage.objects.list",
-            "storage.objects.get",
-            "storage.objects.create",
-            "storage.objects.delete",
-        ];
-
-        let resource = format!("projects/_/buckets/{}", bucket);
-        let perms_vec: Vec<String> = permissions_to_test.iter().map(|s| s.to_string()).collect();
-        let response = client
-            .test_iam_permissions()
-            .set_resource(&resource)
-            .set_permissions(perms_vec)
-            .send()
-            .await?;
-
-        let correct_permissions = permissions_to_test
-            .into_iter()
-            .all(|p| response.permissions.contains(&p.to_string()));
-        if !correct_permissions {
-            anyhow::bail!(
-                "GCS bucket {} does not have the required permissions for checkpoint upload. Make sure to set GOOGLE_APPLICATION_CREDENTIALS environment variable correctly and have the correct permissions to the bucket.",
-                bucket
-            )
-        }
-
-        Ok(Self::Gcs(GcsUploadInfo {
-            gcs_bucket: bucket,
-            gcs_prefix: prefix,
-        }))
+    /// Creates a new GCS uploader using run-down signed URLs.
+    /// Auth is validated at upload time via signed URLs.
+    pub fn new_gcs(run_down_client: Arc<RunDownClient>) -> Self {
+        Self::Gcs(run_down_client)
     }
 }
 
@@ -89,8 +51,21 @@ pub struct CheckpointConfig {
     pub delete_old_steps: bool,
     pub keep_steps: u32,
     pub hub_token: Option<String>,
-    /// Skip saving and uploading checkpoints (for testing).
     pub skip_upload: bool,
+    pub run_down_client: Option<Arc<RunDownClient>>,
+}
+
+impl CheckpointConfig {
+    pub fn dummy() -> Self {
+        Self {
+            checkpoint_dir: PathBuf::from("./checkpoints"),
+            delete_old_steps: false,
+            keep_steps: 1,
+            hub_token: None,
+            skip_upload: false,
+            run_down_client: None,
+        }
+    }
 }
 
 #[derive(Debug)]

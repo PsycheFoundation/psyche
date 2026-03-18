@@ -7482,6 +7482,7 @@ dependencies = [
  "anchor-lang",
  "anyhow",
  "async-trait",
+ "bs58",
  "bytemuck",
  "bytes",
  "chrono",
