@@ -8,7 +8,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 use tokio::sync::mpsc::{self, UnboundedSender};
-use tracing::error;
+use tracing::{error, warn};
 
 pub trait Backend: Send + Sync {
     fn emit(&self, event: Event);
@@ -262,6 +262,9 @@ impl FileWriterState {
 
     fn rotate(&mut self, new_epoch: u64) -> std::io::Result<()> {
         self.current_epoch = new_epoch;
+        if let Err(e) = self.output_file.flush() {
+            warn!("Failed to flush output file on rotation: {e}");
+        }
         self.output_file = Self::open_new_file(
             &self.base_path,
             self.current_epoch,
@@ -274,7 +277,7 @@ impl FileWriterState {
         {
             let old = self.created_files.pop_front().unwrap();
             if let Err(e) = std::fs::remove_file(&old) {
-                error!("Failed to delete old events file {}: {}", old.display(), e);
+                warn!("Failed to delete old events file {}: {}", old.display(), e);
             }
         }
         Ok(())
