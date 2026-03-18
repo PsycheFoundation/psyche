@@ -156,7 +156,10 @@ pub enum P2P {
     #[display("blob upload progress: {bytes_transferred}B")]
     BlobUploadProgress { bytes_transferred: u64 },
     #[display("blob upload completed")]
-    BlobUploadCompleted(Result<(), String>),
+    BlobUploadCompleted {
+        blob: BlobHash,
+        result: Result<(), String>,
+    },
 
     #[display("blob download requested: {blob}")]
     BlobDownloadRequested { blob: BlobHash },
@@ -177,11 +180,10 @@ pub enum P2P {
         blob: BlobHash,
         bytes_transferred: u64,
     },
-    #[display("blob download completed: {blob} success={success}")]
+    #[display("blob download completed: {blob} success={result:?}")]
     BlobDownloadCompleted {
         blob: BlobHash,
-        success: bool,
-        error_string: Option<String>,
+        result: Result<(), String>,
     },
 }
 

@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use psyche_core::BatchId;
-use psyche_event_sourcing::projection::{ClusterBatchView, ClusterSnapshot, NodeBatchStatus};
+use psyche_event_sourcing::projection::{
+    ClusterBatchView, ClusterSnapshot, DownloadStatus, NodeBatchStatus,
+};
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -39,16 +41,16 @@ fn all_node_ids(snapshot: &ClusterSnapshot) -> Vec<String> {
 // ── status characters ─────────────────────────────────────────────────────────
 
 fn status_char(status: &NodeBatchStatus) -> (char, Color) {
-    if status.deserialized == Some(false) || status.download == Some(Some(false)) {
+    if status.deserialized == Some(false) || status.download == DownloadStatus::Failed {
         return ('✗', Color::Red);
     }
     if status.deserialized == Some(true) {
         return ('●', Color::Green);
     }
-    if status.download == Some(Some(true)) {
+    if status.download == DownloadStatus::Success {
         return ('◉', Color::Cyan);
     }
-    if status.download == Some(None) {
+    if status.download == DownloadStatus::InProgress {
         return ('↓', Color::Cyan);
     }
     if status.gossip_received {

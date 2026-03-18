@@ -152,13 +152,21 @@ pub struct CooldownSnapshot {
 
 // ── Cluster-level batch view ──────────────────────────────────────────────────
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum DownloadStatus {
+    #[default]
+    NotStarted,
+    InProgress,
+    Success,
+    Failed,
+}
 /// Per-node status for a batch's distro result propagation across the cluster.
 #[derive(Debug, Clone, Default)]
 pub struct NodeBatchStatus {
     /// Received gossip announcing this batch's training result.
     pub gossip_received: bool,
     /// Blob download: None = not started, Some(None) = in progress, Some(Some(ok)) = done.
-    pub download: Option<Option<bool>>,
+    pub download: DownloadStatus,
     /// Deserialized: None = not started, Some(ok) = done.
     pub deserialized: Option<bool>,
 }
@@ -507,11 +515,7 @@ impl ClusterProjection {
                     }
                     P2P::BlobDownloadCompleted(bdc) => {
                         if let Some(t) = node.p2p.downloads.get_mut(&bdc.blob) {
-                            t.result = Some(if bdc.success {
-                                Ok(())
-                            } else {
-                                Err(bdc.error_string.clone().unwrap_or_default())
-                            });
+                            t.result = Some(bdc.result.clone())
                         }
                     }
                     P2P::GossipTrainingResultSent(_) | P2P::GossipFinishedSent(_) => {
@@ -649,7 +653,7 @@ impl ClusterProjection {
                         view.node_status
                             .entry(node_id.to_string())
                             .or_default()
-                            .download = Some(None);
+                            .download = DownloadStatus::InProgress;
                     }
                 }
             }
@@ -664,7 +668,11 @@ impl ClusterProjection {
                         view.node_status
                             .entry(node_id.to_string())
                             .or_default()
-                            .download = Some(Some(bdc.success));
+                            .download = if bdc.result.is_ok() {
+                            DownloadStatus::Success
+                        } else {
+                            DownloadStatus::Failed
+                        };
                     }
                 }
             }
@@ -1086,7 +1094,7 @@ mod tests {
         );
         assert_eq!(
             proj.snapshot().step_batches[&b1].node_status["node-B"].download,
-            Some(None)
+            DownloadStatus::InProgress,
         );
 
         // node-B completes download.
@@ -1095,14 +1103,13 @@ mod tests {
             &make_event(EventData::P2P(crate::events::P2P::BlobDownloadCompleted(
                 p2p::BlobDownloadCompleted {
                     blob,
-                    success: true,
-                    error_string: None,
+                    result: Ok(()),
                 },
             ))),
         );
         assert_eq!(
             proj.snapshot().step_batches[&b1].node_status["node-B"].download,
-            Some(Some(true))
+            DownloadStatus::Success
         );
 
         // node-B deserializes it.

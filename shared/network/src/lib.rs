@@ -1,31 +1,31 @@
 use allowlist::Allowlist;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use bytes::Bytes;
 use download::{DownloadManager, DownloadManagerEvent, DownloadUpdate};
 use futures_util::{StreamExt, TryFutureExt};
-use iroh::{endpoint::QuicTransportConfig, protocol::Router};
 use iroh::{EndpointAddr, RelayConfig};
+use iroh::{endpoint::QuicTransportConfig, protocol::Router};
 use iroh_blobs::api::Tag;
 use iroh_blobs::store::GcConfig;
 use iroh_blobs::{
+    BlobsProtocol,
     api::downloader::Downloader,
     store::mem::{MemStore, Options as MemStoreOptions},
-    BlobsProtocol,
 };
 use iroh_gossip::{
     api::{GossipReceiver, GossipSender},
     net::Gossip,
     proto::{HyparviewConfig, PlumtreeConfig},
 };
-use iroh_services::{caps::NetDiagnosticsCap, ApiSecret, API_SECRET_ENV_VAR_NAME};
+use iroh_services::{API_SECRET_ENV_VAR_NAME, ApiSecret, caps::NetDiagnosticsCap};
 use n0_future::task::AbortOnDropHandle;
 pub use p2p_model_sharing::{
-    ModelConfigSharingMessage, ParameterSharingMessage, PeerManagerHandle,
-    MODEL_REQUEST_TIMEOUT_SECS,
+    MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
+    PeerManagerHandle,
 };
 use psyche_event_sourcing::event;
 use psyche_metrics::{ClientMetrics, PeerConnection};
-use router::{spawn_router, SupportedProtocols};
+use router::{SupportedProtocols, spawn_router};
 use state::State;
 use std::str::FromStr;
 use std::{
@@ -43,15 +43,15 @@ use tokio::{
     sync::{mpsc::UnboundedReceiver, oneshot},
     task::JoinError,
     time::timeout,
-    time::{interval, Interval},
+    time::{Interval, interval},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, debug_span, error, info, trace, warn, Instrument};
+use tracing::{Instrument, debug, debug_span, error, info, trace, warn};
 use util::{fmt_relay_mode, gossip_topic};
 
 pub use ed25519_dalek::Signature;
 pub use iroh::RelayMode;
-pub use iroh_blobs::{ticket::BlobTicket, BlobFormat, Hash};
+pub use iroh_blobs::{BlobFormat, Hash, ticket::BlobTicket};
 
 pub mod allowlist;
 mod authenticable_identity;
@@ -85,12 +85,12 @@ pub use iroh::{Endpoint, EndpointId, PublicKey, SecretKey};
 use iroh_relay::{RelayMap, RelayQuicConfig};
 pub use latency_sorted::LatencySorted;
 pub use p2p_model_sharing::{
-    ModelRequestType, SharableModel, SharableModelError, TransmittableModelConfig, ALPN,
+    ALPN, ModelRequestType, SharableModel, SharableModelError, TransmittableModelConfig,
 };
 pub use serde::Networkable;
 pub use serialized_distro::{
-    distro_results_from_reader, distro_results_to_bytes, SerializeDistroResultError,
-    SerializedDistroResult, TransmittableDistroResult,
+    SerializeDistroResultError, SerializedDistroResult, TransmittableDistroResult,
+    distro_results_from_reader, distro_results_to_bytes,
 };
 pub use signed_message::SignedMessage;
 pub use tcp::{ClientNotification, TcpClient, TcpServer};
@@ -754,7 +754,7 @@ where
             update = self.download_manager.poll_next() => {
                 match update {
                     Some(DownloadManagerEvent::Complete(result)) => {
-                        event!(p2p::BlobDownloadCompleted { blob: result.hash, success: true, error_string: None });
+                        event!(p2p::BlobDownloadCompleted { blob: result.hash, result: Ok(()) });
                         Ok(Some(NetworkEvent::DownloadComplete(result)))
                     }
                     Some(DownloadManagerEvent::Update(update)) => {
@@ -765,7 +765,7 @@ where
                         self.state.download_progesses.remove(&result.blob_ticket.hash());
                         let peer_id = result.blob_ticket.addr().id;
                         self.connection_monitor.update_peer_bandwidth(&peer_id, PeerBandwidth::Measured(0.0));
-                        event!(p2p::BlobDownloadCompleted { blob: result.blob_ticket.hash(), success: false, error_string: Some(err_string) });
+                        event!(p2p::BlobDownloadCompleted { blob: result.blob_ticket.hash(), result: Err(result.error.to_string()) });
                         Ok(Some(NetworkEvent::DownloadFailed(result)))
                     }
                     None => Ok(None),
