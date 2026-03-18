@@ -463,14 +463,6 @@ impl SharableModel {
                     let mut param_value_buffer = Vec::new();
 
                     param_name_buffer.write_all(param_name.as_bytes())?;
-                    // Cast fp32/fp64 parameters to bf16 before serialization to
-                    // halve P2P transfer size. Training uses mixed precision so
-                    // the extra fp32 precision is not meaningful for model sharing.
-                    // The receiver will upcast back to fp32 when loading into the model.
-                    let parameter = match parameter.kind() {
-                        Kind::Float | Kind::Double => parameter.to_kind(Kind::BFloat16),
-                        _ => parameter,
-                    };
                     parameter.save_to_stream(&mut param_value_buffer)?;
 
                     let transmittable_parameter =
