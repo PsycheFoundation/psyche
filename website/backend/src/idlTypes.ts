@@ -507,7 +507,6 @@ export type PsycheCoordinatorInstructionsUnion = ToSnakeCaseObject<
 	InstructionDataUnion<PsycheSolanaCoordinator>
 >
 
-type Extends<T, U> = T extends U ? T : never
 
 export interface WitnessEvalResult {
 	name: string
