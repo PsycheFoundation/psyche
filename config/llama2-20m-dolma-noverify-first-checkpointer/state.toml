@@ -6,7 +6,6 @@ cooldown_time = 5
 epoch_time = 600
 max_round_train_time = 30
 round_witness_time = 2
-round_apply_time = 4
 min_clients = 2
 init_min_clients = 2
 global_batch_size_start = 8
