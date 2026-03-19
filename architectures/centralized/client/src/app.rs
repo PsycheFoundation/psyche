@@ -270,6 +270,7 @@ impl App {
                             let ct = match **w {
                                 OpportunisticData::WitnessStep(..) => RpcCallType::Witness,
                                 OpportunisticData::WarmupStep(..) => RpcCallType::WarmupWitness,
+                                OpportunisticData::CooldownStep(..) => RpcCallType::CooldownWitness,
                             };
                             (ClientToServerMessage::Witness(match to_send { ToSend::Witness(w) => w, _ => unreachable!() }), ct)
                         }
