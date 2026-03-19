@@ -101,5 +101,6 @@ let
       }) (builtins.attrNames extraPackages)
     );
 
+  venvTopLevelPackageNames = builtins.concatStringsSep "_" topLevelNixPkgs;
 in
-pythonSet.mkVirtualEnv "psyche-python-env" venvPackages
+pythonSet.mkVirtualEnv "psyche-python-env-${venvTopLevelPackageNames}" venvPackages

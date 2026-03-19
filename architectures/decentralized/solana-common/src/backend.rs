@@ -23,6 +23,8 @@ use futures_util::StreamExt;
 use psyche_coordinator::model::{self, Checkpoint};
 use psyche_coordinator::{CommitteeProof, Coordinator, HealthChecks};
 use psyche_core::IntegrationTestLogMarker;
+use psyche_event_sourcing::event;
+use psyche_event_sourcing::events::RpcCallType;
 use psyche_watcher::{Backend as WatcherBackend, OpportunisticData};
 use solana_account_decoder_client_types::{UiAccount, UiAccountEncoding};
 use solana_transaction_status_client_types::UiTransactionEncoding;
@@ -69,6 +71,10 @@ async fn subscribe_to_account(
         tokio::time::sleep(Duration::from_secs(sleep_time)).await;
         retries += 1;
         let Ok(sub_client) = PubsubClient::new(&url).await else {
+            event!(coordinator::SolanaSubscriptionChanged {
+                url: url.to_string(),
+                status: SubscriptionStatus::Down,
+            });
             warn!(
                 integration_test_log_marker = %IntegrationTestLogMarker::SolanaSubscription,
                 url = url,
@@ -101,6 +107,10 @@ async fn subscribe_to_account(
             }
         };
 
+        event!(coordinator::SolanaSubscriptionChanged {
+            url: url.to_string(),
+            status: SubscriptionStatus::Up,
+        });
         info!(
             integration_test_log_marker = %IntegrationTestLogMarker::SolanaSubscription,
             url = url,
@@ -120,6 +130,10 @@ async fn subscribe_to_account(
                                 }
                         }
                         None => {
+                            event!(coordinator::SolanaSubscriptionChanged {
+                                url: url.to_string(),
+                                status: SubscriptionStatus::Down,
+                            });
                             warn!(
                                 integration_test_log_marker = %IntegrationTestLogMarker::SolanaSubscription,
                                 url = url,
@@ -278,7 +292,10 @@ impl SolanaBackend {
         // TODO (vbrunet) - what was the point of doing specifically a timeout here but not the other TXs ?
         // We timeout the transaction at 5s max, since internally send() polls Solana until the
         // tx is confirmed; we'd rather cancel early and attempt again.
-        match timeout(
+        event!(coordinator::RpcCallSubmitted {
+            call_type: RpcCallType::Join
+        });
+        let result = match timeout(
             Duration::from_secs(5),
             self.send_and_retry("Join run", &[instruction], &[]),
         )
@@ -287,13 +304,24 @@ impl SolanaBackend {
             Ok(Ok(signature)) => Ok(signature),
             Err(elapsed) => Err(anyhow!("join_run timeout: {elapsed}")),
             Ok(Err(error)) => Err(error),
+        };
+        match &result {
+            Ok(_) => event!(coordinator::RpcCallResult {
+                call_type: RpcCallType::Join,
+                result: Ok(())
+            }),
+            Err(e) => event!(coordinator::RpcCallResult {
+                call_type: RpcCallType::Join,
+                result: Err(e.to_string())
+            }),
         }
+        result
     }
 
     pub fn send_tick(&self, coordinator_instance: Pubkey, coordinator_account: Pubkey) {
         let user = self.get_payer();
         let instruction = coordinator_tick(&coordinator_instance, &coordinator_account, &user);
-        self.spawn_scheduled_send("Tick", &[instruction], &[]);
+        self.spawn_scheduled_send("Tick", &[instruction], &[], RpcCallType::Tick);
     }
 
     pub fn send_witness(
@@ -303,22 +331,28 @@ impl SolanaBackend {
         opportunistic_data: OpportunisticData,
     ) {
         let user = self.get_payer();
-        let instruction = match opportunistic_data {
-            OpportunisticData::WitnessStep(witness, metadata) => instructions::coordinator_witness(
-                &coordinator_instance,
-                &coordinator_account,
-                &user,
-                witness,
-                metadata,
+        let (instruction, call_type) = match opportunistic_data {
+            OpportunisticData::WitnessStep(witness, metadata) => (
+                instructions::coordinator_witness(
+                    &coordinator_instance,
+                    &coordinator_account,
+                    &user,
+                    witness,
+                    metadata,
+                ),
+                RpcCallType::Witness,
             ),
-            OpportunisticData::WarmupStep(witness) => instructions::coordinator_warmup_witness(
-                &coordinator_instance,
-                &coordinator_account,
-                &user,
-                witness,
+            OpportunisticData::WarmupStep(witness) => (
+                instructions::coordinator_warmup_witness(
+                    &coordinator_instance,
+                    &coordinator_account,
+                    &user,
+                    witness,
+                ),
+                RpcCallType::WarmupWitness,
             ),
         };
-        self.spawn_scheduled_send("Witness", &[instruction], &[]);
+        self.spawn_scheduled_send("Witness", &[instruction], &[], call_type);
     }
 
     pub fn send_health_check(
@@ -336,7 +370,12 @@ impl SolanaBackend {
             id,
             check,
         );
-        self.spawn_scheduled_send("Health check", &[instruction], &[]);
+        self.spawn_scheduled_send(
+            "Health check",
+            &[instruction],
+            &[],
+            RpcCallType::HealthCheck,
+        );
     }
 
     pub fn send_checkpoint(
@@ -352,7 +391,7 @@ impl SolanaBackend {
             &user,
             repo,
         );
-        self.spawn_scheduled_send("Checkpoint", &[instruction], &[]);
+        self.spawn_scheduled_send("Checkpoint", &[instruction], &[], RpcCallType::Checkpoint);
     }
 
     pub fn find_join_authorization(join_authority: &Pubkey, authorizer: Option<Pubkey>) -> Pubkey {
@@ -559,17 +598,31 @@ impl SolanaBackend {
         name: &str,
         instructions: &[Instruction],
         signers: &[Arc<Keypair>],
+        call_type: RpcCallType,
     ) {
         let backend = self.clone();
         let name = name.to_string();
         let instructions = instructions.to_vec();
         let signers = signers.to_vec();
         tokio::task::spawn(async move {
-            if let Err(err) = backend.send_and_retry(&name, &instructions, &signers).await {
-                error!(
-                    "Failed to send {} transaction after all retries: {}",
-                    name, err
-                );
+            event!(coordinator::RpcCallSubmitted { call_type });
+            match backend.send_and_retry(&name, &instructions, &signers).await {
+                Ok(_) => {
+                    event!(coordinator::RpcCallResult {
+                        call_type,
+                        result: Ok(())
+                    });
+                }
+                Err(err) => {
+                    event!(coordinator::RpcCallResult {
+                        call_type,
+                        result: Err(err.to_string())
+                    });
+                    error!(
+                        "Failed to send {} transaction after all retries: {}",
+                        name, err
+                    );
+                }
             }
         });
     }

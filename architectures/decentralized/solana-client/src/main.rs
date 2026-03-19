@@ -13,6 +13,7 @@ use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
 use psyche_client::{TrainArgs, print_identity_keys};
 use psyche_coordinator::model::{Checkpoint, Model};
+use psyche_event_sourcing::{EventStore, FileBackend, RunStarted};
 use psyche_network::SecretKey;
 use psyche_solana_rpc::SolanaBackend;
 use psyche_tui::{
@@ -183,6 +184,23 @@ async fn async_main() -> Result<()> {
 
             let wallet_keypair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             info!("Solana wallet pubkey: {}", wallet_keypair.pubkey());
+
+            if let Some(events_dir) = &args.events_dir {
+                let node_id = wallet_keypair.pubkey().to_string();
+                let node_events_dir = events_dir.join(&node_id);
+                let run_context = RunStarted {
+                    run_id: args.run_id.clone(),
+                    node_id,
+                    config: std::env::var("CONFIG_HASH").unwrap_or_default(),
+                    psyche_version: env!("CARGO_PKG_VERSION").to_string(),
+                };
+                EventStore::init(vec![Box::new(FileBackend::new(
+                    &node_events_dir,
+                    0,
+                    run_context,
+                    args.keep_event_files,
+                )?)]);
+            }
 
             let logger = psyche_tui::logging()
                 .with_output(args.logs)
