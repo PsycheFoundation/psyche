@@ -16,7 +16,7 @@ import {
 	Version,
 } from 'shared'
 import { CoordinatorDataStore, LastUpdateInfo } from '../dataStore.js'
-import { WitnessMetadata, WitnessEvalResult } from '../idlTypes.js'
+import { WitnessMetadata } from '../idlTypes.js'
 import { PublicKey } from '@solana/web3.js'
 import { isClientWitness } from '../witness.js'
 import EventEmitter from 'events'
@@ -330,45 +330,15 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			// we don't reallllllly care if it's shut down.
 			lastRun.lastUpdated = timestamp
 
-			// format evals to nice strings to save tons of space
 			const { evals, prompt_results, prompt_index, ...restWitness } = witness
-
-			// could be a bigint, could be a BN, kind of annoying. TODO fix somewhere else.
-			const l =
-				typeof evals.len === 'object' && evals.len && 'toNumber' in evals.len
-					? evals.len.toNumber()
-					: Number(evals.len)
-			const fixedEvals: Array<[string, number]> = []
-			for (const { name, value } of evals.data.slice(
-				0,
-				l
-			) as WitnessEvalResult[]) {
-				const firstZero = name[0].findIndex((v) => v === 0)
-				const nameStr = Buffer.from(name[0].slice(0, firstZero)).toString(
-					'utf-8'
-				)
-				fixedEvals.push([nameStr, value])
-			}
-
-			// convert FixedVec to regular array
-			const promptTokens: number[] = []
-			if (prompt_results && prompt_results.data) {
-				const promptLen =
-					typeof prompt_results.len === 'object' &&
-					prompt_results.len &&
-					'toNumber' in prompt_results.len
-						? prompt_results.len.toNumber()
-						: Number(prompt_results.len)
-				for (let i = 0; i < promptLen && i < prompt_results.data.length; i++) {
-					promptTokens.push(Number(prompt_results.data[i]))
-				}
-			}
 
 			const witnessUpdate = {
 				...restWitness,
-				evals: fixedEvals,
-				prompt_results: promptTokens,
-				prompt_index: prompt_index || 0, // Default to 0 if undefined
+				evals: evals.map(
+					({ name, value }) => [name, value] as [string, number]
+				),
+				prompt_results,
+				prompt_index: prompt_index || 0,
 			}
 			lastRun.lastFewWitnessUpdates.push([witnessUpdate, timestamp])
 			lastRun.sampledWitnessUpdates.push([witnessUpdate, timestamp])

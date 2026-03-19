@@ -18,7 +18,6 @@ use psyche_coordinator::SOLANA_MAX_NUM_CLIENTS;
 use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_coordinator::Witness;
 use psyche_coordinator::WitnessBloom;
-use psyche_coordinator::WitnessMetadata;
 use psyche_coordinator::WitnessProof;
 use psyche_coordinator::model::Model;
 use psyche_core::MerkleRoot;
@@ -250,7 +249,7 @@ pub mod psyche_solana_coordinator {
         participant_bloom: WitnessBloom,
         broadcast_bloom: WitnessBloom,
         broadcast_merkle: MerkleRoot,
-        metadata: WitnessMetadata,
+        metadata: Vec<u8>,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();

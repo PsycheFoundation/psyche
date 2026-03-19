@@ -136,7 +136,7 @@ pub fn coordinator_witness(
     coordinator_account: &Pubkey,
     user: &Pubkey,
     witness: psyche_coordinator::Witness,
-    metadata: psyche_coordinator::WitnessMetadata,
+    metadata: Vec<u8>,
 ) -> Instruction {
     anchor_instruction(
         psyche_solana_coordinator::ID,

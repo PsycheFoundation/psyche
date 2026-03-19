@@ -509,12 +509,87 @@ export type PsycheCoordinatorInstructionsUnion = ToSnakeCaseObject<
 
 type Extends<T, U> = T extends U ? T : never
 
-export type WitnessMetadata = Extends<
-	PsycheCoordinatorInstructionsUnion,
-	{ name: 'witness' }
->['data']['metadata']
-export type WitnessEvalResult =
-	IdlTypes<PsycheSolanaCoordinator>['witnessEvalResult']
+export interface WitnessEvalResult {
+	name: string
+	value: number
+}
+
+export interface WitnessMetadata {
+	step: number
+	tokens_per_sec: number
+	bandwidth_per_sec: number
+	loss: number
+	evals: WitnessEvalResult[]
+	prompt_results: number[]
+	prompt_index: number
+	efficency: number
+}
+
+export function deserializeWitnessMetadata(buf: Buffer): WitnessMetadata {
+	const EVAL_CAPACITY = 8
+	const FIXED_STRING_LEN = 32
+	const PROMPT_CAPACITY = 16
+	let offset = 0
+
+	const step = buf.readUInt32LE(offset)
+	offset += 4
+	const tokens_per_sec = buf.readFloatLE(offset)
+	offset += 4
+	const bandwidth_per_sec = buf.readFloatLE(offset)
+	offset += 4
+	const loss = buf.readFloatLE(offset)
+	offset += 4
+
+	// evals: FixedVec<WitnessEvalResult, 8> - data array first, then len
+	const evalEntries: { nameBytes: Buffer; value: number }[] = []
+	for (let i = 0; i < EVAL_CAPACITY; i++) {
+		const nameBytes = Buffer.from(
+			buf.subarray(offset, offset + FIXED_STRING_LEN)
+		)
+		offset += FIXED_STRING_LEN
+		const value = buf.readFloatLE(offset)
+		offset += 4
+		evalEntries.push({ nameBytes, value })
+	}
+	const evalsLen = Number(buf.readBigUInt64LE(offset))
+	offset += 8
+
+	const evals: WitnessEvalResult[] = []
+	for (let i = 0; i < evalsLen && i < EVAL_CAPACITY; i++) {
+		const { nameBytes, value } = evalEntries[i]
+		const firstZero = nameBytes.indexOf(0)
+		const name = nameBytes
+			.subarray(0, firstZero === -1 ? FIXED_STRING_LEN : firstZero)
+			.toString('utf-8')
+		evals.push({ name, value })
+	}
+
+	// prompt_results: FixedVec<i32, 16> - data array first, then len
+	const promptEntries: number[] = []
+	for (let i = 0; i < PROMPT_CAPACITY; i++) {
+		promptEntries.push(buf.readInt32LE(offset))
+		offset += 4
+	}
+	const promptLen = Number(buf.readBigUInt64LE(offset))
+	offset += 8
+	const prompt_results = promptEntries.slice(0, promptLen)
+
+	const prompt_index = buf.readUInt8(offset)
+	offset += 1
+	const efficency = buf.readFloatLE(offset)
+	offset += 4
+
+	return {
+		step,
+		tokens_per_sec,
+		bandwidth_per_sec,
+		loss,
+		evals,
+		prompt_results,
+		prompt_index,
+		efficency,
+	}
+}
 
 export type PsycheMiningPoolInstructionsUnion = ToSnakeCaseObject<
 	InstructionDataUnion<PsycheSolanaMiningPool>

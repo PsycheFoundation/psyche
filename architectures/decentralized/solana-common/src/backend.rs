@@ -1,6 +1,6 @@
 use crate::instructions::{self, coordinator_tick};
 use crate::retry::{RetryError, retry_function_with_params};
-use anchor_client::anchor_lang::AccountDeserialize;
+use anchor_client::anchor_lang::{AccountDeserialize, AnchorSerialize};
 use anchor_client::solana_sdk::hash::hash;
 use anchor_client::solana_sdk::instruction::Instruction;
 use anchor_client::solana_sdk::program_pack::Pack;
@@ -336,7 +336,8 @@ impl SolanaBackend {
                     &coordinator_account,
                     &user,
                     witness,
-                    metadata,
+                    AnchorSerialize::try_to_vec(&metadata)
+                        .expect("failed to serialize WitnessMetadata"),
                 ),
                 RpcCallType::Witness,
             ),
