@@ -1,11 +1,11 @@
 use crate::errors::UploadError;
 use crate::hub::model::HubRepo;
 use hf_hub::{
-    api::{
-        tokio::{ApiError, UploadSource},
-        Siblings,
-    },
     Cache, Repo, RepoType,
+    api::{
+        Siblings,
+        tokio::{ApiError, UploadSource},
+    },
 };
 use psyche_coordinator::model;
 use psyche_core::FixedString;
