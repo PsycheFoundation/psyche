@@ -507,7 +507,6 @@ export type PsycheCoordinatorInstructionsUnion = ToSnakeCaseObject<
 	InstructionDataUnion<PsycheSolanaCoordinator>
 >
 
-
 export interface WitnessEvalResult {
 	name: string
 	value: number
