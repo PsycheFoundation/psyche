@@ -8,7 +8,7 @@ use psyche_event_sourcing::event;
 use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
 use std::io::{Cursor, Write};
 use std::time::Duration;
-use tch::{Kind, Tensor};
+use tch::Tensor;
 use thiserror::Error;
 use tokenizers::Tokenizer;
 use tokio::sync::{
