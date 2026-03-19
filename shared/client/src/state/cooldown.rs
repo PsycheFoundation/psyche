@@ -130,7 +130,7 @@ impl CooldownStepMetadata {
         mut trainers: Vec<Trainer>,
         state: &Coordinator,
     ) -> Result<CooldownStep, CooldownError> {
-        let Some(mut trainer) = trainers.pop() else {
+        let Some(trainer) = trainers.pop() else {
             return Err(CooldownError::NoTrainers);
         };
 
