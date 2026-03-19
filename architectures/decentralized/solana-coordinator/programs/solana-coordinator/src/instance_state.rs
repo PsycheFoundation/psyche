@@ -7,10 +7,9 @@ use psyche_coordinator::CoordinatorConfig;
 use psyche_coordinator::CoordinatorProgress;
 use psyche_coordinator::HealthChecks;
 use psyche_coordinator::RunState;
-use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_coordinator::TickResult;
 use psyche_coordinator::Witness;
-use psyche_coordinator::model::Checkpoint;
+use psyche_coordinator::model::CheckpointBytes;
 use psyche_coordinator::model::Model;
 use psyche_core::FixedString;
 use psyche_core::NodeIdentity;
@@ -34,35 +33,9 @@ use crate::clients_state::ClientsState;
     Serialize,
     Deserialize,
     TS,
-    Default,
-    PartialEq,
-)]
-#[repr(C)]
-pub struct RunMetadata {
-    pub name: FixedString<{ SOLANA_MAX_STRING_LEN }>,
-
-    pub description: FixedString<280>,
-
-    pub num_parameters: u64,
-    pub vocab_size: u64,
-}
-
-impl RunMetadata {}
-
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Zeroable,
-    AnchorSerialize,
-    AnchorDeserialize,
-    Serialize,
-    Deserialize,
-    TS,
 )]
 #[repr(C)]
 pub struct CoordinatorInstanceState {
-    pub metadata: RunMetadata,
     pub coordinator: Coordinator,
     pub clients_state: ClientsState,
     pub is_warmup_first_tick: SmallBoolean,
@@ -280,7 +253,6 @@ impl CoordinatorInstanceState {
 
     pub fn update(
         &mut self,
-        metadata: Option<RunMetadata>,
         config: Option<CoordinatorConfig>,
         model: Option<Model>,
         progress: Option<CoordinatorProgress>,
@@ -288,15 +260,9 @@ impl CoordinatorInstanceState {
         if self.coordinator.run_state == RunState::Finished {
             return err!(ProgramError::UpdateConfigFinished);
         } else if !self.coordinator.halted()
-            // these can't be updated without pausing
-            // but metadata can be updated without pausing so it's not included here
             && (config.is_some() || model.is_some() || progress.is_some())
         {
             return err!(ProgramError::UpdateConfigNotHalted);
-        }
-
-        if let Some(metadata) = metadata {
-            let _ = std::mem::replace(&mut self.metadata, metadata);
         }
 
         if let Some(config) = config {
@@ -397,7 +363,7 @@ impl CoordinatorInstanceState {
     pub fn checkpoint(
         &mut self,
         payer: &Pubkey,
-        repo: Checkpoint,
+        data: CheckpointBytes,
     ) -> Result<()> {
         // O(n) on clients, reconsider
         let id = self.clients_state.find_signer(payer)?;
@@ -410,7 +376,7 @@ impl CoordinatorInstanceState {
             .ok_or(ProgramError::SignerNotAClient)?;
 
         self.coordinator
-            .checkpoint(&id, index as u64, repo)
+            .checkpoint(&id, index as u64, data)
             .map_err(|err| anchor_lang::error!(ProgramError::from(err)))?;
 
         // Only tick if not halted (Paused/Uninitialized/Finished)

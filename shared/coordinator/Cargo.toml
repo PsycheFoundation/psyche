@@ -9,6 +9,7 @@ async-trait.workspace = true
 anchor-lang.workspace = true
 bytemuck.workspace = true
 serde_with.workspace = true
+serde_json.workspace = true
 serde.workspace = true
 cfg_eval = "0.1.2"
 ts-rs.workspace = true

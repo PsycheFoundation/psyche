@@ -4,7 +4,6 @@ use psyche_coordinator::CoordinatorProgress;
 use psyche_coordinator::model::Model;
 use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::CoordinatorInstance;
-use psyche_solana_coordinator::RunMetadata;
 use psyche_solana_coordinator::cpi::accounts::OwnerCoordinatorAccounts;
 use psyche_solana_coordinator::cpi::set_future_epoch_rates;
 use psyche_solana_coordinator::cpi::set_paused;
@@ -39,7 +38,6 @@ pub struct RunUpdateAccounts<'info> {
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct RunUpdateParams {
-    pub metadata: Option<RunMetadata>,
     pub config: Option<CoordinatorConfig>,
     pub model: Option<Model>,
     pub progress: Option<CoordinatorProgress>,
@@ -57,8 +55,7 @@ pub fn run_update_processor(
     let run_signer_seeds: &[&[&[u8]]] =
         &[&[Run::SEEDS_PREFIX, &run.index.to_le_bytes(), &[run.bump]]];
 
-    if params.metadata.is_some()
-        || params.config.is_some()
+    if params.config.is_some()
         || params.model.is_some()
         || params.progress.is_some()
     {
@@ -78,7 +75,6 @@ pub fn run_update_processor(
                 },
             )
             .with_signer(run_signer_seeds),
-            params.metadata,
             params.config,
             params.model,
             params.progress,

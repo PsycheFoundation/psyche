@@ -60,7 +60,6 @@ export const fakeRunSummaries: RunSummary[] = [
 		status: { type: 'paused' },
 		totalTokens: 100000n,
 		size: 1000000000n,
-		arch: 'HfLlama',
 		type: 'vision',
 		pauseHistory: [],
 		lastUpdate: {
@@ -77,7 +76,6 @@ export const fakeRunSummaries: RunSummary[] = [
 		status: { type: 'active' },
 		totalTokens: 200000n,
 		size: 2000000000n,
-		arch: 'HfLlama',
 		type: 'text',
 		pauseHistory: [],
 		lastUpdate: {
@@ -100,7 +98,6 @@ export const fakeRunSummaries: RunSummary[] = [
 		}, // 1 day ago
 		totalTokens: 50000n,
 		size: 500000000n,
-		arch: 'HfLlama',
 		type: 'text',
 		pauseHistory: [],
 		lastUpdate: {
@@ -117,7 +114,6 @@ export const fakeRunSummaries: RunSummary[] = [
 		status: { type: 'active' },
 		totalTokens: 100000n,
 		size: 1000000000n,
-		arch: 'HfLlama',
 		type: 'vision',
 		pauseHistory: [],
 		lastUpdate: {
@@ -394,15 +390,6 @@ function makeFakeRunDataSeeded(seed = 1, step = 0, index = 0): RunData {
 				roundWitnessTime: 2_000,
 				minClients,
 				epochTime,
-				lrSchedule: {
-					Cosine: {
-						base_lr: 4.0e-4,
-						warmup_steps: 500,
-						warmup_init_lr: 0.0,
-						total_steps: 25000,
-						final_lr: 4.0e-5,
-					},
-				},
 			},
 		},
 	}

@@ -1,6 +1,6 @@
 use crate::{
     Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
-    model::{Checkpoint, Model},
+    model::{CheckpointBytes, CheckpointSource, Model},
 };
 
 use anchor_lang::{
@@ -590,41 +590,19 @@ impl Coordinator {
         &mut self,
         from: &NodeIdentity,
         index: u64,
-        checkpoint_repo: Checkpoint,
+        checkpoint_data: CheckpointBytes,
     ) -> std::result::Result<(), CoordinatorError> {
         let index = index as usize;
         if index >= self.epoch_state.clients.len() || self.epoch_state.clients[index].id != *from {
             return Err(CoordinatorError::InvalidCommitteeProof);
         }
 
-        // TODO: In the case of more than one checkpointer, this will overwrite the checkpoint
-        // with the last checkpointed one. We could instead have a vector of checkpoints to have
-        // more download options.
         let Model::LLM(llm) = &mut self.model;
-        match (&llm.checkpoint, checkpoint_repo) {
-            // If current is P2P, wrap the new checkpoint in P2P
-            (Checkpoint::P2P(_), Checkpoint::Hub(hub_repo)) => {
-                llm.checkpoint = Checkpoint::P2P(hub_repo);
+        match llm.checkpoint_source {
+            CheckpointSource::Stored | CheckpointSource::P2P => {
+                llm.checkpoint_data = checkpoint_data;
             }
-            (Checkpoint::P2PGcs(_), Checkpoint::Gcs(gcs_repo)) => {
-                llm.checkpoint = Checkpoint::P2PGcs(gcs_repo);
-            }
-            // If current is Hub, only accept Hub updates
-            (Checkpoint::Hub(_), Checkpoint::Hub(hub_repo)) => {
-                llm.checkpoint = Checkpoint::Hub(hub_repo);
-            }
-            // If current is Gcs, only accept Gcs updates
-            (Checkpoint::Gcs(_), Checkpoint::Gcs(gcs_repo)) => {
-                llm.checkpoint = Checkpoint::Gcs(gcs_repo);
-            }
-            (Checkpoint::P2PGcs(_), Checkpoint::Hub(hub_repo)) => {
-                llm.checkpoint = Checkpoint::P2P(hub_repo);
-            }
-            (Checkpoint::P2P(_), Checkpoint::Gcs(gcs_repo)) => {
-                llm.checkpoint = Checkpoint::P2PGcs(gcs_repo);
-            }
-            // Ignore other combinations
-            _ => {}
+            CheckpointSource::Ephemeral => {}
         }
 
         Ok(())
@@ -952,10 +930,8 @@ impl Coordinator {
                 .any(|client| pending_clients_unordered.contains(&client.id));
             if all_prev_clients_disconnected {
                 let Model::LLM(llm) = &mut self.model;
-                match llm.checkpoint {
-                    Checkpoint::P2P(hub_repo) => llm.checkpoint = Checkpoint::Hub(hub_repo),
-                    Checkpoint::P2PGcs(gcs_repo) => llm.checkpoint = Checkpoint::Gcs(gcs_repo),
-                    _ => {}
+                if llm.checkpoint_source == CheckpointSource::P2P {
+                    llm.checkpoint_source = CheckpointSource::Stored;
                 }
             }
 
@@ -1083,12 +1059,8 @@ impl Coordinator {
 
             // we've completed an epoch, switch to P2P from now on
             let Model::LLM(llm) = &mut self.model;
-            match llm.checkpoint {
-                Checkpoint::Hub(hub_repo) | Checkpoint::Dummy(hub_repo) => {
-                    llm.checkpoint = Checkpoint::P2P(hub_repo)
-                }
-                Checkpoint::Gcs(gcs_repo) => llm.checkpoint = Checkpoint::P2PGcs(gcs_repo),
-                _ => {}
+            if llm.checkpoint_source == CheckpointSource::Stored {
+                llm.checkpoint_source = CheckpointSource::P2P;
             }
 
             if self.pending_pause.is_true() {

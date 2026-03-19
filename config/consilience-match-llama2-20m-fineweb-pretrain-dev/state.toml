@@ -17,22 +17,26 @@ total_steps = 25000
 waiting_for_members_extra_time = 3
 
 [model.LLM]
-architecture = "HfLlama"
-data_type = "Pretraining"
 max_seq_len = 512
 cold_start_warmup_steps = 0
-[model.LLM.data_location]
+checkpoint_source = "Stored"
+
+[model_extra_data]
+architecture = "HfLlama"
+data_type = "Pretraining"
+[model_extra_data.data_location]
 Server = "127.0.0.1:20001"
-[model.LLM.checkpoint.Hub]
-repo_id = "emozilla/llama2-20m-init"
-[model.LLM.lr_schedule.Cosine]
+[model_extra_data.lr_schedule.Cosine]
 base_lr = 4.0e-4
 warmup_steps = 20
 warmup_init_lr = 0.0
 total_steps = 2000
 final_lr = 4.0e-5
-[model.LLM.optimizer.Distro]
+[model_extra_data.optimizer.Distro]
 compression_decay = 0.999
 compression_chunk = 16
 compression_topk = 4
 quantize_1bit = false
+
+[model_extra_data.checkpoint.Hub]
+repo_id = "emozilla/llama2-20m-init"

@@ -9,7 +9,7 @@ use anchor_client::{
 };
 use psyche_coordinator::{
     NUM_STORED_ROUNDS, Round, RunState,
-    model::{Checkpoint, Model},
+    model::{CheckpointSource, Model},
 };
 use psyche_core::FixedVec;
 use psyche_solana_coordinator::SOLANA_MAX_NUM_PENDING_CLIENTS;
@@ -80,10 +80,10 @@ impl SolanaTestClient {
         *psyche_solana_coordinator::coordinator_account_from_bytes(&data).unwrap()
     }
 
-    pub async fn get_checkpoint(&self) -> Checkpoint {
+    pub async fn get_checkpoint(&self) -> CheckpointSource {
         let coordinator = self.get_coordinator_account().await;
         match coordinator.state.coordinator.model {
-            Model::LLM(llm) => llm.checkpoint,
+            Model::LLM(llm) => llm.checkpoint_source,
         }
     }
 
@@ -229,7 +229,7 @@ impl ConfigBuilder {
         // This means that every client is a witness
         self.set_value("config.witness_nodes", 0_u32);
 
-        self.set_value("model.LLM.architecture", self.architecture.clone());
+        self.set_value("model_extra_data.architecture", self.architecture.clone());
         self.set_value("config.global_batch_size_start", self.batch_size);
         self.set_value("config.global_batch_size_end", self.batch_size);
 

@@ -42,7 +42,7 @@ pub enum CooldownError {
 }
 
 pub struct CooldownStepMetadata {
-    tx_checkpoint: mpsc::UnboundedSender<model::Checkpoint>,
+    tx_checkpoint: mpsc::UnboundedSender<model::CheckpointBytes>,
     tx_model: mpsc::UnboundedSender<HashMap<String, Tensor>>,
     checkpoint_info: Option<CheckpointConfig>,
     checkpoint_extra_files: Vec<PathBuf>,
@@ -59,7 +59,7 @@ pub struct CooldownStepMetadata {
 
 impl CooldownStepMetadata {
     pub fn new(
-        tx_checkpoint: mpsc::UnboundedSender<model::Checkpoint>,
+        tx_checkpoint: mpsc::UnboundedSender<model::CheckpointBytes>,
         tx_model: mpsc::UnboundedSender<HashMap<String, Tensor>>,
         checkpoint_info: Option<CheckpointConfig>,
         checkpoint_extra_files: Vec<PathBuf>,
@@ -293,7 +293,7 @@ async fn upload_checkpoint(
     manifest_metadata: GcsManifestMetadata,
     local: Vec<PathBuf>,
     step: u64,
-    tx_checkpoint: mpsc::UnboundedSender<model::Checkpoint>,
+    tx_checkpoint: mpsc::UnboundedSender<model::CheckpointBytes>,
 ) -> Result<(), CheckpointError> {
     event!(cooldown::CheckpointUploadStarted);
     let result = match upload_info {

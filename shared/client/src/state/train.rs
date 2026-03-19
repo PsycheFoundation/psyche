@@ -8,7 +8,7 @@ use psyche_coordinator::{
     BLOOM_FALSE_RATE, Commitment, CommitteeSelection, Coordinator, CoordinatorError, HealthChecks,
     assign_data_for_state, get_batch_ids_for_node, get_batch_ids_for_round, model,
 };
-use psyche_core::{BatchId, Bloom, IntegrationTestLogMarker, NodeIdentity, OptimizerDefinition};
+use psyche_core::{BatchId, Bloom, IntegrationTestLogMarker, NodeIdentity};
 use psyche_event_sourcing::event;
 use psyche_modeling::{
     ApplyDistroResultError, Batch, BatchData, DistroResult, TrainOutput, Trainer,
@@ -100,6 +100,7 @@ pub struct TrainingStepMetadata {
     pub write_gradients_dir: Option<PathBuf>,
 
     pub model_task_runner: ModelTaskRunner,
+    pub quantize_1bit: bool,
 }
 
 #[derive(Debug)]
@@ -291,12 +292,7 @@ impl TrainingStepMetadata {
                 let cancel_training = cancel_training.clone();
                 let write_gradients_dir = self.write_gradients_dir.clone();
                 let tx_distro_result = self.tx_distro_result.clone();
-                let quantize = match &state.model {
-                    model::Model::LLM(llm) => match llm.optimizer {
-                        OptimizerDefinition::Distro { quantize_1bit, .. } => quantize_1bit,
-                        _ => false,
-                    },
-                };
+                let quantize = self.quantize_1bit;
                 let finished = finished.clone();
 
                 let TrainingDataForStep {
@@ -530,10 +526,7 @@ impl TrainingStepMetadata {
         let (cold_start_warmup_steps, checkpoint_is_p2p) = match &state.model {
             model::Model::LLM(llm) => (
                 llm.cold_start_warmup_steps,
-                matches!(
-                    llm.checkpoint,
-                    model::Checkpoint::P2P(_) | model::Checkpoint::P2PGcs(_)
-                ),
+                matches!(llm.checkpoint_source, model::CheckpointSource::P2P),
             ),
         };
         let warmup_lr_between = state.get_cold_start_warmup_bounds();

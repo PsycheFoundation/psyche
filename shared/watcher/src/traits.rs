@@ -26,5 +26,5 @@ pub trait Backend: Send + Sync {
     async fn wait_for_new_state(&mut self) -> Result<Coordinator>;
     async fn send_witness(&mut self, opportunistic_data: OpportunisticData) -> Result<()>;
     async fn send_health_check(&mut self, health_check: HealthChecks) -> Result<()>;
-    async fn send_checkpoint(&mut self, checkpoint: model::Checkpoint) -> Result<()>;
+    async fn send_checkpoint(&mut self, checkpoint: model::CheckpointBytes) -> Result<()>;
 }

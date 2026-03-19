@@ -7,8 +7,8 @@ use google_cloud_storage::http::objects::upload::UploadType;
 use google_cloud_storage::http::objects::{
     download::Range, get::GetObjectRequest, list::ListObjectsRequest,
 };
-use psyche_coordinator::model::{self, GcsRepo};
-use psyche_core::FixedString;
+use psyche_coordinator::model::{self};
+use psyche_coordinator::model_extra_data::CheckpointData;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tokio::runtime::Runtime;
@@ -323,12 +323,75 @@ pub fn download_model_from_gcs_sync(
     rt.block_on(download_model_from_gcs_async(bucket, prefix))
 }
 
+/// Fetch a JSON file from GCS and deserialize it.
+/// Used for fetching external model configuration.
+pub async fn fetch_json_from_gcs<T: serde::de::DeserializeOwned>(
+    bucket: &str,
+    object_path: &str,
+) -> Result<T, DownloadError> {
+    // Use authenticated client if GOOGLE_APPLICATION_CREDENTIALS is set, otherwise anonymous
+    let config = if std::env::var("GOOGLE_APPLICATION_CREDENTIALS").is_ok() {
+        info!("Using authenticated GCS client for config fetch");
+        ClientConfig::default().with_auth().await?
+    } else {
+        info!("Using anonymous GCS client for config fetch");
+        ClientConfig::default().anonymous()
+    };
+    let client = Client::new(config);
+
+    info!("Fetching gs://{}/{}", bucket, object_path);
+
+    let data = client
+        .download_object(
+            &GetObjectRequest {
+                bucket: bucket.to_owned(),
+                object: object_path.to_owned(),
+                ..Default::default()
+            },
+            &Range::default(),
+        )
+        .await?;
+
+    serde_json::from_slice(&data).map_err(DownloadError::Json)
+}
+
+/// Upload a JSON-serializable value to GCS.
+pub async fn upload_json_to_gcs<T: serde::Serialize>(
+    bucket: &str,
+    object_path: &str,
+    value: &T,
+) -> Result<(), UploadError> {
+    // Use authenticated client - must have credentials for upload
+    let config = ClientConfig::default().with_auth().await?;
+    let client = Client::new(config);
+
+    let json = serde_json::to_string_pretty(value)?;
+    let data = json.into_bytes();
+
+    info!("Uploading JSON to gs://{}/{}", bucket, object_path);
+
+    client
+        .upload_object(
+            &UploadObjectRequest {
+                bucket: bucket.to_owned(),
+                ..Default::default()
+            },
+            data,
+            &UploadType::Simple(Media::new(object_path.to_owned())),
+        )
+        .await?;
+
+    info!("Uploaded JSON to gs://{}/{}", bucket, object_path);
+
+    Ok(())
+}
+
 pub async fn upload_to_gcs(
     gcs_info: GcsUploadInfo,
     manifest_metadata: GcsManifestMetadata,
     local: Vec<PathBuf>,
     step: u64,
-    tx_checkpoint: mpsc::UnboundedSender<model::Checkpoint>,
+    tx_checkpoint: mpsc::UnboundedSender<model::CheckpointBytes>,
 ) -> Result<(), UploadError> {
     let GcsUploadInfo {
         gcs_bucket,
@@ -437,10 +500,13 @@ pub async fn upload_to_gcs(
     );
 
     tx_checkpoint
-        .send(model::Checkpoint::Gcs(GcsRepo {
-            bucket: FixedString::from_str_truncated(&gcs_bucket),
-            prefix: gcs_prefix.map(|p| FixedString::from_str_truncated(&p)),
-        }))
+        .send(
+            CheckpointData::Gcs {
+                bucket: gcs_bucket.clone(),
+                prefix: gcs_prefix,
+            }
+            .to_fixed_vec(),
+        )
         .map_err(|_| UploadError::SendCheckpoint)?;
 
     Ok(())

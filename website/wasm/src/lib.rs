@@ -1,3 +1,5 @@
+use psyche_coordinator::model::LLMArchitecture;
+use psyche_coordinator::model_extra_data::CheckpointData;
 use psyche_core::LearningRateSchedule;
 use psyche_core::NodeIdentity;
 use psyche_solana_coordinator::{CoordinatorAccount, coordinator_account_from_bytes};
@@ -30,6 +32,25 @@ pub fn lr_at_step(
     Ok(lr.get_lr(step))
 }
 
+/// Decode borsh-serialized checkpoint_data bytes into a CheckpointData JSON value.
+/// Returns null for Dummy or if decoding fails.
+#[wasm_bindgen]
+pub fn decode_checkpoint_data(bytes: Vec<u8>) -> JsValue {
+    use anchor_lang::prelude::borsh::BorshDeserialize;
+    let Ok(data) = CheckpointData::try_from_slice(&bytes) else {
+        return JsValue::NULL;
+    };
+    match &data {
+        CheckpointData::Dummy => JsValue::NULL,
+        _ => data
+            .serialize(
+                &serde_wasm_bindgen::Serializer::new()
+                    .serialize_large_number_types_as_bigints(true),
+            )
+            .unwrap_or(JsValue::NULL),
+    }
+}
+
 #[allow(dead_code)]
 #[derive(TS)]
 #[ts(export)]
@@ -39,3 +60,14 @@ pub struct DummyCoordinatorAccount(CoordinatorAccount);
 #[derive(TS)]
 #[ts(export)]
 pub struct DummyNodeIdentity(NodeIdentity);
+
+// Export types that are now in ModelExtraData but still needed by the website
+#[allow(dead_code)]
+#[derive(TS)]
+#[ts(export)]
+pub struct DummyLLMArchitecture(LLMArchitecture);
+
+#[allow(dead_code)]
+#[derive(TS)]
+#[ts(export)]
+pub struct DummyLearningRateSchedule(LearningRateSchedule);

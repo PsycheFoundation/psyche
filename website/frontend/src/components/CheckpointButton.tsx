@@ -7,10 +7,11 @@ import {
 	fetchCheckpointStatus,
 	fetchGcsCheckpointStatus,
 } from '../fetchRuns.js'
-import type { GcsRepo, HubRepo } from 'shared'
+type HubCheckpoint = { repo_id: string; revision: string | null }
+type GcsCheckpoint = { bucket: string; prefix: string | null }
 
 type CheckpointProps = {
-	checkpoint: { Hub: HubRepo } | { Gcs: GcsRepo }
+	checkpoint: { Hub: HubCheckpoint } | { Gcs: GcsCheckpoint }
 }
 
 export const CheckpointButton = ({ checkpoint }: CheckpointProps) => {

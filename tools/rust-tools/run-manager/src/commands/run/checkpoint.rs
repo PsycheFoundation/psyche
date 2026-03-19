@@ -2,8 +2,7 @@ use crate::commands::Command;
 use anyhow::Result;
 use async_trait::async_trait;
 use clap::Args;
-use psyche_coordinator::model::HubRepo;
-use psyche_core::FixedString;
+use psyche_coordinator::model_extra_data::CheckpointData;
 
 use psyche_solana_rpc::SolanaBackend;
 use psyche_solana_rpc::instructions;
@@ -29,12 +28,11 @@ impl Command for CommandCheckpoint {
         } = self;
 
         let user = backend.get_payer();
-        let repo = HubRepo {
-            repo_id: FixedString::from_str_truncated(&repo),
-            revision: revision
-                .clone()
-                .map(|x| FixedString::from_str_truncated(&x)),
-        };
+        let checkpoint = CheckpointData::Hub {
+            repo_id: repo.clone(),
+            revision: revision.clone(),
+        }
+        .to_fixed_vec();
 
         let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(&run_id);
         let coordinator_instance_state = backend
@@ -46,12 +44,14 @@ impl Command for CommandCheckpoint {
             &coordinator_instance,
             &coordinator_account,
             &user,
-            psyche_coordinator::model::Checkpoint::Hub(repo),
+            checkpoint,
         );
         let signature = backend
             .send_and_retry("Checkpoint", &[instruction], &[])
             .await?;
-        println!("Checkpointed to repo {repo:?} on run {run_id} with transaction {signature}");
+        println!(
+            "Checkpointed to repo {repo} revision {revision:?} on run {run_id} with transaction {signature}"
+        );
 
         Ok(())
     }
