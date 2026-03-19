@@ -10,6 +10,8 @@ use psyche_client::{
 };
 use psyche_coordinator::{Coordinator, HealthChecks, model};
 use psyche_core::NodeIdentity;
+use psyche_event_sourcing::event;
+use psyche_event_sourcing::events::RpcCallType;
 use psyche_metrics::ClientMetrics;
 use psyche_network::{EndpointId, NetworkTUIState, NetworkTui, SecretKey, TcpClient, allowlist};
 use psyche_tui::logging::LoggerWidget;
@@ -190,11 +192,28 @@ impl App {
             }
         }
 
-        self.server_conn
+        event!(coordinator::RpcCallSubmitted {
+            call_type: RpcCallType::Join
+        });
+        match self
+            .server_conn
             .send(ClientToServerMessage::Join {
                 run_id: self.run_id.clone(),
             })
-            .await?;
+            .await
+        {
+            Ok(()) => event!(coordinator::RpcCallResult {
+                call_type: RpcCallType::Join,
+                result: Ok(())
+            }),
+            Err(e) => {
+                event!(coordinator::RpcCallResult {
+                    call_type: RpcCallType::Join,
+                    result: Err(e.to_string())
+                });
+                return Err(e);
+            }
+        }
 
         let (tx_from_server_message, rx_from_server_message) = mpsc::unbounded_channel();
         let (tx_to_server_message, mut rx_to_server_message) = mpsc::unbounded_channel();
@@ -227,11 +246,25 @@ impl App {
                     res??;
                 }
                 Some(to_send) = rx_to_server_message.recv() => {
-                    match to_send {
-                        ToSend::Witness(witness) => self.server_conn.send(ClientToServerMessage::Witness(witness)).await?,
-                        ToSend::HealthCheck(health_checks) => self.server_conn.send(ClientToServerMessage::HealthCheck(health_checks)).await?,
-                        ToSend::Checkpoint(checkpoint) => self.server_conn.send(ClientToServerMessage::Checkpoint(checkpoint)).await?,
+                    let (msg, call_type) = match to_send {
+                        ToSend::Witness(ref w) => {
+                            let ct = match **w {
+                                OpportunisticData::WitnessStep(..) => RpcCallType::Witness,
+                                OpportunisticData::WarmupStep(..) => RpcCallType::WarmupWitness,
+                            };
+                            (ClientToServerMessage::Witness(match to_send { ToSend::Witness(w) => w, _ => unreachable!() }), ct)
+                        }
+                        ToSend::HealthCheck(hc) => (ClientToServerMessage::HealthCheck(hc), RpcCallType::HealthCheck),
+                        ToSend::Checkpoint(cp) => (ClientToServerMessage::Checkpoint(cp), RpcCallType::Checkpoint),
                     };
+                    event!(coordinator::RpcCallSubmitted { call_type });
+                    match self.server_conn.send(msg).await {
+                        Ok(()) => event!(coordinator::RpcCallResult { call_type, result: Ok(()) }),
+                        Err(e) => {
+                            event!(coordinator::RpcCallResult { call_type, result: Err(e.to_string()) });
+                            return Err(e);
+                        }
+                    }
                 }
             }
         }

@@ -1178,24 +1178,69 @@ impl CoordinatorEpochState {
     }
 }
 
+#[derive(Debug)]
+pub enum ConfigError {
+    EpochTime,
+    WarmupTime,
+    MaxRoundTrainTime,
+    RoundWitnessTime,
+    MinClients,
+    InitMinClients,
+    GlobalBatchSize,
+    TotalSteps,
+    WitnessNodes,
+    CooldownTime,
+    WaitingForMembersExtraTime,
+}
+
 impl CoordinatorConfig {
     pub fn check(&self) -> bool {
-        self.epoch_time > 0
-            && self.warmup_time < self.epoch_time
-            && self.max_round_train_time != 0
-            && self.max_round_train_time < self.epoch_time
-            && self.round_witness_time != 0
-            && self.min_clients != 0
-            && self.init_min_clients >= self.min_clients
-            && self.init_min_clients as usize <= SOLANA_MAX_NUM_CLIENTS
-            && self.global_batch_size_start != 0
-            && self.global_batch_size_end != 0
-            && self.global_batch_size_end >= self.global_batch_size_start
-            && self.total_steps != 0
-            && self.witness_nodes <= self.min_clients
-            && self.witness_nodes as usize <= SOLANA_MAX_NUM_WITNESSES
-            && self.cooldown_time > 0
-            && self.waiting_for_members_extra_time > 0
+        self.check_error().is_ok()
+    }
+
+    #[inline(always)]
+    pub fn check_error(&self) -> Result<(), ConfigError> {
+        if self.epoch_time == 0 {
+            return Err(ConfigError::EpochTime);
+        }
+        if self.warmup_time >= self.epoch_time {
+            return Err(ConfigError::WarmupTime);
+        }
+        if self.max_round_train_time == 0 || self.max_round_train_time >= self.epoch_time {
+            return Err(ConfigError::MaxRoundTrainTime);
+        }
+        if self.round_witness_time == 0 {
+            return Err(ConfigError::RoundWitnessTime);
+        }
+        if self.min_clients == 0 {
+            return Err(ConfigError::MinClients);
+        }
+        if self.init_min_clients < self.min_clients
+            || self.init_min_clients as usize > SOLANA_MAX_NUM_CLIENTS
+        {
+            return Err(ConfigError::InitMinClients);
+        }
+        if self.global_batch_size_start == 0
+            || self.global_batch_size_end == 0
+            || self.global_batch_size_end < self.global_batch_size_start
+        {
+            return Err(ConfigError::GlobalBatchSize);
+        }
+        if self.total_steps == 0 {
+            return Err(ConfigError::TotalSteps);
+        }
+        if self.witness_nodes > self.min_clients
+            || self.witness_nodes as usize > SOLANA_MAX_NUM_WITNESSES
+        {
+            return Err(ConfigError::WitnessNodes);
+        }
+        if self.cooldown_time == 0 {
+            return Err(ConfigError::CooldownTime);
+        }
+        if self.waiting_for_members_extra_time == 0 {
+            return Err(ConfigError::WaitingForMembersExtraTime);
+        }
+        Ok(())
     }
 
     pub fn get_batch_size(&self, total_tokens_processed: u64) -> u16 {

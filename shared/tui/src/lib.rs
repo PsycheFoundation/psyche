@@ -2,11 +2,10 @@ mod app;
 pub mod logging;
 mod maybe;
 mod tabbed;
-mod terminal;
+pub mod terminal;
 mod widget;
 
 use anyhow::Result;
-use terminal::init_terminal;
 use tokio::{
     signal,
     sync::mpsc::{self, Sender},
@@ -14,9 +13,10 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 pub use app::App;
-pub use logging::{LogOutput, ServiceInfo, logging};
+pub use logging::{LogOutput, LoggerWidget, ServiceInfo, logging};
 pub use maybe::MaybeTui;
 pub use tabbed::TabbedWidget;
+pub use terminal::{TerminalWrapper, init_terminal};
 pub use widget::CustomWidget;
 
 pub fn start_render_loop<T: CustomWidget>(

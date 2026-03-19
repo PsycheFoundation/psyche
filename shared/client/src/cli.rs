@@ -210,6 +210,14 @@ pub struct TrainArgs {
     /// Only meant for testing/debugging.
     #[clap(long, env, hide = true)]
     pub model_extra_data_toml: Option<PathBuf>,
+
+    /// If provided, events will be written to a subdir in here, named after the node's ID.
+    #[clap(long, env)]
+    pub events_dir: Option<PathBuf>,
+
+    /// Number of epoch event files to keep on disk. Older files are deleted during rotation.
+    #[clap(long, env, default_value = "5")]
+    pub keep_event_files: Option<usize>,
 }
 
 impl TrainArgs {

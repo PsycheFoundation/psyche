@@ -223,7 +223,8 @@ impl DockerWatcher {
                     }
                     IntegrationTestLogMarker::LoadedModel => {
                         let checkpoint_source = parsed_log.get("checkpoint_source").unwrap();
-                        let checkpoint_source = serde_json::from_value(checkpoint_source.clone()).unwrap();
+                        let checkpoint_source =
+                            serde_json::from_value(checkpoint_source.clone()).unwrap();
                         let response = Response::LoadedModel(checkpoint_source);
                         if log_sender.send(response).await.is_err() {
                             println!("Probably the test ended so we drop the log sender");

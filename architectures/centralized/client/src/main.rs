@@ -3,6 +3,7 @@ use crate::app::{TAB_NAMES, Tabs, build_app};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use psyche_client::{TrainArgs, print_identity_keys, read_identity_secret_key};
+use psyche_event_sourcing::{EventStore, FileBackend, RunStarted};
 use psyche_network::SecretKey;
 use psyche_tui::{
     LogOutput, ServiceInfo,
@@ -68,6 +69,23 @@ async fn async_main() -> Result<()> {
             let identity_secret_key =
                 read_identity_secret_key(args.identity_secret_key_path.as_ref())?
                     .unwrap_or_else(|| SecretKey::generate(&mut rand::rng()));
+
+            if let Some(events_dir) = &args.events_dir {
+                let node_id = identity_secret_key.public().to_string();
+                let node_events_dir = events_dir.join(&node_id);
+                let run_context = RunStarted {
+                    run_id: args.run_id.clone(),
+                    node_id,
+                    config: format!("{args:?}"),
+                    psyche_version: env!("CARGO_PKG_VERSION").to_string(),
+                };
+                EventStore::init(vec![Box::new(FileBackend::new(
+                    &node_events_dir,
+                    0,
+                    run_context,
+                    args.keep_event_files,
+                )?)]);
+            }
 
             let logger = psyche_tui::logging()
                 .with_output(args.logs)
