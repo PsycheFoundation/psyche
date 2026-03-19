@@ -101,6 +101,9 @@ pub enum InitRunError {
     #[error("failed to download model from GCS: {0}")]
     GcsModelLoad(#[from] DownloadError),
 
+    #[error("failed to fetch model config from Hub: {0}")]
+    HubModelLoad(DownloadError),
+
     #[error("model loading thread crashed")]
     ModelLoadingThreadCrashed(JoinError),
 
@@ -238,10 +241,10 @@ impl RunInitConfigAndIO {
                         Ok(config) => config,
                         Err(e) => {
                             error!(
-                                "Failed to fetch model extra data from Hub ({}), using default: {}",
+                                "Failed to fetch model extra data from Hub ({}): {}",
                                 repo_id, e
                             );
-                            return Err(InitRunError::GcsModelLoad(e));
+                            return Err(InitRunError::HubModelLoad(e));
                         }
                     }
                 }
