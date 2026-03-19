@@ -57,7 +57,6 @@ pub fn coordinator_update(
     run_id: &str,
     coordinator_account: &Pubkey,
     main_authority: &Pubkey,
-    metadata: Option<psyche_solana_coordinator::RunMetadata>,
     config: Option<psyche_coordinator::CoordinatorConfig>,
     model: Option<psyche_coordinator::model::Model>,
     progress: Option<psyche_coordinator::CoordinatorProgress>,
@@ -71,7 +70,6 @@ pub fn coordinator_update(
             coordinator_account: *coordinator_account,
         },
         psyche_solana_coordinator::instruction::Update {
-            metadata,
             config,
             model,
             progress,
@@ -138,7 +136,7 @@ pub fn coordinator_witness(
     coordinator_account: &Pubkey,
     user: &Pubkey,
     witness: psyche_coordinator::Witness,
-    metadata: psyche_coordinator::WitnessMetadata,
+    metadata: Vec<u8>,
 ) -> Instruction {
     anchor_instruction(
         psyche_solana_coordinator::ID,
@@ -228,7 +226,7 @@ pub fn coordinator_checkpoint(
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
     user: &Pubkey,
-    repo: psyche_coordinator::model::Checkpoint,
+    data: psyche_coordinator::model::CheckpointBytes,
 ) -> Instruction {
     anchor_instruction(
         psyche_solana_coordinator::ID,
@@ -237,7 +235,7 @@ pub fn coordinator_checkpoint(
             coordinator_instance: *coordinator_instance,
             coordinator_account: *coordinator_account,
         },
-        psyche_solana_coordinator::instruction::Checkpoint { repo },
+        psyche_solana_coordinator::instruction::Checkpoint { data },
     )
 }
 

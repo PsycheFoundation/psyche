@@ -10,12 +10,13 @@ use anchor_client::{
 };
 use anyhow::{Result, anyhow};
 use psyche_client::{
-    CheckpointUploader, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs,
-    read_identity_secret_key,
+    CheckpointUploader, Client, ClientTUI, ClientTUIState, ModelExtraData, NC, RunInitConfig,
+    TrainArgs, read_identity_secret_key,
 };
 use psyche_coordinator::{
     ClientState, Coordinator, CoordinatorError, RunState,
-    model::{self, GcsRepo, LLM, Model},
+    model::{self, CheckpointSource, Model},
+    model_extra_data::CheckpointData,
 };
 use psyche_core::sha256;
 use psyche_metrics::ClientMetrics;
@@ -96,6 +97,7 @@ pub async fn build_app(
     let eval_tasks = p.eval_tasks()?;
     let hub_read_token = std::env::var("HF_TOKEN").ok();
     let checkpoint_config = p.checkpoint_config()?;
+    let model_extra_data_override: Option<ModelExtraData> = p.model_extra_data_override()?;
 
     let solana_pubkey = wallet_keypair.pubkey();
     let wandb_info = p.wandb_info(format!("{}-{solana_pubkey}", p.run_id))?;
@@ -141,6 +143,7 @@ pub async fn build_app(
         max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
         device: p.device,
         sidecar_port: p.sidecar_port,
+        model_extra_data_override,
     };
     let app = App {
         run_id: p.run_id.clone(),
@@ -236,30 +239,25 @@ impl App {
 
         // sanity checks — skip credential validation when checkpoint upload is disabled
         if !self.state_options.checkpoint_config.skip_upload {
-            let Model::LLM(LLM { checkpoint, .. }) = start_coordinator_state.model;
-            match checkpoint {
-                model::Checkpoint::Hub(ref hub_repo) | model::Checkpoint::P2P(ref hub_repo) => {
-                    let token = self.state_options.checkpoint_config.hub_token.as_ref()
-                        .ok_or_else(|| anyhow!(
-                            "No HF_TOKEN found for checkpointing to Hub repo {}. Set HF_TOKEN environment variable.",
-                            hub_repo.repo_id
-                        ))?;
-                    CheckpointUploader::new_hub(hub_repo.repo_id.to_string(), token.clone())
-                        .await?;
+            let Model::LLM(ref llm) = start_coordinator_state.model;
+            if llm.checkpoint_source != CheckpointSource::Ephemeral {
+                match CheckpointData::from_fixed_vec(&llm.checkpoint_data) {
+                    Ok(CheckpointData::Hub { ref repo_id, .. }) => {
+                        let token = self.state_options.checkpoint_config.hub_token.as_ref()
+                            .ok_or_else(|| anyhow!(
+                                "No HF_TOKEN found for checkpointing to Hub repo {}. Set HF_TOKEN environment variable.",
+                                repo_id
+                            ))?;
+                        CheckpointUploader::new_hub(repo_id.clone(), token.clone()).await?;
+                    }
+                    Ok(CheckpointData::Gcs {
+                        ref bucket,
+                        ref prefix,
+                    }) => {
+                        CheckpointUploader::new_gcs(bucket.clone(), prefix.clone()).await?;
+                    }
+                    _ => {}
                 }
-                model::Checkpoint::Gcs(GcsRepo {
-                    bucket, ref prefix, ..
-                })
-                | model::Checkpoint::P2PGcs(model::GcsRepo {
-                    bucket, ref prefix, ..
-                }) => {
-                    CheckpointUploader::new_gcs(
-                        bucket.to_string(),
-                        prefix.as_ref().map(|p| p.to_string()),
-                    )
-                    .await?;
-                }
-                _ => {}
             }
         }
 

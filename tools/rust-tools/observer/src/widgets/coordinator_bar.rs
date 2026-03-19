@@ -36,7 +36,7 @@ impl<'a> Widget for CoordinatorBarWidget<'a> {
         line1_spans.extend(kv("state: ", format!("{:?}", c.run_state), Color::Green));
         line1_spans.extend(kv(
             "checkpoint: ",
-            format!("{:?}", c.checkpoint),
+            format!("{:?}", c.checkpoint_source),
             Color::Cyan,
         ));
         line1_spans.extend(kv(

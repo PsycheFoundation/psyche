@@ -1,19 +1,11 @@
 use psyche_coordinator::Round;
 use psyche_coordinator::RunState;
-use psyche_coordinator::model::Checkpoint;
-use psyche_coordinator::model::HttpTrainingDataLocation;
-use psyche_coordinator::model::LLMArchitecture;
-use psyche_coordinator::model::LLMTrainingDataLocation;
-use psyche_coordinator::model::LLMTrainingDataType;
+use psyche_coordinator::model::CheckpointSource;
 use psyche_coordinator::model::Model;
-use psyche_core::CosineLR;
+use psyche_coordinator::model_extra_data::CheckpointData;
 use psyche_core::FixedString;
 use psyche_core::FixedVec;
-use psyche_core::LearningRateSchedule;
-use psyche_core::OptimizerDefinition;
-use psyche_core::Shuffle;
 use psyche_core::SmallBoolean;
-use psyche_core::TokenSize;
 use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::coordinator_account_from_bytes;
 
@@ -31,12 +23,6 @@ pub async fn run() {
     assert_eq!(state.is_warmup_first_tick, SmallBoolean::FALSE);
     assert_eq!(state.is_training_first_tick, SmallBoolean::FALSE);
     assert_eq!(state.client_version, fixed_str("test"));
-    // Check infos on the coordinator run metadata
-    let metadata = state.metadata;
-    assert_eq!(metadata.name, fixed_str(""));
-    assert_eq!(metadata.description, fixed_str(""));
-    assert_eq!(metadata.num_parameters, 1100000000);
-    assert_eq!(metadata.vocab_size, 32768);
     // Check on the on the coordinator datastructure
     let coordinator = state.coordinator;
     assert_eq!(coordinator.run_id, fixed_str("test"));
@@ -48,67 +34,18 @@ pub async fn run() {
         Model::LLM(llm) => {
             assert_eq!(llm.max_seq_len, 2048);
             assert_eq!(llm.cold_start_warmup_steps, 0);
-            assert_eq!(llm.architecture, LLMArchitecture::HfLlama);
-            match llm.checkpoint {
-                Checkpoint::Hub(hub) => {
-                    assert_eq!(
-                        hub.repo_id,
-                        fixed_str("emozilla/llama2-1.1b-gqa-init")
-                    );
-                    assert_eq!(hub.revision, None);
-                },
-                _ => panic!("Expected Hub checkpoint"),
-            };
-            assert_eq!(llm.data_type, LLMTrainingDataType::Pretraining);
-            match llm.data_location {
-                LLMTrainingDataLocation::Http(http) => {
-                    match http.location {
-                        HttpTrainingDataLocation::Gcp {
-                            bucket_name,
-                            filter_directory,
-                        } => {
-                            assert_eq!(
-                                bucket_name,
-                                fixed_str("nous-pretraining-public-us")
-                            );
-                            assert_eq!(
-                                filter_directory,
-                                fixed_str("fineweb-edu-tokenized-llama2")
-                            );
-                        },
-                        _ => panic!("Expected Gcp data location"),
-                    };
-                    assert_eq!(http.token_size_in_bytes, TokenSize::TwoBytes);
-                    assert_eq!(http.shuffle, Shuffle::DontShuffle);
-                },
-                _ => panic!("Expected Http data location"),
-            };
-            match llm.lr_schedule {
-                LearningRateSchedule::Cosine(learning_rate) => {
-                    assert_eq!(
-                        learning_rate,
-                        CosineLR::new(0.0004, 250, 0.0, 25000, 0.00004)
-                    );
-                },
-                _ => panic!("Expected Constant LR schedule"),
-            };
-            match llm.optimizer {
-                OptimizerDefinition::Distro {
-                    clip_grad_norm,
-                    weight_decay,
-                    compression_decay,
-                    compression_topk,
-                    compression_chunk,
-                    quantize_1bit,
-                } => {
-                    assert_eq!(clip_grad_norm, Some(1.0));
-                    assert_eq!(weight_decay, None);
-                    assert_eq!(compression_decay, 0.999);
-                    assert_eq!(compression_topk, 2);
-                    assert_eq!(compression_chunk, 64);
-                    assert_eq!(quantize_1bit, false);
-                },
-                _ => panic!("Expected Distro optimizer"),
+            assert_eq!(llm.checkpoint_source, CheckpointSource::Stored);
+            {
+                let checkpoint_data =
+                    CheckpointData::from_fixed_vec(&llm.checkpoint_data)
+                        .unwrap();
+                match checkpoint_data {
+                    CheckpointData::Hub { repo_id, revision } => {
+                        assert_eq!(repo_id, "emozilla/llama2-1.1b-gqa-init");
+                        assert_eq!(revision, None);
+                    },
+                    _ => panic!("Expected Hub checkpoint data"),
+                }
             }
         },
     };

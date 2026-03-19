@@ -38,6 +38,15 @@ BATCH_SIZE=${BATCH_SIZE:-"1"}
 export HF_TOKEN=${HF_TOKEN:-""}
 export GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-""}
 
+# Optional checkpoint args
+CHECKPOINT_ARGS=()
+if [[ "$CHECKPOINT" == "true" ]]; then
+    echo -e "\n[+] Starting Solana training with checkpointing enabled..."
+else
+    echo -e "\n[+] Starting Solana training without checkpointing..."
+    CHECKPOINT_ARGS+=(--skip-checkpoint-upload)
+fi
+
 # fine if this fails
 solana airdrop 10 "$(solana-keygen pubkey ${WALLET_FILE})" --url "${RPC}" || true
 
@@ -55,7 +64,8 @@ if [[ "$OTLP_METRICS_URL" == "" ]]; then
         --micro-batch-size ${BATCH_SIZE} \
         --authorizer ${AUTHORIZER} \
         --logs "console" \
-        $( [[ "$CHECKPOINT" != "true" ]] && echo "--skip-checkpoint-upload" ) \
+        --model-extra-data-toml ./config/solana-test/light-config.toml \
+        ${CHECKPOINT_ARGS[@]} \
         "$@"
 else
     cargo run --release --bin psyche-solana-client -- \
@@ -71,6 +81,7 @@ else
         --authorizer ${AUTHORIZER} \
         --oltp-metrics-url "http://localhost:4318/v1/metrics" \
         --oltp-logs-url "http://localhost:4318/v1/logs" \
-        $( [[ "$CHECKPOINT" != "true" ]] && echo "--skip-checkpoint-upload" ) \
+        --model-extra-data-toml ./config/solana-test/light-config.toml \
+        ${CHECKPOINT_ARGS[@]} \
         "$@"
 fi

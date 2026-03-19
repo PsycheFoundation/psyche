@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
 use iroh::EndpointId;
 use iroh_blobs::Hash as BlobHash;
-use psyche_coordinator::{RunState, model::Checkpoint};
+use psyche_coordinator::{RunState, model::CheckpointSource};
 use psyche_core::BatchId;
 use psyche_metrics::SelectedPath;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -20,7 +20,7 @@ pub struct CoordinatorStateSnapshot {
     pub run_state: RunState,
     pub epoch: u64,
     pub step: u64,
-    pub checkpoint: Checkpoint,
+    pub checkpoint_source: CheckpointSource,
     pub client_ids: Vec<String>,
     pub min_clients: usize,
     /// Batch → node_id assignments for the current step.
@@ -1018,7 +1018,7 @@ mod tests {
             run_state: RunState::RoundTrain,
             epoch: 0,
             step: 1,
-            checkpoint: psyche_coordinator::model::Checkpoint::Ephemeral,
+            checkpoint_source: psyche_coordinator::model::CheckpointSource::Ephemeral,
             client_ids: vec![],
             min_clients: 1,
             batch_assignments: assignments,
@@ -1039,7 +1039,7 @@ mod tests {
             run_state: RunState::RoundTrain,
             epoch: 0,
             step: 2,
-            checkpoint: psyche_coordinator::model::Checkpoint::Ephemeral,
+            checkpoint_source: psyche_coordinator::model::CheckpointSource::Ephemeral,
             client_ids: vec![],
             min_clients: 1,
             batch_assignments: BTreeMap::new(),
@@ -1062,7 +1062,7 @@ mod tests {
             run_state: RunState::RoundTrain,
             epoch: 0,
             step: 1,
-            checkpoint: psyche_coordinator::model::Checkpoint::Ephemeral,
+            checkpoint_source: psyche_coordinator::model::CheckpointSource::Ephemeral,
             client_ids: vec![],
             min_clients: 1,
             batch_assignments: assignments,

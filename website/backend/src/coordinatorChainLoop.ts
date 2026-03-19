@@ -13,6 +13,7 @@ import {
 import {
 	PsycheCoordinatorInstructionsUnion,
 	WitnessMetadata,
+	deserializeWitnessMetadata,
 } from './idlTypes.js'
 import { CoordinatorDataStore } from './dataStore.js'
 import { startWatchChainLoop } from './chainLoop.js'
@@ -293,7 +294,7 @@ export async function startWatchCoordinatorChainLoop(
 							tx,
 						})
 						run.witnessUpdates.push([
-							decoded.data.metadata,
+							deserializeWitnessMetadata(Buffer.from(decoded.data.metadata)),
 							run.lastUpdated.timestamp,
 						])
 						break

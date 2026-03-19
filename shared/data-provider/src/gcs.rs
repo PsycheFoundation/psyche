@@ -325,6 +325,63 @@ pub fn download_model_from_gcs_sync(
     rt.block_on(download_model_from_gcs_async(bucket, prefix))
 }
 
+/// Fetch a JSON file from GCS and deserialize it.
+/// Used for fetching external model configuration.
+pub async fn fetch_json_from_gcs<T: serde::de::DeserializeOwned>(
+    bucket: &str,
+    object_path: &str,
+) -> Result<T, DownloadError> {
+    let storage = Storage::builder()
+        .build()
+        .await
+        .map_err(|e| DownloadError::Gcs(e.to_string()))?;
+
+    let bucket_resource_name = format!("projects/_/buckets/{}", bucket);
+    info!("Fetching gs://{}/{}", bucket, object_path);
+
+    let mut read_response = storage
+        .read_object(&bucket_resource_name, object_path)
+        .send()
+        .await
+        .map_err(|e| DownloadError::Gcs(e.to_string()))?;
+
+    let mut data = Vec::new();
+    while let Some(chunk_result) = read_response.next().await {
+        let chunk = chunk_result.map_err(|e| DownloadError::Gcs(e.to_string()))?;
+        data.extend_from_slice(&chunk);
+    }
+
+    serde_json::from_slice(&data).map_err(DownloadError::Json)
+}
+
+/// Upload a JSON-serializable value to GCS.
+pub async fn upload_json_to_gcs<T: serde::Serialize>(
+    bucket: &str,
+    object_path: &str,
+    value: &T,
+) -> Result<(), UploadError> {
+    let storage = Storage::builder()
+        .build()
+        .await
+        .map_err(|e| UploadError::Gcs(e.to_string()))?;
+
+    let json = serde_json::to_string_pretty(value)?;
+    let data = bytes::Bytes::from(json.into_bytes());
+
+    let bucket_resource_name = format!("projects/_/buckets/{}", bucket);
+    info!("Uploading JSON to gs://{}/{}", bucket, object_path);
+
+    storage
+        .write_object(&bucket_resource_name, object_path, data)
+        .send_unbuffered()
+        .await
+        .map_err(|e| UploadError::Gcs(e.to_string()))?;
+
+    info!("Uploaded JSON to gs://{}/{}", bucket, object_path);
+
+    Ok(())
+}
+
 pub async fn upload_to_gcs(
     gcs_info: GcsUploadInfo,
     manifest_metadata: GcsManifestMetadata,

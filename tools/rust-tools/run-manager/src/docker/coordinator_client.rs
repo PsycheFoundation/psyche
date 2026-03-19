@@ -4,7 +4,8 @@ use anchor_client::solana_sdk::{
 use anchor_lang::AccountDeserialize;
 use anyhow::{Context, Result};
 use psyche_coordinator::RunState;
-use psyche_coordinator::model::{Checkpoint, LLM, Model};
+use psyche_coordinator::model::Model;
+use psyche_coordinator::model_extra_data::CheckpointData;
 use psyche_solana_authorizer::state::Authorization;
 use psyche_solana_coordinator::{
     CoordinatorInstance, coordinator_account_from_bytes, find_coordinator_instance,
@@ -214,8 +215,8 @@ impl CoordinatorClient {
         Ok(image_name)
     }
 
-    /// Get the checkpoint type configured for this run
-    pub fn get_checkpoint_type(&self, run_id: &str) -> Result<Checkpoint> {
+    /// Get the checkpoint data configured for this run
+    pub fn get_checkpoint_data(&self, run_id: &str) -> Result<CheckpointData> {
         let instance = self.fetch_coordinator_data(run_id)?;
 
         let coordinator_account_data = self
@@ -226,8 +227,9 @@ impl CoordinatorClient {
         let coordinator_account = coordinator_account_from_bytes(&coordinator_account_data.data)
             .context("Failed to deserialize CoordinatorAccount")?;
 
-        let Model::LLM(LLM { checkpoint, .. }) = coordinator_account.state.coordinator.model;
-        Ok(checkpoint)
+        let Model::LLM(ref llm) = coordinator_account.state.coordinator.model;
+        CheckpointData::from_fixed_vec(&llm.checkpoint_data)
+            .map_err(|e| anyhow::anyhow!("Failed to decode checkpoint data: {e}"))
     }
 
     pub fn get_all_runs(&self) -> Result<Vec<RunInfo>> {

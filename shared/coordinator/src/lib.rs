@@ -6,6 +6,7 @@ mod committee_selection;
 mod coordinator;
 mod data_selection;
 pub mod model;
+pub mod model_extra_data;
 mod types;
 
 pub use checkpointer_selection::CheckpointerSelection;

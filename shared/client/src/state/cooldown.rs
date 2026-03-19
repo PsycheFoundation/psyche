@@ -1,7 +1,8 @@
 use crate::CheckpointUploader;
 use psyche_coordinator::{
     CheckpointerSelection, Coordinator,
-    model::{self, HubRepo, LLM, Model},
+    model::{self, LLM, Model},
+    model_extra_data::CheckpointData,
 };
 use psyche_data_provider::{GcsManifestMetadata, UploadError, upload_to_gcs, upload_to_hub};
 use psyche_event_sourcing::event;
@@ -145,7 +146,8 @@ impl CooldownStepMetadata {
         let epoch = state.progress.epoch as u32;
         let checkpoint_extra_files = self.checkpoint_extra_files.clone();
         let checkpoint_info = self.checkpoint_info.clone();
-        let Model::LLM(LLM { checkpoint, .. }) = state.model;
+        let Model::LLM(ref llm) = state.model;
+        let checkpoint_data = llm.decode_checkpoint();
         let tx_model = self.tx_model.clone();
         let model_task_runner = self.model_task_runner.clone();
         let delete_queue = self.delete_queue.clone();
@@ -225,17 +227,10 @@ impl CooldownStepMetadata {
                         return Ok(evals);
                     }
 
-                    let uploader = match checkpoint {
-                        model::Checkpoint::Hub(HubRepo {
-                            repo_id,
-                            revision: _,
-                        })
-                        | model::Checkpoint::P2P(HubRepo {
-                            repo_id,
-                            revision: _,
-                        }) => {
+                    let uploader = match checkpoint_data {
+                        Some(CheckpointData::Hub { ref repo_id, .. }) => {
                             if let Some(token) = hub_token {
-                                match CheckpointUploader::new_hub(repo_id.to_string(), token).await {
+                                match CheckpointUploader::new_hub(repo_id.clone(), token).await {
                                     Ok(uploader) => Some(uploader),
                                     Err(err) => {
                                         error!("Failed to create HF uploader: {}", err);
@@ -247,11 +242,10 @@ impl CooldownStepMetadata {
                                 None
                             }
                         }
-                        model::Checkpoint::Gcs(model::GcsRepo { bucket, prefix })
-                        | model::Checkpoint::P2PGcs(model::GcsRepo { bucket, prefix }) => {
+                        Some(CheckpointData::Gcs { ref bucket, ref prefix }) => {
                             match CheckpointUploader::new_gcs(
-                                bucket.to_string(),
-                                prefix.as_ref().map(|p| p.to_string()),
+                                bucket.clone(),
+                                prefix.clone(),
                             ).await {
                                 Ok(uploader) => Some(uploader),
                                 Err(err) => {

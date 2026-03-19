@@ -2,7 +2,7 @@ use anchor_client::solana_sdk::bs58;
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anchor_client::solana_sdk::signature::{EncodableKey, Keypair, Signer};
 use anyhow::{Context, Result, anyhow, bail};
-use psyche_coordinator::model::Checkpoint;
+use psyche_coordinator::model_extra_data::CheckpointData;
 use std::io::{BufRead, BufReader, Cursor};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -358,10 +358,10 @@ impl RunManager {
 
     /// Validate that required credentials are available based on checkpoint type
     fn validate_credentials(&self) -> Result<()> {
-        let checkpoint = self.coordinator_client.get_checkpoint_type(&self.run_id)?;
+        let checkpoint_data = self.coordinator_client.get_checkpoint_data(&self.run_id)?;
 
-        match checkpoint {
-            Checkpoint::Gcs(_) | Checkpoint::P2PGcs(_) => {
+        match checkpoint_data {
+            CheckpointData::Gcs { .. } => {
                 if self.gcs_credentials_path.is_none() {
                     bail!(
                         "This run uses GCS checkpointing but no GCS credentials found. \
@@ -370,7 +370,7 @@ impl RunManager {
                 }
                 info!("GCS credentials validated for checkpoint upload");
             }
-            Checkpoint::Hub(_) | Checkpoint::P2P(_) => {
+            CheckpointData::Hub { .. } => {
                 // HF_TOKEN should be in the env file
                 if std::env::var("HF_TOKEN").is_err() {
                     bail!(
@@ -380,8 +380,8 @@ impl RunManager {
                 }
                 info!("HuggingFace token validated for checkpoint upload");
             }
-            Checkpoint::Ephemeral | Checkpoint::Dummy(_) => {
-                // No credentials needed for ephemeral or dummy checkpoints
+            CheckpointData::Dummy => {
+                // No credentials needed for dummy checkpoints
                 info!("No checkpoint credentials required for this run");
             }
         }

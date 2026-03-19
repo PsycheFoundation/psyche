@@ -1,6 +1,6 @@
 use crate::instructions::{self, coordinator_tick};
 use crate::retry::{RetryError, retry_function_with_params};
-use anchor_client::anchor_lang::AccountDeserialize;
+use anchor_client::anchor_lang::{AccountDeserialize, AnchorSerialize};
 use anchor_client::solana_sdk::hash::hash;
 use anchor_client::solana_sdk::instruction::Instruction;
 use anchor_client::solana_sdk::program_pack::Pack;
@@ -20,7 +20,7 @@ use anchor_client::{
 };
 use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
-use psyche_coordinator::model::Checkpoint;
+use psyche_coordinator::model::{self, CheckpointBytes};
 use psyche_coordinator::{CommitteeProof, Coordinator, HealthChecks};
 use psyche_core::IntegrationTestLogMarker;
 use psyche_event_sourcing::event;
@@ -336,7 +336,8 @@ impl SolanaBackend {
                     &coordinator_account,
                     &user,
                     witness,
-                    metadata,
+                    AnchorSerialize::try_to_vec(&metadata)
+                        .expect("failed to serialize WitnessMetadata"),
                 ),
                 RpcCallType::Witness,
             ),
@@ -389,14 +390,14 @@ impl SolanaBackend {
         &self,
         coordinator_instance: Pubkey,
         coordinator_account: Pubkey,
-        repo: Checkpoint,
+        data: CheckpointBytes,
     ) {
         let user = self.get_payer();
         let instruction = instructions::coordinator_checkpoint(
             &coordinator_instance,
             &coordinator_account,
             &user,
-            repo,
+            data,
         );
         self.spawn_scheduled_send("Checkpoint", &[instruction], &[], RpcCallType::Checkpoint);
     }
@@ -712,7 +713,7 @@ impl WatcherBackend for SolanaBackendRunner {
         Ok(())
     }
 
-    async fn send_checkpoint(&mut self, checkpoint: Checkpoint) -> Result<()> {
+    async fn send_checkpoint(&mut self, checkpoint: model::CheckpointBytes) -> Result<()> {
         self.backend
             .send_checkpoint(self.instance, self.account, checkpoint);
         Ok(())

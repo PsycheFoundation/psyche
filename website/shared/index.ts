@@ -8,13 +8,7 @@ import * as miningPoolTypes from './idl/mining-pool_idlType.js'
 type PsycheSolanaCoordinator = coordinatorTypes.PsycheSolanaCoordinator
 type PsycheSolanaMiningPool = miningPoolTypes.PsycheSolanaMiningPool
 
-import type {
-	GcsRepo,
-	HubRepo,
-	LearningRateSchedule,
-	LLMArchitecture,
-	RunState,
-} from 'psyche-deserialize-zerocopy-wasm'
+import type { RunState } from 'psyche-deserialize-zerocopy-wasm'
 
 export type * from 'psyche-deserialize-zerocopy-wasm'
 
@@ -73,7 +67,6 @@ export interface RunSummary {
 	}
 
 	size: bigint
-	arch: LLMArchitecture
 	type: ModelType
 }
 
@@ -119,7 +112,10 @@ export interface RunData {
 		epochStartTime: Date
 		clients: Array<RunRoundClient>
 
-		checkpoint: { Hub: HubRepo } | { Gcs: GcsRepo } | null
+		checkpoint:
+			| { Hub: { repo_id: string; revision: string | null } }
+			| { Gcs: { bucket: string; prefix: string | null } }
+			| null
 
 		round: number
 		config: {
@@ -131,8 +127,6 @@ export interface RunData {
 
 			maxRoundTrainTime: number
 			roundWitnessTime: number
-
-			lrSchedule: LearningRateSchedule
 		}
 	}
 	recentTxs: Array<TxSummary>

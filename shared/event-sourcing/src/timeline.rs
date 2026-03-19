@@ -55,8 +55,8 @@ fn coordinator_to_snapshot(
     timestamp: DateTime<Utc>,
     coord: &Coordinator,
 ) -> CoordinatorStateSnapshot {
-    let checkpoint = match coord.model {
-        psyche_coordinator::model::Model::LLM(llm) => llm.checkpoint,
+    let checkpoint_source = match coord.model {
+        psyche_coordinator::model::Model::LLM(llm) => llm.checkpoint_source,
     };
     let client_ids: Vec<String> = coord
         .epoch_state
@@ -92,7 +92,7 @@ fn coordinator_to_snapshot(
         run_state: coord.run_state,
         epoch: coord.progress.epoch as u64,
         step: coord.progress.step as u64,
-        checkpoint,
+        checkpoint_source,
         client_ids,
         min_clients: coord.config.min_clients as usize,
         batch_assignments,

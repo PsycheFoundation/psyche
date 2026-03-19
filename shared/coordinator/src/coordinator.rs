@@ -1,6 +1,6 @@
 use crate::{
     CheckpointerSelection, Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
-    model::{Checkpoint, Model},
+    model::{CheckpointBytes, CheckpointSource, Model},
 };
 
 use anchor_lang::{
@@ -624,7 +624,7 @@ impl Coordinator {
         &mut self,
         from: &NodeIdentity,
         index: u64,
-        checkpoint_repo: Checkpoint,
+        checkpoint_data: CheckpointBytes,
     ) -> std::result::Result<(), CoordinatorError> {
         let index = index as usize;
         if index >= self.epoch_state.clients.len() || self.epoch_state.clients[index].id != *from {
@@ -647,20 +647,11 @@ impl Coordinator {
         }
 
         let Model::LLM(llm) = &mut self.model;
-        match (&llm.checkpoint, checkpoint_repo) {
-            // If current is P2P, wrap the new checkpoint in its P2P equivalent
-            (Checkpoint::P2P(_) | Checkpoint::P2PGcs(_), new) => {
-                llm.checkpoint = new.to_p2p();
+        match llm.checkpoint_source {
+            CheckpointSource::Stored | CheckpointSource::P2P => {
+                llm.checkpoint_data = checkpoint_data;
             }
-            // If current is hosted (Hub/Gcs), accept hosted updates directly
-            (
-                Checkpoint::Hub(_) | Checkpoint::Gcs(_),
-                new @ (Checkpoint::Hub(_) | Checkpoint::Gcs(_)),
-            ) => {
-                llm.checkpoint = new;
-            }
-            // Ignore other combinations
-            _ => {}
+            CheckpointSource::Ephemeral => {}
         }
 
         self.epoch_state.checkpointed = true;
@@ -990,7 +981,9 @@ impl Coordinator {
                 .any(|client| pending_clients_unordered.contains(&client.id));
             if all_prev_clients_disconnected {
                 let Model::LLM(llm) = &mut self.model;
-                llm.checkpoint = llm.checkpoint.to_hosted();
+                if llm.checkpoint_source == CheckpointSource::P2P {
+                    llm.checkpoint_source = CheckpointSource::Stored;
+                }
             }
 
             let cold_start_epoch = self.epoch_state.cold_start_epoch;
@@ -1119,7 +1112,9 @@ impl Coordinator {
 
             // we've completed an epoch, switch to P2P from now on
             let Model::LLM(llm) = &mut self.model;
-            llm.checkpoint = llm.checkpoint.to_p2p();
+            if llm.checkpoint_source == CheckpointSource::Stored {
+                llm.checkpoint_source = CheckpointSource::P2P;
+            }
 
             if self.pending_pause.is_true() {
                 self.withdraw_all();
