@@ -1,8 +1,6 @@
 use crate::CheckpointUploader;
 use psyche_coordinator::{
-    CheckpointerSelection, Coordinator,
-    model::{self, LLM, Model},
-    model_extra_data::CheckpointData,
+    CheckpointerSelection, Coordinator, model::Model, model_extra_data::CheckpointData,
 };
 use psyche_data_provider::{GcsManifestMetadata, UploadError, upload_to_gcs, upload_to_hub};
 use psyche_event_sourcing::event;

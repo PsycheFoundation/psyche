@@ -15,7 +15,7 @@ use psyche_client::{
 };
 use psyche_coordinator::{
     ClientState, Coordinator, CoordinatorError, RunState,
-    model::{self, CheckpointSource, Model},
+    model::{CheckpointSource, Model},
     model_extra_data::CheckpointData,
 };
 use psyche_core::sha256;
