@@ -1,0 +1,20 @@
+[package]
+name = "observer"
+edition = "2024"
+version.workspace = true
+
+[dependencies]
+psyche-core.workspace = true
+psyche-event-sourcing.workspace = true
+psyche-tui.workspace = true
+ratatui.workspace = true
+tracing.workspace = true
+
+anyhow.workspace = true
+crossterm = { version = "0.28.1", features = ["event-stream"] }
+clap = { workspace = true }
+indexmap.workspace = true
+strum = { version = "0.28.0", features = ["derive"] }
+
+[dev-dependencies]
+chrono.workspace = true

@@ -22,6 +22,7 @@
   - [Setup & Useful Commands](./development/setup.md)
   - [Running on-chain](./development/running-onchain.md)
   - [Running off-chain](./development/running-offchain.md)
+  - [Cluster Observer](./development/observer.md)
   - [Implementing Models](./development/models.md)
   - [Python](./development/python.md)
   - [Secrets](./development/agenix.md)

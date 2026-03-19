@@ -7,6 +7,7 @@ use iroh_blobs::api::Tag;
 use psyche_coordinator::CheckpointerSelection;
 use psyche_coordinator::{Committee, Coordinator, RunState, Witness, WitnessProof};
 use psyche_core::{IntegrationTestLogMarker, MerkleRoot, MerkleTree, NodeIdentity, sha256};
+use psyche_event_sourcing::event;
 use psyche_modeling::{DistroResult, Trainer};
 use psyche_network::{BlobTicket, Hash, P2PEndpointInfo, TransmittableDistroResult};
 use psyche_watcher::OpportunisticData;
@@ -688,10 +689,14 @@ impl StepStateMachine {
                             // first received payload for this batch id, vote for it in consensus
                             broadcast_bloom.add(&commitment.data_hash);
                             trace!("Adding batch {batch_id} to broadcast bloom");
+                            event!(train::DistroResultAddedToConsensus(Ok(())));
                         } else {
                             trace!(
                                 "Don't have {batch_id} in our remaining batch IDs {remaining_batch_ids:?}, discarding",
                             );
+                            event!(train::DistroResultAddedToConsensus(Err(format!(
+                                "batch {batch_id} not in remaining batch IDs"
+                            ))));
                         }
                     } else {
                         trace!("Already submitted witness, not adding {from} to participant bloom");
@@ -713,6 +718,7 @@ impl StepStateMachine {
             }
 
             // we unconditionally store every seen payload, since we're not yet sure what consensus will be on whether it's included.
+            event!(train::DistroResultDeserializeStarted { blob: hash });
             let deserializing = tokio::task::spawn(async move {
                 let maybe_results = tokio::task::spawn_blocking(move || {
                     let r = distro_result
@@ -728,6 +734,10 @@ impl StepStateMachine {
                         hash,
                         batch_id
                     );
+                    event!(train::DistroResultDeserializeComplete {
+                        blob: hash,
+                        result: r.as_ref().map(|_| ()).map_err(|e| e.to_string()),
+                    });
                     r
                 })
                 .await
@@ -845,6 +855,7 @@ impl StepStateMachine {
                     .lock()
                     .map_err(|_| StepError::StatsLoggerMutex)?
                     .push_round_stats(&round_losses, round_duration, step_duration, optim_stats);
+
                 info!(
                     integration_test_log_marker = %IntegrationTestLogMarker::Loss,
                     client_id = %self.identity,

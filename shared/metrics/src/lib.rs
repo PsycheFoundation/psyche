@@ -11,7 +11,7 @@ use opentelemetry::{
     KeyValue, global,
     metrics::{Counter, Gauge, Histogram, Meter},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sysinfo::System;
 use tokio::{io::AsyncWriteExt, net::TcpListener, time::interval};
 
@@ -125,7 +125,7 @@ impl Drop for ClientMetrics {
     }
 }
 
-#[derive(Debug, Serialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct SelectedPath {
     pub addr: String,
     pub rtt: Duration,
