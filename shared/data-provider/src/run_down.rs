@@ -19,6 +19,7 @@ pub struct RunDownClient {
     http: reqwest::Client,
     run_id: String,
     wallet_address: String,
+    authorization_grantee: String,
     sign_fn: Arc<SignFn>,
 }
 
@@ -34,12 +35,14 @@ impl RunDownClient {
     pub fn new(
         run_id: String,
         wallet_address: String,
+        authorization_grantee: String,
         sign_fn: impl Fn(&[u8]) -> Vec<u8> + Send + Sync + 'static,
     ) -> Self {
         Self {
             http: reqwest::Client::new(),
             run_id,
             wallet_address,
+            authorization_grantee,
             sign_fn: Arc::new(sign_fn),
         }
     }
@@ -73,6 +76,7 @@ impl RunDownClient {
         let url = format!("{}/upload/{}", base_url(), self.run_id);
         let body = serde_json::json!({
             "walletAddress": self.wallet_address,
+            "authorizationGrantee": self.authorization_grantee,
             "filename": filename,
             "expiresInSeconds": expires_in_seconds,
             "nonce": nonce.to_string(),
@@ -113,6 +117,7 @@ impl RunDownClient {
         let url = format!("{}/download/{}", base_url(), self.run_id);
         let body = serde_json::json!({
             "walletAddress": self.wallet_address,
+            "authorizationGrantee": self.authorization_grantee,
             "expiresInSeconds": expires_in_seconds,
             "nonce": nonce.to_string(),
         });
