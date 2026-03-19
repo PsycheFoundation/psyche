@@ -319,6 +319,14 @@ def main():
 
             with torch.no_grad():
                 trainer.extract()
+        elif operation["operation"] == "truncate_bf16":
+            if trainer is None:
+                raise RuntimeError(
+                    "Got truncate_bf16 operation without having created a trainer"
+                )
+
+            with torch.no_grad():
+                trainer.truncate_bf16()
         elif operation["operation"] == "forward":
             with torch.no_grad():
                 forward = ForwardOperation(**operation)

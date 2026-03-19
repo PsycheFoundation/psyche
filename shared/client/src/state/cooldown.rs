@@ -146,9 +146,10 @@ impl CooldownStepMetadata {
 
         let checkpointing_and_evals: CheckpointAndEvalsHandle = tokio::task::spawn(
             async move {
-                info!("Extracting full model...");
                 let (variables, trainer) =
                     tokio::task::spawn_blocking::<_, Result<_, CheckpointError>>(|| {
+                        let mut trainer = trainer;
+                        trainer.truncate_bf16()?;
                         let variables: HashMap<String, Tensor> = trainer
                             .extract()?
                             .into_iter()

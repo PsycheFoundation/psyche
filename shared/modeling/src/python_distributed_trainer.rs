@@ -339,6 +339,30 @@ impl PythonDistributedTrainer {
         Ok(result)
     }
 
+    pub fn truncate_bf16(&mut self) -> Result<(), TrainerThreadCommunicationError> {
+        let operation = serde_json::json!({
+            "operation": "truncate_bf16",
+        });
+
+        let iteration = self.iteration.fetch_add(1, Ordering::Relaxed);
+        trace!(
+            "Sending truncate_bf16 operation to Python clients, iteration = {}",
+            iteration
+        );
+
+        self.comm
+            .set(&iteration.to_string(), &operation.to_string())?;
+
+        // barrier to ensure everyone has seen the broadcast
+        let dummy = Tensor::zeros([], (Kind::Float, self.device));
+        self.comm.all_reduce(&dummy, ReduceType::Sum)?;
+
+        self.local.truncate_bf16()?;
+        trace!("Truncate bf16 operation complete on all Python clients");
+
+        Ok(())
+    }
+
     fn broadcast_distro_results(&self, distro_results: &[DistroResults]) -> PyResult<()> {
         let first = distro_results.first().unwrap();
         let params = first.len();
