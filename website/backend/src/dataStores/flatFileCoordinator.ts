@@ -3,6 +3,7 @@ import {
 	CoordinatorConfig,
 	Model,
 	PsycheCoordinator,
+	decode_checkpoint_data,
 } from 'psyche-deserialize-zerocopy-wasm'
 import {
 	RunSummary,
@@ -600,9 +601,15 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 				} satisfies RunRoundClient
 			})
 
-			// Checkpoint details are now stored off-chain as opaque bytes;
-			// the on-chain LLM only has checkpoint_source (Stored/P2P/Ephemeral).
-			const checkpoint = null
+			const checkpoint = (() => {
+				const raw = c.coordinator.model.LLM.checkpoint_data
+				if (!Array.isArray(raw) || raw.length === 0) return null
+				const decoded = decode_checkpoint_data(new Uint8Array(raw))
+				if (!decoded || typeof decoded !== 'object') return null
+				if ('Hub' in decoded) return { Hub: decoded.Hub }
+				if ('Gcs' in decoded) return { Gcs: decoded.Gcs }
+				return null
+			})()
 
 			const config = c.coordinator.config
 
