@@ -103,7 +103,7 @@ Upon exiting the _Cooldown_ phase, the Coordinator transitions to the next epoch
 
 ### It all comes together
 
-Here's is an overview of how the state of the run can change depending on the situation:
+Here's an overview of how the state of the run can change depending on the situation:
 
 ```mermaid
 %%{init: {'theme':'base', 'themeVariables': { 'fontSize':'35px'}}}%%
