@@ -124,7 +124,7 @@ impl ConnectionMonitor {
                         });
                     }
 
-                    event!(p2p::ConnectionChanged { endpoint_id: remote_id, connection_path: selected_path });
+                    event!(p2p::ConnectionChanged { endpoint_id: remote_id, connection_path: selected_path.clone() });
 
                     if !should_replace {
                         debug!(
