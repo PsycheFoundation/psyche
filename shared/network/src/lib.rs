@@ -603,7 +603,7 @@ where
 
             match progress {
                 Ok(mut progress) => {
-                    let result = tokio::time::timeout(Duration::from_secs(300), async {
+                    let result = tokio::time::timeout(Duration::from_secs(600), async {
                         while let Some(val) = progress.next().await {
                             if let Err(err) = tx.send(Ok(val)) {
                                 panic!("Failed to send download progress: {err:?} {:?}", err.0);
