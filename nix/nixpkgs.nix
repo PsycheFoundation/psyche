@@ -34,7 +34,10 @@ in
             torchdata = pyfinal.callPackage ../python/torchdata.nix { };
 
             # keras tests segfault trying to import torch in the sandbox (no GPU)
-            keras = pyprev.keras.overrideAttrs { doCheck = false; };
+            keras = pyprev.keras.overrideAttrs (_: {
+              doCheck = false;
+              doInstallCheck = false;
+            });
 
             # pyside6 brings in a whole massive qt webkit thing. better to just keep it out.
             gguf = pyprev.gguf.overrideAttrs (old: {
