@@ -137,11 +137,15 @@ impl ConnectionMonitor {
 
                     // Abort old monitor task if present (drop the handle aborts it)
                     if let Some(old) = monitor_tasks.remove(&remote_id) {
-                        debug!(
-                            remote = %remote_id.fmt_short(),
-                            %alpn,
-                            "replacing monitor task (new connection has better path)"
-                        );
+                        if new_is_direct && !old.is_direct {
+                            if let Some(ref path) = selected_path {
+                                info!(
+                                    remote = %remote_id.fmt_short(),
+                                    path = %path,
+                                    "selected path upgraded to direct"
+                                );
+                            }
+                        }
                         drop(old);
                     }
 
@@ -159,13 +163,7 @@ impl ConnectionMonitor {
 
                                     let mut conns = connections_clone.write().unwrap();
                                     if let Some(data) = conns.get_mut(&remote_id) {
-                                        // Compare only the address, not RTT — RTT jitter
-                                        // should not count as a path change.
-                                        let addr_changed = match (&data.selected_path, &selected_path) {
-                                            (Some(old), Some(new)) => old.addr != new.addr,
-                                            (None, None) => false,
-                                            _ => true,
-                                        };
+                                        let path_changed = data.selected_path != selected_path;
 
                                         // calculate latency delta if both old and new have latency info
                                         let latency_delta = match (&data.selected_path, &selected_path) {
@@ -177,7 +175,7 @@ impl ConnectionMonitor {
 
                                         data.selected_path = selected_path.clone();
 
-                                        if addr_changed {
+                                        if path_changed {
                                             if let Some(ref path) = selected_path {
                                                 info!(
                                                     remote = %remote_id.fmt_short(),
