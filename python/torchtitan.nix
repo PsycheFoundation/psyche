@@ -12,6 +12,7 @@
   fsspec,
   tyro,
   tensorboard,
+  einops,
   # Optional dependencies
   pre-commit,
   pytest,
@@ -58,6 +59,7 @@ buildPythonPackage {
     fsspec
     tyro
     tensorboard
+    einops
   ]
   ++ lib.optionals withDev [
     pre-commit
