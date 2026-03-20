@@ -16,6 +16,13 @@ use tracing::{error, info};
 const MODEL_EXTENSIONS: [&str; 3] = [".safetensors", ".json", ".py"];
 const DATASET_EXTENSIONS: [&str; 1] = [".parquet"];
 
+/// Strip leading/trailing whitespace and control characters from a repo identifier.
+/// TODO: Remove once https://github.com/PsycheFoundation/nousnet/pull/636 is merged
+fn sanitize_repo_id(raw: &str) -> String {
+    raw.trim_matches(|c: char| c.is_whitespace() || c.is_control())
+        .to_string()
+}
+
 fn check_extensions(sibling: &Siblings, extensions: &[&'static str]) -> bool {
     match extensions.is_empty() {
         true => true,
@@ -90,10 +97,11 @@ pub async fn download_model_repo_async(
     max_concurrent_downloads: Option<usize>,
     progress_bar: bool,
 ) -> Result<Vec<PathBuf>, ApiError> {
+    let repo_id = sanitize_repo_id(repo_id);
     download_repo_async(
         match revision {
-            Some(revision) => Repo::with_revision(repo_id.to_string(), RepoType::Model, revision),
-            None => Repo::model(repo_id.to_string()),
+            Some(revision) => Repo::with_revision(repo_id.clone(), RepoType::Model, revision),
+            None => Repo::model(repo_id),
         },
         cache,
         token,
@@ -112,10 +120,11 @@ pub async fn download_dataset_repo_async(
     max_concurrent_downloads: Option<usize>,
     progress_bar: bool,
 ) -> Result<Vec<PathBuf>, ApiError> {
+    let repo_id = sanitize_repo_id(&repo_id);
     download_repo_async(
         match revision {
-            Some(revision) => Repo::with_revision(repo_id.to_owned(), RepoType::Dataset, revision),
-            None => Repo::new(repo_id.to_owned(), RepoType::Dataset),
+            Some(revision) => Repo::with_revision(repo_id.clone(), RepoType::Dataset, revision),
+            None => Repo::new(repo_id, RepoType::Dataset),
         },
         cache,
         token,
@@ -162,10 +171,11 @@ pub fn download_model_repo_sync(
     token: Option<String>,
     progress_bar: bool,
 ) -> Result<Vec<PathBuf>, hf_hub::api::sync::ApiError> {
+    let repo_id = sanitize_repo_id(repo_id);
     download_repo_sync(
         match revision {
-            Some(revision) => Repo::with_revision(repo_id.to_owned(), RepoType::Model, revision),
-            None => Repo::model(repo_id.to_owned()),
+            Some(revision) => Repo::with_revision(repo_id.clone(), RepoType::Model, revision),
+            None => Repo::model(repo_id),
         },
         cache,
         token,
@@ -181,10 +191,11 @@ pub fn download_dataset_repo_sync(
     token: Option<String>,
     progress_bar: bool,
 ) -> Result<Vec<PathBuf>, hf_hub::api::sync::ApiError> {
+    let repo_id = sanitize_repo_id(repo_id);
     download_repo_sync(
         match revision {
-            Some(revision) => Repo::with_revision(repo_id.to_owned(), RepoType::Dataset, revision),
-            None => Repo::new(repo_id.to_owned(), RepoType::Dataset),
+            Some(revision) => Repo::with_revision(repo_id.clone(), RepoType::Dataset, revision),
+            None => Repo::new(repo_id, RepoType::Dataset),
         },
         cache,
         token,
