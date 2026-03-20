@@ -131,7 +131,7 @@ impl CooldownStepMetadata {
         mut trainers: Vec<Trainer>,
         state: &Coordinator,
     ) -> Result<CooldownStep, CooldownError> {
-        let Some(mut trainer) = trainers.pop() else {
+        let Some(trainer) = trainers.pop() else {
             return Err(CooldownError::NoTrainers);
         };
 
@@ -151,7 +151,13 @@ impl CooldownStepMetadata {
                 event!(cooldown::ModelSerializationStarted);
                 let (variables, trainer) =
                     tokio::task::spawn_blocking::<_, Result<_, CheckpointError>>(|| {
-                        let variables = trainer.extract()?;
+                        let mut trainer = trainer;
+                        trainer.truncate_bf16()?;
+                        let variables: HashMap<String, Tensor> = trainer
+                            .extract()?
+                            .into_iter()
+                            .map(|(name, tensor)| (name, tensor.to_kind(tch::Kind::BFloat16)))
+                            .collect();
                         info!("Model extracted; {} parameters", variables.len());
                         Ok((variables, trainer))
                     })
