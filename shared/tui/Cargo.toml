@@ -9,6 +9,7 @@ crossterm = { version = "0.28.1", features = ["event-stream"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "json"] }
 ratatui = "0.28.1"
 tracing.workspace = true
+psyche-event-sourcing.workspace = true
 anyhow.workspace = true
 tokio-util.workspace = true
 tokio.workspace = true

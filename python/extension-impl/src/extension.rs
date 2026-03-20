@@ -239,6 +239,18 @@ impl Trainer {
         }
         Ok(())
     }
+
+    pub fn truncate_bf16(self_: PyRef<'_, Self>) -> PyResult<()> {
+        let trainer = self_.trainer.write().unwrap().take();
+        if let Some(mut trainer) = trainer {
+            let trainer = self_.py().allow_threads(move || {
+                let _ = trainer.truncate_bf16();
+                trainer
+            });
+            *self_.trainer.write().unwrap() = Some(trainer);
+        }
+        Ok(())
+    }
 }
 
 #[pymodule]

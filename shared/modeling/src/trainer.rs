@@ -271,6 +271,7 @@ enum ParallelAssignment {
         loss_scale: Option<f64>,
     },
     Extract,
+    TruncateBf16,
 }
 
 #[derive(Debug)]
@@ -288,6 +289,7 @@ enum ParallelResult {
     Extract {
         variables: HashMap<String, Tensor>,
     },
+    TruncateBf16,
 }
 
 #[derive(Debug)]
@@ -354,6 +356,14 @@ impl Trainer {
             Trainer::Local(local_trainer) => local_trainer.extract(),
             #[cfg(feature = "python")]
             Trainer::PythonDistributed(python) => python.extract(),
+        }
+    }
+
+    pub fn truncate_bf16(&mut self) -> Result<(), TrainerThreadCommunicationError> {
+        match self {
+            Trainer::Local(local_trainer) => local_trainer.truncate_bf16(),
+            #[cfg(feature = "python")]
+            Trainer::PythonDistributed(python) => python.truncate_bf16(),
         }
     }
 
@@ -703,6 +713,28 @@ impl LocalTrainer {
             }
         }
         Ok(extracted)
+    }
+
+    pub fn truncate_bf16(&mut self) -> Result<(), TrainerThreadCommunicationError> {
+        self.barrier.reset();
+        for (tx, _) in &self.models {
+            tx.send(ParallelAssignment::TruncateBf16)
+                .map_err(|_| TrainerThreadCommunicationError::SendCommand)?;
+        }
+        for (_, rx) in &self.models {
+            match rx
+                .recv()
+                .map_err(|_| TrainerThreadCommunicationError::RecvResult)?
+            {
+                ParallelResult::TruncateBf16 => {}
+                result => {
+                    return Err(TrainerThreadCommunicationError::UnexpectedResult(format!(
+                        "{result:?}"
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 
     // todo: refactor args into a struct
@@ -1109,6 +1141,18 @@ impl LocalTrainer {
                             error!("Unexpected error in extract: {err:#}");
                             return;
                         }
+                    }
+                }
+                Ok(ParallelAssignment::TruncateBf16) => {
+                    let _no_grad = tch::no_grad_guard();
+                    for var in model.variables() {
+                        let mut tensor = var.local_tensor();
+                        let original_kind = tensor.kind();
+                        let truncated = tensor.to_kind(Kind::BFloat16).to_kind(original_kind);
+                        tensor.copy_(&truncated);
+                    }
+                    if submission.send(ParallelResult::TruncateBf16).is_err() {
+                        return;
                     }
                 }
                 Err(_) => {
