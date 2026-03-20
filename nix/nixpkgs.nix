@@ -39,6 +39,9 @@ in
               doInstallCheck = false;
             });
 
+            # tyro has flaky test failures in the nix sandbox
+            tyro = pyprev.tyro.overrideAttrs (_: { doCheck = false; });
+
             # pyside6 brings in a whole massive qt webkit thing. better to just keep it out.
             gguf = pyprev.gguf.overrideAttrs (old: {
               propagatedBuildInputs = prev.lib.filter (dep: !(dep ? pname && dep.pname == "pyside6")) (
