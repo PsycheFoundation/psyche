@@ -11,6 +11,7 @@ use iroh_blobs::{
     BlobsProtocol,
     api::downloader::Downloader,
     store::mem::{MemStore, Options as MemStoreOptions},
+    util::connection_pool::Options as PoolOptions,
 };
 use iroh_gossip::{
     api::{GossipReceiver, GossipSender},
@@ -341,9 +342,9 @@ where
 
         let endpoint = {
             let transport_config = QuicTransportConfig::builder()
-                .max_idle_timeout(Some(Duration::from_secs(10).try_into()?))
-                .keep_alive_interval(Duration::from_secs(1))
-                .set_max_remote_nat_traversal_addresses(50)
+                .max_idle_timeout(Some(Duration::from_secs(120).try_into()?))
+                .keep_alive_interval(Duration::from_secs(5))
+                .set_max_remote_nat_traversal_addresses(12)
                 .build();
 
             let relay_mode = match relay_kind {
@@ -353,7 +354,7 @@ where
             };
             debug!("Using relay servers: {}", fmt_relay_mode(&relay_mode));
 
-            let endpoint = Endpoint::builder()
+            let endpoint = Endpoint::builder(iroh::endpoint::presets::N0)
                 .secret_key(secret_key)
                 .relay_mode(relay_mode)
                 .transport_config(transport_config)
@@ -446,7 +447,13 @@ where
                 add_protected: None,
             }),
         });
-        let downloader = Downloader::new(&store, &endpoint);
+        let pool_options = PoolOptions {
+            idle_timeout: Duration::from_secs(60),
+            connect_timeout: Duration::from_secs(5),
+            max_connections: 1024,
+            on_connected: None,
+        };
+        let downloader = Downloader::new_with_opts(&store, &endpoint, pool_options);
         trace!("blobs store created!");
 
         trace!("creating gossip...");

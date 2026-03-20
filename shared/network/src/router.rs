@@ -69,7 +69,7 @@ mod tests {
 
     #[test_log::test(tokio::test)]
     async fn test_shutdown() -> Result<()> {
-        let endpoint = Endpoint::builder()
+        let endpoint = Endpoint::builder(iroh::endpoint::presets::N0)
             .relay_mode(RelayMode::Disabled)
             .bind()
             .await?;
@@ -132,7 +132,7 @@ mod tests {
                 .map(|k| async {
                     let allowlist = AllowDynamic::with_nodes(pubkeys.clone());
                     let static_discovery = MemoryLookup::new();
-                    let endpoint = Endpoint::builder()
+                    let endpoint = Endpoint::builder(iroh::endpoint::presets::N0)
                         .secret_key(k)
                         .relay_mode(RelayMode::Disabled)
                         .clear_address_lookup()
