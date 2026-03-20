@@ -1,9 +1,9 @@
 use crate::CheckpointUploader;
 use psyche_coordinator::{
-    CheckpointerSelection, Coordinator,
-    model::{self, HubRepo, LLM, Model},
+    CheckpointerSelection, Coordinator, model::Model, model_extra_data::CheckpointData,
 };
 use psyche_data_provider::{GcsManifestMetadata, UploadError, upload_to_gcs_signed, upload_to_hub};
+use psyche_event_sourcing::event;
 #[cfg(feature = "python")]
 use psyche_modeling::CausalLM;
 use psyche_modeling::{
@@ -144,7 +144,8 @@ impl CooldownStepMetadata {
         let epoch = state.progress.epoch as u32;
         let checkpoint_extra_files = self.checkpoint_extra_files.clone();
         let checkpoint_info = self.checkpoint_info.clone();
-        let Model::LLM(LLM { checkpoint, .. }) = state.model;
+        let Model::LLM(ref llm) = state.model;
+        let checkpoint_data = llm.decode_checkpoint();
         let tx_model = self.tx_model.clone();
         let model_task_runner = self.model_task_runner.clone();
         let delete_queue = self.delete_queue.clone();
@@ -160,6 +161,7 @@ impl CooldownStepMetadata {
                 let checkpoint_completed = checkpoint_completed.clone();
                 async move {
                     info!("Extracting full model...");
+                    event!(cooldown::ModelSerializationStarted);
                     let (variables, trainer) =
                         tokio::task::spawn_blocking::<_, Result<_, CheckpointError>>(|| {
                             let variables = trainer.extract()?;
@@ -167,7 +169,17 @@ impl CooldownStepMetadata {
                             Ok((variables, trainer))
                         })
                         .await
-                        .map_err(|_| CheckpointError::ExtractThreadCrashed)??;
+                        .map_err(|_| {
+                            event!(cooldown::ModelSerializationFinished {
+                                success: false,
+                                error_string: Some("extract thread crashed".to_string())
+                            });
+                            CheckpointError::ExtractThreadCrashed
+                        })??;
+                    event!(cooldown::ModelSerializationFinished {
+                        success: true,
+                        error_string: None
+                    });
 
                     let variables_clone: HashMap<String, Tensor> = variables
                         .iter()
@@ -214,17 +226,10 @@ impl CooldownStepMetadata {
                         return Ok(evals);
                     }
 
-                    let uploader = match checkpoint {
-                        model::Checkpoint::Hub(HubRepo {
-                            repo_id,
-                            revision: _,
-                        })
-                        | model::Checkpoint::P2P(HubRepo {
-                            repo_id,
-                            revision: _,
-                        }) => {
+                    let uploader = match checkpoint_data {
+                        Some(CheckpointData::Hub { ref repo_id, .. }) => {
                             if let Some(token) = hub_token {
-                                match CheckpointUploader::new_hub(repo_id.to_string(), token).await {
+                                match CheckpointUploader::new_hub(repo_id.clone(), token).await {
                                     Ok(uploader) => Some(uploader),
                                     Err(err) => {
                                         error!("Failed to create HF uploader: {}", err);
@@ -236,7 +241,7 @@ impl CooldownStepMetadata {
                                 None
                             }
                         }
-                        model::Checkpoint::Gcs(_) | model::Checkpoint::P2PGcs(_) => {
+                        Some(CheckpointData::Gcs { .. }) => {
                             if let Some(client) = run_down_client {
                                 Some(CheckpointUploader::new_gcs(client))
                             } else {
@@ -298,21 +303,38 @@ async fn save_checkpoint_locally(
     checkpoint_extra_files: Vec<PathBuf>,
 ) -> Result<Vec<PathBuf>, CheckpointError> {
     info!("Saving to {}", path.display());
+    event!(cooldown::CheckpointWriteStarted);
     let mut local = tokio::task::spawn_blocking({
         let path = path.clone();
         move || save_tensors_into_safetensors(variables, path)
     })
     .await
-    .map_err(|_| CheckpointError::WriteThreadCrashed)??;
+    .map_err(|_| {
+        event!(cooldown::CheckpointWriteFinished {
+            success: false,
+            error_string: Some("write thread crashed".to_string())
+        });
+        CheckpointError::WriteThreadCrashed
+    })??;
 
     for extra in checkpoint_extra_files {
         let to = path.join(extra.file_name().unwrap());
         tokio::fs::copy(extra.clone(), to.clone())
             .await
-            .map_err(CheckpointError::WriteExtraFile)?;
+            .map_err(|e| {
+                event!(cooldown::CheckpointWriteFinished {
+                    success: false,
+                    error_string: Some(e.to_string())
+                });
+                CheckpointError::WriteExtraFile(e)
+            })?;
         local.push(to);
     }
 
+    event!(cooldown::CheckpointWriteFinished {
+        success: true,
+        error_string: None
+    });
     Ok(local)
 }
 
@@ -323,7 +345,8 @@ async fn upload_checkpoint(
     step: u64,
     cancellation_token: tokio_util::sync::CancellationToken,
 ) -> Result<(), CheckpointError> {
-    match uploader {
+    event!(cooldown::CheckpointUploadStarted);
+    let result = match uploader {
         CheckpointUploader::Gcs(run_down) => upload_to_gcs_signed(
             &run_down,
             manifest_metadata,
@@ -342,7 +365,18 @@ async fn upload_checkpoint(
             info!("Dummy upload info provided; skipping upload");
             Ok(())
         }
+    };
+    match &result {
+        Ok(()) => event!(cooldown::CheckpointUploadFinished {
+            success: true,
+            error_string: None
+        }),
+        Err(e) => event!(cooldown::CheckpointUploadFinished {
+            success: false,
+            error_string: Some(e.to_string())
+        }),
     }
+    result
 }
 
 #[derive(Debug)]

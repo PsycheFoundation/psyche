@@ -3,8 +3,7 @@ import {
 	CoordinatorConfig,
 	Model,
 	PsycheCoordinator,
-	RunMetadata,
-	lr_at_step,
+	decode_checkpoint_data,
 } from 'psyche-deserialize-zerocopy-wasm'
 import {
 	RunSummary,
@@ -18,7 +17,7 @@ import {
 	Version,
 } from 'shared'
 import { CoordinatorDataStore, LastUpdateInfo } from '../dataStore.js'
-import { WitnessMetadata, WitnessEvalResult } from '../idlTypes.js'
+import { WitnessMetadata } from '../idlTypes.js'
 import { PublicKey } from '@solana/web3.js'
 import { isClientWitness } from '../witness.js'
 import EventEmitter from 'events'
@@ -78,7 +77,6 @@ interface RunHistoryV2 {
 		timestamp: ChainTimestamp
 		model: Model
 		config: CoordinatorConfig
-		metadata: RunMetadata
 	}>
 
 	trainingStep?: {
@@ -291,20 +289,11 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 		lastRun.lastUpdated = eventTime
 		lastRun.lastState = newState
 
-		const step = newState.coordinator.progress.step
-		if (step > (lastRun.observedLrByStep.at(-1)?.[0] ?? 0)) {
-			const lr = lr_at_step(newState.coordinator.model.LLM.lr_schedule, step)
-			if (isGoodNumber(lr)) {
-				lastRun.observedLrByStep.push([step, lr])
-			}
-		}
-
 		if (configChanged) {
 			lastRun.configChanges.push({
 				timestamp: eventTime,
 				config: newState.coordinator.config,
 				model: newState.coordinator.model,
-				metadata: newState.metadata,
 			})
 		}
 
@@ -342,45 +331,15 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			// we don't reallllllly care if it's shut down.
 			lastRun.lastUpdated = timestamp
 
-			// format evals to nice strings to save tons of space
 			const { evals, prompt_results, prompt_index, ...restWitness } = witness
-
-			// could be a bigint, could be a BN, kind of annoying. TODO fix somewhere else.
-			const l =
-				typeof evals.len === 'object' && evals.len && 'toNumber' in evals.len
-					? evals.len.toNumber()
-					: Number(evals.len)
-			const fixedEvals: Array<[string, number]> = []
-			for (const { name, value } of evals.data.slice(
-				0,
-				l
-			) as WitnessEvalResult[]) {
-				const firstZero = name[0].findIndex((v) => v === 0)
-				const nameStr = Buffer.from(name[0].slice(0, firstZero)).toString(
-					'utf-8'
-				)
-				fixedEvals.push([nameStr, value])
-			}
-
-			// convert FixedVec to regular array
-			const promptTokens: number[] = []
-			if (prompt_results && prompt_results.data) {
-				const promptLen =
-					typeof prompt_results.len === 'object' &&
-					prompt_results.len &&
-					'toNumber' in prompt_results.len
-						? prompt_results.len.toNumber()
-						: Number(prompt_results.len)
-				for (let i = 0; i < promptLen && i < prompt_results.data.length; i++) {
-					promptTokens.push(Number(prompt_results.data[i]))
-				}
-			}
 
 			const witnessUpdate = {
 				...restWitness,
-				evals: fixedEvals,
-				prompt_results: promptTokens,
-				prompt_index: prompt_index || 0, // Default to 0 if undefined
+				evals: evals.map(
+					({ name, value }) => [name, value] as [string, number]
+				),
+				prompt_results,
+				prompt_index: prompt_index || 0,
 			}
 			lastRun.lastFewWitnessUpdates.push([witnessUpdate, timestamp])
 			lastRun.sampledWitnessUpdates.push([witnessUpdate, timestamp])
@@ -643,12 +602,12 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 			})
 
 			const checkpoint = (() => {
-				const cp = c.coordinator.model.LLM.checkpoint
-				if (typeof cp !== 'object') return null
-				if ('Hub' in cp) return { Hub: cp.Hub }
-				if ('P2P' in cp) return { Hub: cp.P2P }
-				if ('Gcs' in cp) return { Gcs: cp.Gcs }
-				if ('P2PGcs' in cp) return { Gcs: cp.P2PGcs }
+				const raw = c.coordinator.model.LLM.checkpoint_data
+				if (!Array.isArray(raw) || raw.length === 0) return null
+				const decoded = decode_checkpoint_data(new Uint8Array(raw))
+				if (!decoded || typeof decoded !== 'object') return null
+				if ('Hub' in decoded) return { Hub: decoded.Hub }
+				if ('Gcs' in decoded) return { Gcs: decoded.Gcs }
 				return null
 			})()
 
@@ -683,8 +642,6 @@ export class FlatFileCoordinatorDataStore implements CoordinatorDataStore {
 					maxRoundTrainTime: Number(config.max_round_train_time),
 					roundWitnessTime: Number(config.round_witness_time),
 					warmupTime: Number(config.warmup_time),
-
-					lrSchedule: c.coordinator.model.LLM.lr_schedule,
 				},
 			}
 		}
@@ -756,12 +713,11 @@ function makeRunSummary(
 		: undefined
 
 	const summary: RunSummary = {
-		arch: c.model.LLM.architecture,
 		id: c.run_id,
 		index: index,
 		isOnlyRunAtThisIndex,
-		name: run.lastState.metadata.name,
-		description: run.lastState.metadata.description,
+		name: '',
+		description: '',
 		status: run.destroyedAt
 			? {
 					type: 'completed',
@@ -784,7 +740,7 @@ function makeRunSummary(
 		pauseHistory: run.pauseTimestamps,
 		totalTokens,
 		lastUpdate: run.lastUpdated,
-		size: run.lastState.metadata.num_parameters,
+		size: 0n,
 		trainingStep,
 		type: 'text', // TODO add type / tags? :)
 	}

@@ -2,12 +2,15 @@ use anyhow::{Error, Result};
 use bytemuck::Zeroable;
 use psyche_centralized_shared::{ClientToServerMessage, ServerToClientMessage};
 use psyche_client::{
-    CheckpointUploader, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs,
-    read_identity_secret_key,
+    CheckpointUploader, Client, ClientTUI, ClientTUIState, ModelExtraData, NC, RunInitConfig,
+    TrainArgs, read_identity_secret_key,
 };
-use psyche_coordinator::model::{self, Checkpoint};
+use psyche_coordinator::model::{self, CheckpointSource};
+use psyche_coordinator::model_extra_data::CheckpointData;
 use psyche_coordinator::{Coordinator, HealthChecks};
 use psyche_core::NodeIdentity;
+use psyche_event_sourcing::event;
+use psyche_event_sourcing::events::RpcCallType;
 use psyche_metrics::ClientMetrics;
 use psyche_network::{EndpointId, NetworkTUIState, NetworkTui, SecretKey, TcpClient, allowlist};
 use psyche_tui::logging::LoggerWidget;
@@ -28,7 +31,7 @@ pub type TabsData = <Tabs as CustomWidget>::Data;
 pub enum ToSend {
     Witness(Box<OpportunisticData>),
     HealthCheck(HealthChecks),
-    Checkpoint(Checkpoint),
+    Checkpoint(Box<model::CheckpointBytes>),
 }
 
 struct Backend {
@@ -66,8 +69,8 @@ impl WatcherBackend for Backend {
         Ok(())
     }
 
-    async fn send_checkpoint(&mut self, checkpoint: Checkpoint) -> Result<()> {
-        self.tx.send(ToSend::Checkpoint(checkpoint))?;
+    async fn send_checkpoint(&mut self, checkpoint: model::CheckpointBytes) -> Result<()> {
+        self.tx.send(ToSend::Checkpoint(Box::new(checkpoint)))?;
         Ok(())
     }
 }
@@ -104,6 +107,7 @@ pub async fn build_app(
     let hub_read_token = std::env::var("HF_TOKEN").ok();
     let eval_tasks = p.eval_tasks()?;
     let checkpoint_config = p.checkpoint_config()?;
+    let model_extra_data_override: Option<ModelExtraData> = p.model_extra_data_override()?;
     let wandb_info = p.wandb_info(format!(
         "{}-{}",
         p.run_id.clone(),
@@ -146,6 +150,7 @@ pub async fn build_app(
         max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
         device: p.device,
         sidecar_port: p.sidecar_port,
+        model_extra_data_override,
     };
     let app = App {
         cancel,
@@ -166,11 +171,28 @@ impl App {
         p2p: NC,
         state_options: RunInitConfig,
     ) -> Result<()> {
-        self.server_conn
+        event!(coordinator::RpcCallSubmitted {
+            call_type: RpcCallType::Join
+        });
+        match self
+            .server_conn
             .send(ClientToServerMessage::Join {
                 run_id: self.run_id.clone(),
             })
-            .await?;
+            .await
+        {
+            Ok(()) => event!(coordinator::RpcCallResult {
+                call_type: RpcCallType::Join,
+                result: Ok(())
+            }),
+            Err(e) => {
+                event!(coordinator::RpcCallResult {
+                    call_type: RpcCallType::Join,
+                    result: Err(e.to_string())
+                });
+                return Err(e);
+            }
+        }
 
         // Wait for the first coordinator state to validate upload credentials with repo info.
         let first_coordinator_state = select! {
@@ -189,26 +211,27 @@ impl App {
 
         // Validate upload credentials now that we have the coordinator state with checkpoint info.
         if !state_options.checkpoint_config.skip_upload {
-            let model::Model::LLM(model::LLM { checkpoint, .. }) = first_coordinator_state.model;
-            match checkpoint {
-                Checkpoint::Hub(ref hub_repo) | Checkpoint::P2P(ref hub_repo) => {
-                    let token = state_options.checkpoint_config.hub_token.as_ref()
-                        .ok_or_else(|| anyhow::anyhow!(
-                            "No HF_TOKEN found for checkpointing to Hub repo {}. Set HF_TOKEN environment variable.",
-                            hub_repo.repo_id
-                        ))?;
-                    // Validate write permissions — the uploader is dropped after validation,
-                    // it will be re-created during cooldown with the current coordinator state.
-                    CheckpointUploader::new_hub(hub_repo.repo_id.to_string(), token.clone())
-                        .await?;
-                }
-                Checkpoint::Gcs(_) | Checkpoint::P2PGcs(_) => {
-                    // GCS uploads use run-down signed URLs; auth is validated at request time.
-                    if state_options.checkpoint_config.run_down_client.is_none() {
-                        anyhow::bail!("RunDownClient not configured for GCS checkpoint upload");
+            let model::Model::LLM(ref llm) = first_coordinator_state.model;
+            if llm.checkpoint_source != CheckpointSource::Ephemeral {
+                match CheckpointData::from_fixed_vec(&llm.checkpoint_data) {
+                    Ok(CheckpointData::Hub { ref repo_id, .. }) => {
+                        let token = state_options.checkpoint_config.hub_token.as_ref()
+                            .ok_or_else(|| anyhow::anyhow!(
+                                "No HF_TOKEN found for checkpointing to Hub repo {}. Set HF_TOKEN environment variable.",
+                                repo_id
+                            ))?;
+                        // Validate write permissions — the uploader is dropped after validation,
+                        // it will be re-created during cooldown with the current coordinator state.
+                        CheckpointUploader::new_hub(repo_id.clone(), token.clone()).await?;
                     }
+                    Ok(CheckpointData::Gcs { .. }) => {
+                        // GCS uploads use run-down signed URLs; auth is validated at request time.
+                        if state_options.checkpoint_config.run_down_client.is_none() {
+                            anyhow::bail!("RunDownClient not configured for GCS checkpoint upload");
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
         }
 
@@ -245,11 +268,26 @@ impl App {
                     res??;
                 }
                 Some(to_send) = rx_to_server_message.recv() => {
-                    match to_send {
-                        ToSend::Witness(witness) => self.server_conn.send(ClientToServerMessage::Witness(witness)).await?,
-                        ToSend::HealthCheck(health_checks) => self.server_conn.send(ClientToServerMessage::HealthCheck(health_checks)).await?,
-                        ToSend::Checkpoint(checkpoint) => self.server_conn.send(ClientToServerMessage::Checkpoint(checkpoint)).await?,
+                    let (msg, call_type) = match to_send {
+                        ToSend::Witness(ref w) => {
+                            let ct = match **w {
+                                OpportunisticData::WitnessStep(..) => RpcCallType::Witness,
+                                OpportunisticData::WarmupStep(..) => RpcCallType::WarmupWitness,
+                                OpportunisticData::CooldownStep(..) => RpcCallType::CooldownWitness,
+                            };
+                            (ClientToServerMessage::Witness(match to_send { ToSend::Witness(w) => w, _ => unreachable!() }), ct)
+                        }
+                        ToSend::HealthCheck(hc) => (ClientToServerMessage::HealthCheck(hc), RpcCallType::HealthCheck),
+                        ToSend::Checkpoint(cp) => (ClientToServerMessage::Checkpoint(cp), RpcCallType::Checkpoint),
                     };
+                    event!(coordinator::RpcCallSubmitted { call_type });
+                    match self.server_conn.send(msg).await {
+                        Ok(()) => event!(coordinator::RpcCallResult { call_type, result: Ok(()) }),
+                        Err(e) => {
+                            event!(coordinator::RpcCallResult { call_type, result: Err(e.to_string()) });
+                            return Err(e);
+                        }
+                    }
                 }
             }
         }

@@ -1,7 +1,8 @@
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, bail};
 use async_trait::async_trait;
 use psyche_centralized_shared::{ClientToServerMessage, ServerToClientMessage};
-use psyche_coordinator::model::{Checkpoint, LLM, LLMTrainingDataLocation, Model};
+use psyche_coordinator::model::{self, CheckpointSource, Model};
+use psyche_coordinator::model_extra_data::CheckpointData;
 use psyche_coordinator::{
     Client, ClientState, Coordinator, CoordinatorError, HealthChecks, Round, RunState,
     SOLANA_MAX_NUM_CLIENTS, TickResult,
@@ -20,13 +21,14 @@ use psyche_watcher::{CoordinatorTui, OpportunisticData};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::hash::{DefaultHasher, Hasher};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::Notify;
-use tokio::sync::mpsc::{Receiver, Sender, channel};
+use tokio::sync::mpsc::{Receiver, Sender, UnboundedSender, channel};
 use tokio::time::{MissedTickBehavior, interval};
 use tokio::{select, time::Interval};
 use tokio_util::sync::CancellationToken;
@@ -81,7 +83,7 @@ impl psyche_watcher::Backend for ChannelCoordinatorBackend {
         bail!("Server does not send health checks");
     }
 
-    async fn send_checkpoint(&mut self, _checkpoint: Checkpoint) -> Result<()> {
+    async fn send_checkpoint(&mut self, _checkpoint: model::CheckpointBytes) -> Result<()> {
         bail!("Server does not send checkpoints");
     }
 }
@@ -97,6 +99,8 @@ pub struct App {
     backend: Backend,
     training_data_server: Option<(Sender<Coordinator>, DataServer)>,
     save_state_dir: Option<PathBuf>,
+    coordinator_writer: Option<UnboundedSender<Coordinator>>,
+    last_coordinator_hash: u64,
     original_warmup_time: u64,
     withdraw_on_disconnect: bool,
     pause: Option<Arc<Notify>>,
@@ -132,9 +136,9 @@ impl App {
         self.coordinator.progress.epoch
     }
 
-    pub fn get_checkpoint(&self) -> Checkpoint {
+    pub fn get_checkpoint(&self) -> CheckpointSource {
         match self.coordinator.model {
-            Model::LLM(llm) => llm.checkpoint,
+            Model::LLM(llm) => llm.checkpoint_source,
         }
     }
 
@@ -147,12 +151,18 @@ impl App {
     }
 }
 
+fn default_data_server_port() -> u16 {
+    9088
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DataServerInfo {
     pub dir: PathBuf,
     pub token_size: TokenSize,
     pub seq_len: usize,
     pub shuffle_seed: [u8; 32],
+    #[serde(default = "default_data_server_port")]
+    pub port: u16,
 }
 
 impl App {
@@ -163,84 +173,64 @@ impl App {
         data_server_config: Option<DataServerInfo>,
         coordinator_server_port: Option<u16>,
         save_state_dir: Option<PathBuf>,
+        events_dir: Option<PathBuf>,
         init_warmup_time: Option<u64>,
         withdraw_on_disconnect: bool,
     ) -> Result<Self> {
-        if !coordinator.config.check() {
-            bail!("Coordinator sanity check failed");
-        }
-
         async {
             Self::reset_ephemeral(&mut coordinator);
 
             debug!("potentially launching data server...");
 
-            let training_data_server = match &coordinator.model {
-                Model::LLM(LLM {
-                    data_location,
-                    checkpoint,
-                    ..
-                }) => {
-                    if let LLMTrainingDataLocation::Server(url) = data_location {
-                        match checkpoint {
-                            Checkpoint::Hub(hub_repo) => {
-                                let repo_id = String::from(&hub_repo.repo_id);
-                                let revision = hub_repo.revision.map(|bytes| (&bytes).into());
-                                if revision.is_some()
-                                    || !tokio::fs::try_exists(PathBuf::from(repo_id.clone()))
-                                        .await
-                                        .unwrap_or_default()
-                                {
-                                    download_model_repo_async(&repo_id, revision, None, None, None, true)
-                                        .await?;
-                                }
-                            }
-                            Checkpoint::Ephemeral => {
-                                bail!("Can't start up a run with an Ephemeral checkpoint.")
-                            }
-                            Checkpoint::Dummy(_) => {
-                                // ok!
-                            }
-                            Checkpoint::P2P(_) | Checkpoint::P2PGcs(_) => {
-                                bail!("Can't start up a run with a P2P checkpoint.")
-                            }
-                            Checkpoint::Gcs(gcs_repo) => {
-                                let bucket: String = (&gcs_repo.bucket).into();
-                                let prefix: Option<String> =
-                                    gcs_repo.prefix.map(|p| (&p).into());
-                                download_model_from_gcs_async(&bucket, prefix.as_deref()).await?;
-                            }
-                        }
-
-                        let server_addr: SocketAddr = String::from(url).parse().map_err(|e| {
-                            anyhow!("Failed to parse training data server URL {:?}: {}", url, e)
-                        })?;
-                        let data_server_port = server_addr.port();
-                        let DataServerInfo {
-                            dir,
-                            seq_len,
-                            shuffle_seed,
-                            token_size
-                        } = data_server_config.ok_or_else(|| anyhow!(
-                            "Coordinator state requires we host training data, but no --data-config passed."
-                        ))?;
-
-                        let local_data_provider = LocalDataProvider::new_from_directory(
-                            dir,
-                            token_size,
-                            seq_len,
-                            Shuffle::Seeded(shuffle_seed),
-                        )?;
-
-                        let (tx, backend) = ChannelCoordinatorBackend::new();
-                        let data_server =
-                            DataProviderTcpServer::start(local_data_provider, backend, data_server_port)
+            let training_data_server = if let Some(DataServerInfo {
+                dir,
+                seq_len,
+                shuffle_seed,
+                token_size,
+                port,
+            }) = data_server_config
+            {
+                // Download model if needed based on checkpoint type
+                let Model::LLM(llm) = &coordinator.model;
+                if llm.checkpoint_source == CheckpointSource::Ephemeral {
+                    bail!("Can't start up a run with an Ephemeral checkpoint.")
+                }
+                if llm.checkpoint_source == CheckpointSource::P2P {
+                    bail!("Can't start up a run with a P2P checkpoint.")
+                }
+                match CheckpointData::from_fixed_vec(&llm.checkpoint_data) {
+                    Ok(CheckpointData::Hub { repo_id, revision }) => {
+                        if revision.is_some()
+                            || !tokio::fs::try_exists(PathBuf::from(repo_id.clone()))
+                                .await
+                                .unwrap_or_default()
+                        {
+                            download_model_repo_async(&repo_id, revision, None, None, None, true)
                                 .await?;
-                        Some((tx, data_server))
-                    } else {
-                        None
+                        }
+                    }
+                    Ok(CheckpointData::Gcs { bucket, prefix }) => {
+                        download_model_from_gcs_async(&bucket, prefix.as_deref()).await?;
+                    }
+                    Ok(CheckpointData::Dummy) => {}
+                    Err(e) => {
+                        bail!("Failed to deserialize checkpoint data: {e}")
                     }
                 }
+
+                let local_data_provider = LocalDataProvider::new_from_directory(
+                    dir,
+                    token_size,
+                    seq_len,
+                    Shuffle::Seeded(shuffle_seed),
+                )?;
+
+                let (tx, backend) = ChannelCoordinatorBackend::new();
+                let data_server =
+                    DataProviderTcpServer::start(local_data_provider, backend, port).await?;
+                Some((tx, data_server))
+            } else {
+                None
             };
             debug!("data server work done.");
 
@@ -252,8 +242,7 @@ impl App {
             } else {
                 (None, None)
             };
-            let (cancel, tx_tui_state) =
-                maybe_start_render_loop(tabs)?;
+            let (cancel, tx_tui_state) = maybe_start_render_loop(tabs)?;
 
             let mut tick_interval = interval(Duration::from_millis(500));
             tick_interval.set_missed_tick_behavior(MissedTickBehavior::Skip); //important!
@@ -262,12 +251,10 @@ impl App {
             update_tui_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
             let net_server =
-                TcpServer::<ClientToServerMessage, ServerToClientMessage>::start(
-                    SocketAddr::new(
-                        std::net::IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
-                        coordinator_server_port.unwrap_or(0),
-                    ),
-                )
+                TcpServer::<ClientToServerMessage, ServerToClientMessage>::start(SocketAddr::new(
+                    std::net::IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+                    coordinator_server_port.unwrap_or(0),
+                ))
                 .await?;
 
             let original_warmup_time = coordinator.config.warmup_time;
@@ -275,6 +262,55 @@ impl App {
             if let Some(init_warmup_time) = init_warmup_time {
                 coordinator.config.warmup_time = init_warmup_time;
             }
+
+            let coordinator_writer = if let Some(ref dir) = events_dir {
+                let coordinator_dir = dir.join("coordinator");
+                std::fs::create_dir_all(&coordinator_dir)?;
+                let file_path = coordinator_dir.join("state.bin");
+                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Coordinator>();
+                let record_size = std::mem::size_of::<i64>() + std::mem::size_of::<Coordinator>();
+                tokio::spawn(async move {
+                    use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+                    let mut file = tokio::fs::OpenOptions::new()
+                        .create(true)
+                        .truncate(false)
+                        .write(true)
+                        .open(&file_path)
+                        .await
+                        .expect("failed to open coordinator state file");
+                    // Truncate any partial record left by a previous crash so
+                    // subsequent appends stay aligned to record boundaries.
+                    let len = file
+                        .metadata()
+                        .await
+                        .map(|m| m.len())
+                        .unwrap_or(0);
+                    let aligned = len - (len % record_size as u64);
+                    if aligned != len {
+                        tracing::warn!(
+                            "coordinator state.bin has {len} bytes, truncating to {aligned} to discard partial record"
+                        );
+                        file.set_len(aligned).await.ok();
+                    }
+                    file.seek(std::io::SeekFrom::End(0)).await.ok();
+                    while let Some(coord) = rx.recv().await {
+                        let timestamp = chrono::Utc::now().timestamp_millis();
+                        let mut buf = Vec::with_capacity(
+                            std::mem::size_of::<i64>()
+                                + std::mem::size_of::<Coordinator>(),
+                        );
+                        buf.extend_from_slice(&timestamp.to_le_bytes());
+                        buf.extend_from_slice(bytemuck::bytes_of(&coord));
+                        if let Err(e) = file.write_all(&buf).await {
+                            tracing::warn!("Failed to write coordinator record: {e}");
+                        }
+                        let _ = file.flush().await;
+                    }
+                });
+                Some(tx)
+            } else {
+                None
+            };
 
             Ok(Self {
                 cancel,
@@ -288,11 +324,15 @@ impl App {
                     pending_clients: HashSet::new(),
                 },
                 save_state_dir,
+                coordinator_writer,
+                last_coordinator_hash: 0,
                 original_warmup_time,
                 withdraw_on_disconnect,
                 pause,
             })
-        }.instrument(info_span!("App::new")).await
+        }
+        .instrument(info_span!("App::new"))
+        .await
     }
 
     pub async fn run(&mut self) -> Result<()> {
@@ -436,7 +476,7 @@ impl App {
                     Some(index) => {
                         if let Err(error) =
                             self.coordinator
-                                .checkpoint(&from_identity, index as u64, checkpoint)
+                                .checkpoint(&from_identity, index as u64, *checkpoint)
                         {
                             warn!("Error when processing checkpoint: {error}");
                         }
@@ -517,6 +557,15 @@ impl App {
             }
             if let Some((ref sender, _)) = self.training_data_server {
                 sender.send(self.coordinator).await.unwrap();
+            }
+        }
+        if let Some(ref writer) = self.coordinator_writer {
+            let mut hasher = DefaultHasher::new();
+            hasher.write(bytemuck::bytes_of(&self.coordinator));
+            let hash = hasher.finish();
+            if hash != self.last_coordinator_hash {
+                self.last_coordinator_hash = hash;
+                let _ = writer.send(self.coordinator);
             }
         }
     }

@@ -6,10 +6,13 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 use psyche_coordinator::{
     CoordinatorConfig, CoordinatorProgress, get_data_index_for_step,
-    model::{Checkpoint, Model},
+    model::{CheckpointSource, Model},
+    model_extra_data::{CONFIG_PREFIX, CheckpointData, MODEL_CONFIG_FILENAME, ModelExtraData},
 };
+use psyche_data_provider::upload_json_to_gcs;
 use psyche_solana_treasurer::logic::RunUpdateParams;
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 use crate::{SolanaBackend, instructions};
 
@@ -28,18 +31,14 @@ pub struct CommandUpdateConfig {
     #[clap(long, env)]
     pub switch_to_hub: bool,
 
-    // metadata
-    #[clap(long)]
-    pub name: Option<String>,
-    #[clap(long)]
-    pub description: Option<String>,
-    #[clap(long)]
-    pub num_parameters: Option<u64>,
-    #[clap(long)]
-    pub vocab_size: Option<u64>,
-    // end metadata
     #[clap(long, env)]
     pub client_version: Option<String>,
+    #[clap(long, default_value_t = false, hide = true)]
+    pub skip_upload_model_extra_data: bool,
+
+    /// HuggingFace token for uploading to Hub repos (can also use HF_TOKEN env var)
+    #[clap(long, env = "HF_TOKEN")]
+    pub hub_token: Option<String>,
 }
 
 #[async_trait]
@@ -51,11 +50,9 @@ impl Command for CommandUpdateConfig {
             config_path,
             restart_from_step,
             switch_to_hub,
-            name,
-            description,
-            num_parameters,
-            vocab_size,
             client_version,
+            skip_upload_model_extra_data,
+            hub_token,
         } = self;
 
         let main_authority = backend.get_payer();
@@ -69,12 +66,13 @@ impl Command for CommandUpdateConfig {
             .get_coordinator_account(&coordinator_account)
             .await?;
 
-        let (config, mut model) = match config_path {
+        let (config, mut model, model_extra_data) = match config_path {
             Some(config_path) => {
                 #[derive(Serialize, Deserialize)]
                 struct State {
                     pub config: CoordinatorConfig,
                     pub model: Model,
+                    pub model_extra_data: ModelExtraData,
                 }
                 let state: State = toml::from_str(std::str::from_utf8(
                     &std::fs::read(&config_path).with_context(|| {
@@ -83,47 +81,30 @@ impl Command for CommandUpdateConfig {
                 )?)
                 .with_context(|| format!("failed to parse config toml file {config_path:?}"))?;
 
-                (Some(state.config), Some(state.model))
+                (
+                    Some(state.config),
+                    Some(state.model),
+                    Some(state.model_extra_data),
+                )
             }
-            None => (None, None),
+            None => (None, None, None),
         };
+
+        if let (Some(ref model_extra_data), Some(ref mut model)) = (&model_extra_data, &mut model) {
+            let Model::LLM(llm) = model;
+            llm.checkpoint_data = model_extra_data.checkpoint.to_fixed_vec();
+            llm.checkpoint_source = CheckpointSource::Stored;
+        }
 
         model = if switch_to_hub {
             let Model::LLM(mut llm) =
                 model.unwrap_or(coordinator_account_state.state.coordinator.model);
-            match llm.checkpoint {
-                Checkpoint::P2P(hub_repo) => llm.checkpoint = Checkpoint::Hub(hub_repo),
-                Checkpoint::P2PGcs(gcs_repo) => llm.checkpoint = Checkpoint::Gcs(gcs_repo),
-                Checkpoint::Dummy(hub_repo) => llm.checkpoint = Checkpoint::Hub(hub_repo),
-                _ => {}
+            if llm.checkpoint_source == CheckpointSource::P2P {
+                llm.checkpoint_source = CheckpointSource::Stored;
             }
             Some(Model::LLM(llm))
         } else {
             model
-        };
-
-        let metadata = {
-            let mut metadata = coordinator_account_state.state.metadata;
-            if let Some(name) = name {
-                metadata.name = name
-                    .as_str()
-                    .try_into()
-                    .context("run metadata: name failed to convert to FixedString")?;
-            }
-            if let Some(description) = description {
-                metadata.description = description
-                    .as_str()
-                    .try_into()
-                    .context("run metadata: description failed to convert to FixedString")?;
-            }
-            if let Some(num_parameters) = num_parameters {
-                metadata.num_parameters = num_parameters;
-            }
-            if let Some(vocab_size) = vocab_size {
-                metadata.vocab_size = vocab_size;
-            }
-            // only include if it's different
-            (metadata != coordinator_account_state.state.metadata).then_some(metadata)
         };
 
         // update locally to ensure that logic operating on it (e.g. get_data_index_for_step) can read from the new data, not the existing one
@@ -135,6 +116,51 @@ impl Command for CommandUpdateConfig {
             coordinator_account_state.state.coordinator.model = model;
         }
 
+        // Upload model extra data to GCS or hub repo depending of the model checkpoint
+        if !skip_upload_model_extra_data {
+            if let Some(model_extra_data) = model_extra_data {
+                let Model::LLM(llm) = &coordinator_account_state.state.coordinator.model;
+                match llm.decode_checkpoint() {
+                    Some(CheckpointData::Gcs { bucket, .. }) => {
+                        let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
+                        info!("Uploading model extra data to gs://{}/{}", bucket, path);
+                        upload_json_to_gcs(&bucket, &path, &model_extra_data)
+                            .await
+                            .with_context(|| {
+                                format!(
+                                    "failed to upload model extra data to gs://{}/{}",
+                                    bucket, path
+                                )
+                            })?;
+                        println!("Uploaded model extra data to gs://{}/{}", bucket, path);
+                    }
+                    Some(CheckpointData::Hub { repo_id, .. }) => {
+                        let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
+                        psyche_data_provider::upload_model_extra_data_to_hub(
+                            &repo_id,
+                            &path,
+                            &model_extra_data,
+                            hub_token.clone(),
+                            None,
+                        )
+                        .await
+                        .with_context(|| {
+                            format!(
+                                "failed to upload model extra data to Hub repo {}/{}",
+                                repo_id, path
+                            )
+                        })?;
+                        println!("Uploaded model extra data to Hub repo {}/{}", repo_id, path);
+                    }
+                    _ => {
+                        println!(
+                            "Warning: model_extra_data provided but checkpoint is not GCS- or Hub-based, skipping upload"
+                        );
+                    }
+                }
+            }
+        }
+
         let progress = restart_from_step.map(|step| CoordinatorProgress {
             epoch: coordinator_account_state.state.coordinator.progress.epoch,
             step,
@@ -144,8 +170,7 @@ impl Command for CommandUpdateConfig {
             ),
         });
 
-        let coordinator_update =
-            metadata.is_some() || config.is_some() || model.is_some() || progress.is_some();
+        let coordinator_update = config.is_some() || model.is_some() || progress.is_some();
         if !coordinator_update && client_version.is_none() {
             bail!("this invocation would not update anything, bailing.")
         }
@@ -160,7 +185,6 @@ impl Command for CommandUpdateConfig {
                 &coordinator_account,
                 &main_authority,
                 RunUpdateParams {
-                    metadata,
                     config,
                     model,
                     progress,
@@ -178,7 +202,6 @@ impl Command for CommandUpdateConfig {
                     &run_id,
                     &coordinator_account,
                     &main_authority,
-                    metadata,
                     config,
                     model,
                     progress,
@@ -201,7 +224,6 @@ impl Command for CommandUpdateConfig {
             .await?;
         println!("Updated config of {run_id} with transaction {signature}");
 
-        println!(" - Metadata: {metadata:#?}");
         println!(" - Config: {config:#?}");
         println!(" - Model: {model:#?}");
         println!(" - Progress: {progress:#?}");

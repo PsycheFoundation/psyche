@@ -18,7 +18,6 @@ use psyche_coordinator::SOLANA_MAX_NUM_CLIENTS;
 use psyche_coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_coordinator::Witness;
 use psyche_coordinator::WitnessBloom;
-use psyche_coordinator::WitnessMetadata;
 use psyche_coordinator::WitnessProof;
 use psyche_coordinator::model::Model;
 use psyche_core::MerkleRoot;
@@ -26,8 +25,6 @@ use psyche_core::NodeIdentity;
 use serde::Deserialize;
 use serde::Serialize;
 use ts_rs::TS;
-
-pub use crate::instance_state::RunMetadata;
 
 declare_id!("4SHugWqSXwKE5fqDchkJcPEqnoZE22VYKtSTVm7axbT7");
 
@@ -133,7 +130,7 @@ pub struct CoordinatorAccount {
 }
 
 impl CoordinatorAccount {
-    pub const VERSION: u64 = 1;
+    pub const VERSION: u64 = 2;
 
     pub fn space_with_discriminator() -> usize {
         CoordinatorAccount::DISCRIMINATOR.len()
@@ -183,14 +180,13 @@ pub mod psyche_solana_coordinator {
 
     pub fn update(
         ctx: Context<OwnerCoordinatorAccounts>,
-        metadata: Option<RunMetadata>,
         config: Option<CoordinatorConfig>,
         model: Option<Model>,
         progress: Option<CoordinatorProgress>,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();
-        account.state.update(metadata, config, model, progress)
+        account.state.update(config, model, progress)
     }
 
     pub fn update_client_version(
@@ -253,7 +249,7 @@ pub mod psyche_solana_coordinator {
         participant_bloom: WitnessBloom,
         broadcast_bloom: WitnessBloom,
         broadcast_merkle: MerkleRoot,
-        metadata: WitnessMetadata,
+        metadata: Vec<u8>,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();
@@ -332,11 +328,11 @@ pub mod psyche_solana_coordinator {
 
     pub fn checkpoint(
         ctx: Context<PermissionlessCoordinatorAccounts>,
-        repo: psyche_coordinator::model::Checkpoint,
+        data: psyche_coordinator::model::CheckpointBytes,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();
-        account.state.checkpoint(ctx.accounts.user.key, repo)
+        account.state.checkpoint(ctx.accounts.user.key, data)
     }
 }
 

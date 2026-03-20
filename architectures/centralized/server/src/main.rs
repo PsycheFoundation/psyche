@@ -1,7 +1,7 @@
 mod app;
 mod dashboard;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use app::{App, DataServerInfo};
 use clap::{ArgAction, Parser};
 use psyche_coordinator::Coordinator;
@@ -76,6 +76,11 @@ struct RunArgs {
     #[clap(long)]
     save_state_dir: Option<PathBuf>,
 
+    /// Directory to write event files for the observer.
+    /// Coordinator state changes are appended to `{events_dir}/coordinator/state.bin`.
+    #[clap(long)]
+    events_dir: Option<PathBuf>,
+
     /// Sets the warmup time for the run. This overrides the `warmup_time` declared in the state file.
     #[clap(long)]
     init_warmup_time: Option<u64>,
@@ -117,6 +122,10 @@ fn load_config_state(
             format!("failed to read coordinator state toml file {state_path:?}")
         })?,
     )?)?;
+
+    if let Err(err) = coordinator.config.check_error() {
+        bail!("Invalid coordinator config {err:?}");
+    }
 
     let data_server_config = match data_config_path {
         Some(config_path) => {
@@ -211,6 +220,7 @@ async fn main() -> Result<()> {
                         config.1,
                         run_args.server_port,
                         run_args.save_state_dir,
+                        run_args.events_dir,
                         run_args.init_warmup_time,
                         run_args.withdraw_on_disconnect,
                     )

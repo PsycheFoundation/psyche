@@ -55,19 +55,6 @@ pub struct CheckpointConfig {
     pub run_down_client: Option<Arc<RunDownClient>>,
 }
 
-impl CheckpointConfig {
-    pub fn dummy() -> Self {
-        Self {
-            checkpoint_dir: PathBuf::from("./checkpoints"),
-            delete_old_steps: false,
-            keep_steps: 1,
-            hub_token: None,
-            skip_upload: false,
-            run_down_client: None,
-        }
-    }
-}
-
 #[derive(Debug)]
 pub enum PayloadState {
     Downloading((NodeIdentity, BatchId, BlobTicket)),

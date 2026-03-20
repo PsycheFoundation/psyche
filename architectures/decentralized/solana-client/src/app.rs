@@ -10,14 +10,14 @@ use anchor_client::{
 };
 use anyhow::{Result, anyhow};
 use psyche_client::{
-    CheckpointUploader, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs,
-    read_identity_secret_key,
+    CheckpointUploader, Client, ClientTUI, ClientTUIState, ModelExtraData, NC, RunInitConfig,
+    TrainArgs, read_identity_secret_key,
 };
 use psyche_coordinator::{
     ClientState, Coordinator, CoordinatorError, RunState,
-    model::{self, LLM, Model},
+    model::{CheckpointSource, Model},
+    model_extra_data::CheckpointData,
 };
-
 use psyche_core::sha256;
 use psyche_data_provider::RunDownClient;
 use psyche_metrics::ClientMetrics;
@@ -98,6 +98,7 @@ pub async fn build_app(
     let eval_tasks = p.eval_tasks()?;
     let hub_read_token = std::env::var("HF_TOKEN").ok();
     let mut checkpoint_config = p.checkpoint_config()?;
+    let model_extra_data_override: Option<ModelExtraData> = p.model_extra_data_override()?;
 
     // Construct RunDownClient using the wallet keypair for signing.
     // This enables GCS checkpoint upload/download via run-down signed URLs.
@@ -153,6 +154,7 @@ pub async fn build_app(
         max_concurrent_parameter_requests: p.max_concurrent_parameter_requests,
         device: p.device,
         sidecar_port: p.sidecar_port,
+        model_extra_data_override,
     };
     let app = App {
         run_id: p.run_id.clone(),
@@ -248,29 +250,30 @@ impl App {
 
         // sanity checks — skip credential validation when checkpoint upload is disabled
         if !self.state_options.checkpoint_config.skip_upload {
-            let Model::LLM(LLM { checkpoint, .. }) = start_coordinator_state.model;
-            match checkpoint {
-                model::Checkpoint::Hub(ref hub_repo) | model::Checkpoint::P2P(ref hub_repo) => {
-                    let token = self.state_options.checkpoint_config.hub_token.as_ref()
-                        .ok_or_else(|| anyhow!(
-                            "No HF_TOKEN found for checkpointing to Hub repo {}. Set HF_TOKEN environment variable.",
-                            hub_repo.repo_id
-                        ))?;
-                    CheckpointUploader::new_hub(hub_repo.repo_id.to_string(), token.clone())
-                        .await?;
-                }
-                model::Checkpoint::Gcs(_) | model::Checkpoint::P2PGcs(_) => {
-                    // GCS uploads use run-down signed URLs; auth is validated at request time.
-                    if self
-                        .state_options
-                        .checkpoint_config
-                        .run_down_client
-                        .is_none()
-                    {
-                        anyhow::bail!("RunDownClient not configured for GCS checkpoint upload");
+            let Model::LLM(ref llm) = start_coordinator_state.model;
+            if llm.checkpoint_source != CheckpointSource::Ephemeral {
+                match CheckpointData::from_fixed_vec(&llm.checkpoint_data) {
+                    Ok(CheckpointData::Hub { ref repo_id, .. }) => {
+                        let token = self.state_options.checkpoint_config.hub_token.as_ref()
+                            .ok_or_else(|| anyhow!(
+                                "No HF_TOKEN found for checkpointing to Hub repo {}. Set HF_TOKEN environment variable.",
+                                repo_id
+                            ))?;
+                        CheckpointUploader::new_hub(repo_id.clone(), token.clone()).await?;
                     }
+                    Ok(CheckpointData::Gcs { .. }) => {
+                        // GCS uploads use run-down signed URLs; auth is validated at request time.
+                        if self
+                            .state_options
+                            .checkpoint_config
+                            .run_down_client
+                            .is_none()
+                        {
+                            anyhow::bail!("RunDownClient not configured for GCS checkpoint upload");
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
         }
 

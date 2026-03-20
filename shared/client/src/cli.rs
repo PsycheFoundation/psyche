@@ -1,7 +1,8 @@
 use crate::{CheckpointConfig, WandBInfo};
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::Args;
+use psyche_coordinator::model_extra_data::ModelExtraData;
 use psyche_eval::tasktype_from_name;
 use psyche_modeling::Devices;
 use psyche_network::{DiscoveryMode, RelayKind, SecretKey};
@@ -195,6 +196,19 @@ pub struct TrainArgs {
     /// Skip saving and uploading checkpoints (for testing).
     #[clap(long, default_value_t = false, env, hide = true)]
     pub skip_checkpoint_upload: bool,
+
+    /// Path to a TOML config file. If provided, uses this config instead of fetching from the remote repo.
+    /// Only meant for testing/debugging.
+    #[clap(long, env, hide = true)]
+    pub model_extra_data_toml: Option<PathBuf>,
+
+    /// If provided, events will be written to a subdir in here, named after the node's ID.
+    #[clap(long, env)]
+    pub events_dir: Option<PathBuf>,
+
+    /// Number of epoch event files to keep on disk. Older files are deleted during rotation.
+    #[clap(long, env, default_value = "5")]
+    pub keep_event_files: Option<usize>,
 }
 
 impl TrainArgs {
@@ -267,6 +281,32 @@ impl TrainArgs {
             })
             .collect();
         result
+    }
+
+    pub fn model_extra_data_override(&self) -> Result<Option<ModelExtraData>> {
+        let Some(path) = &self.model_extra_data_toml else {
+            return Ok(None);
+        };
+
+        let content = std::fs::read_to_string(path)
+            .with_context(|| format!("failed to read model extra data TOML file {:?}", path))?;
+
+        let toml_value: toml::Value = toml::from_str(&content)
+            .with_context(|| format!("failed to parse TOML file {:?}", path))?;
+
+        let model_extra_data_table = toml_value
+            .get("model_extra_data")
+            .ok_or_else(|| anyhow::anyhow!("missing [model_extra_data] section in {:?}", path))?;
+
+        let config: ModelExtraData =
+            model_extra_data_table.clone().try_into().with_context(|| {
+                format!(
+                    "failed to deserialize model_extra_data from TOML file {:?}",
+                    path
+                )
+            })?;
+
+        Ok(Some(config))
     }
 }
 

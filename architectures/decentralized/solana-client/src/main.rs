@@ -12,7 +12,9 @@ use anchor_client::{
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
 use psyche_client::{TrainArgs, print_identity_keys};
-use psyche_coordinator::model::{Checkpoint, Model};
+use psyche_coordinator::model::{CheckpointSource, Model};
+use psyche_coordinator::model_extra_data::CheckpointData;
+use psyche_event_sourcing::{EventStore, FileBackend, RunStarted};
 use psyche_network::SecretKey;
 use psyche_solana_rpc::SolanaBackend;
 use psyche_tui::{
@@ -180,6 +182,23 @@ async fn async_main() -> Result<()> {
             let wallet_keypair: Arc<Keypair> = Arc::new(wallet.try_into()?);
             info!("Solana wallet pubkey: {}", wallet_keypair.pubkey());
 
+            if let Some(events_dir) = &args.events_dir {
+                let node_id = wallet_keypair.pubkey().to_string();
+                let node_events_dir = events_dir.join(&node_id);
+                let run_context = RunStarted {
+                    run_id: args.run_id.clone(),
+                    node_id,
+                    config: std::env::var("CONFIG_HASH").unwrap_or_default(),
+                    psyche_version: env!("CARGO_PKG_VERSION").to_string(),
+                };
+                EventStore::init(vec![Box::new(FileBackend::new(
+                    &node_events_dir,
+                    0,
+                    run_context,
+                    args.keep_event_files,
+                )?)]);
+            }
+
             let logger = psyche_tui::logging()
                 .with_output(args.logs)
                 .with_log_file(args.write_log.clone())
@@ -281,15 +300,14 @@ async fn async_main() -> Result<()> {
                     bail!("Model is not an LLM, unsure how to predownload.");
                 };
 
-                match model_config.checkpoint {
-                    Checkpoint::Ephemeral => {
-                        bail!("Can't predownload model with ephemeral checkpoint.")
+                if model_config.checkpoint_source == CheckpointSource::Ephemeral {
+                    bail!("Can't predownload model with ephemeral checkpoint.")
+                }
+                match CheckpointData::from_fixed_vec(&model_config.checkpoint_data) {
+                    Ok(CheckpointData::Dummy) => {
+                        println!("Dummy checkpoint (for testing), nothing to predownload.");
                     }
-                    Checkpoint::Dummy(hub_repo)
-                    | Checkpoint::Hub(hub_repo)
-                    | Checkpoint::P2P(hub_repo) => {
-                        let repo_id = hub_repo.repo_id.to_string();
-                        let revision = hub_repo.revision.map(|s| s.to_string());
+                    Ok(CheckpointData::Hub { repo_id, revision }) => {
                         println!(
                             "Predownloading model {repo_id} revision {}",
                             revision.as_ref().unwrap_or(&"main".to_string())
@@ -308,9 +326,7 @@ async fn async_main() -> Result<()> {
                         )
                         .await?;
                     }
-                    Checkpoint::Gcs(gcs_repo) | Checkpoint::P2PGcs(gcs_repo) => {
-                        let bucket = gcs_repo.bucket.to_string();
-                        let prefix: Option<String> = gcs_repo.prefix.map(|p| p.to_string());
+                    Ok(CheckpointData::Gcs { bucket, prefix }) => {
                         println!(
                             "Predownloading model from gs://{}/{}",
                             bucket,
@@ -323,7 +339,8 @@ async fn async_main() -> Result<()> {
                         )
                         .await?;
                     }
-                };
+                    Err(e) => bail!("Failed to deserialize checkpoint data: {e}"),
+                }
 
                 println!("Model predownloaded successfully.");
             }

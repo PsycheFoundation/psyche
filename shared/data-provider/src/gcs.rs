@@ -43,9 +43,9 @@ pub struct GcsManifestMetadata {
     pub run_id: String,
 }
 
-pub(crate) const MODEL_EXTENSIONS: [&str; 3] = [".safetensors", ".json", ".py"];
+pub const MODEL_EXTENSIONS: [&str; 3] = [".safetensors", ".json", ".py"];
 
-pub(crate) fn get_cache_base(bucket: &str) -> PathBuf {
+pub fn get_cache_base(bucket: &str) -> PathBuf {
     // Use HF_HOME if set, otherwise fall back to ~/.cache
     std::env::var("HF_HOME")
         .map(PathBuf::from)
@@ -59,7 +59,7 @@ pub(crate) fn get_cache_base(bucket: &str) -> PathBuf {
         .join(bucket)
 }
 
-pub(crate) fn get_cache_dir(
+pub fn get_cache_dir(
     bucket: &str,
     prefix: Option<&str>,
     step: u32,
@@ -74,7 +74,7 @@ pub(crate) fn get_cache_dir(
     }
 }
 
-pub(crate) fn get_cache_dir_no_manifest(bucket: &str, prefix: Option<&str>) -> PathBuf {
+pub fn get_cache_dir_no_manifest(bucket: &str, prefix: Option<&str>) -> PathBuf {
     let base = get_cache_base(bucket);
 
     match prefix {
@@ -83,7 +83,7 @@ pub(crate) fn get_cache_dir_no_manifest(bucket: &str, prefix: Option<&str>) -> P
     }
 }
 
-pub(crate) fn collect_cached_files(
+pub fn collect_cached_files(
     cache_dir: &Path,
     manifest: &GcsCheckpointManifest,
 ) -> Option<Vec<PathBuf>> {
@@ -323,6 +323,63 @@ pub fn download_model_from_gcs_sync(
 ) -> Result<Vec<PathBuf>, DownloadError> {
     let rt = Runtime::new().map_err(DownloadError::Io)?;
     rt.block_on(download_model_from_gcs_async(bucket, prefix))
+}
+
+/// Fetch a JSON file from GCS and deserialize it.
+/// Used for fetching external model configuration.
+pub async fn fetch_json_from_gcs<T: serde::de::DeserializeOwned>(
+    bucket: &str,
+    object_path: &str,
+) -> Result<T, DownloadError> {
+    let storage = Storage::builder()
+        .build()
+        .await
+        .map_err(|e| DownloadError::Gcs(e.to_string()))?;
+
+    let bucket_resource_name = format!("projects/_/buckets/{}", bucket);
+    info!("Fetching gs://{}/{}", bucket, object_path);
+
+    let mut read_response = storage
+        .read_object(&bucket_resource_name, object_path)
+        .send()
+        .await
+        .map_err(|e| DownloadError::Gcs(e.to_string()))?;
+
+    let mut data = Vec::new();
+    while let Some(chunk_result) = read_response.next().await {
+        let chunk = chunk_result.map_err(|e| DownloadError::Gcs(e.to_string()))?;
+        data.extend_from_slice(&chunk);
+    }
+
+    serde_json::from_slice(&data).map_err(DownloadError::Json)
+}
+
+/// Upload a JSON-serializable value to GCS.
+pub async fn upload_json_to_gcs<T: serde::Serialize>(
+    bucket: &str,
+    object_path: &str,
+    value: &T,
+) -> Result<(), UploadError> {
+    let storage = Storage::builder()
+        .build()
+        .await
+        .map_err(|e| UploadError::Gcs(e.to_string()))?;
+
+    let json = serde_json::to_string_pretty(value)?;
+    let data = bytes::Bytes::from(json.into_bytes());
+
+    let bucket_resource_name = format!("projects/_/buckets/{}", bucket);
+    info!("Uploading JSON to gs://{}/{}", bucket, object_path);
+
+    storage
+        .write_object(&bucket_resource_name, object_path, data)
+        .send_unbuffered()
+        .await
+        .map_err(|e| UploadError::Gcs(e.to_string()))?;
+
+    info!("Uploaded JSON to gs://{}/{}", bucket, object_path);
+
+    Ok(())
 }
 
 pub async fn upload_to_gcs(

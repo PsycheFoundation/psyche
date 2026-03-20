@@ -13,11 +13,11 @@ pub enum UploadError {
     #[error("GCS authentication failed: {0}")]
     GcsAuth(String),
 
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
-
     #[error("GCS error: {0}")]
     Gcs(String),
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
 
     #[error("HuggingFace Hub API error: {0}")]
     HubApi(#[from] hf_hub::api::tokio::ApiError),
@@ -37,11 +37,14 @@ pub enum DownloadError {
     #[error("GCS authentication failed: {0}")]
     GcsAuth(String),
 
+    #[error("GCS error: {0}")]
+    Gcs(String),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("GCS error: {0}")]
-    Gcs(String),
+    #[error("HuggingFace Hub API error: {0}")]
+    HubApi(#[from] hf_hub::api::tokio::ApiError),
 
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),

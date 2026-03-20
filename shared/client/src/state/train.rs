@@ -8,7 +8,8 @@ use psyche_coordinator::{
     BLOOM_FALSE_RATE, Commitment, CommitteeSelection, Coordinator, CoordinatorError, HealthChecks,
     assign_data_for_state, get_batch_ids_for_node, get_batch_ids_for_round, model,
 };
-use psyche_core::{BatchId, Bloom, IntegrationTestLogMarker, NodeIdentity, OptimizerDefinition};
+use psyche_core::{BatchId, Bloom, IntegrationTestLogMarker, NodeIdentity};
+use psyche_event_sourcing::event;
 use psyche_modeling::{
     ApplyDistroResultError, Batch, BatchData, DistroResult, TrainOutput, Trainer,
     TrainerThreadCommunicationError,
@@ -99,6 +100,7 @@ pub struct TrainingStepMetadata {
     pub write_gradients_dir: Option<PathBuf>,
 
     pub model_task_runner: ModelTaskRunner,
+    pub quantize_1bit: bool,
 }
 
 #[derive(Debug)]
@@ -231,6 +233,16 @@ impl TrainingStepMetadata {
         let zero_optim = warmup_lr_between.is_some_and(|_| round.height == 0);
         let epoch = state.progress.epoch;
 
+        event!(train::WitnessElected {
+            step: state.progress.step as u64,
+            round: round.height as u64,
+            epoch: epoch as u64,
+            index: client_index,
+            committee_position: committee_proof.position,
+            is_witness: witness_proof.witness.into(),
+        });
+
+        let assigned_batches = get_batch_ids_for_node(&data_assignments, &self.identity);
         info!(
             integration_test_log_marker = %IntegrationTestLogMarker::WitnessElected,
             step = state.progress.step,
@@ -242,10 +254,16 @@ impl TrainingStepMetadata {
             witness_position = witness_proof.position,
             witness = %witness_proof.witness,
             warmup_lr_between = ?warmup_lr_between,
-            assigned_batches = ?get_batch_ids_for_node(&data_assignments, &self.identity),
+            assigned_batches = ?assigned_batches,
             "Got training assignment for step {} (round {}/epoch {}): index={} committee position={} committee={} witness position={} witness={} warmup_lr_between={:?}",
             state.progress.step, round.height, epoch, client_index, committee_proof.position, committee_proof.committee, witness_proof.position, witness_proof.witness, warmup_lr_between
         );
+
+        for batch_id in &assigned_batches {
+            event!(train::BatchAssigned {
+                batch_id: *batch_id
+            });
+        }
         let model_task_runner = self.model_task_runner.clone();
         let finished = Arc::new(AtomicBool::new(false));
 
@@ -274,12 +292,7 @@ impl TrainingStepMetadata {
                 let cancel_training = cancel_training.clone();
                 let write_gradients_dir = self.write_gradients_dir.clone();
                 let tx_distro_result = self.tx_distro_result.clone();
-                let quantize = match &state.model {
-                    model::Model::LLM(llm) => match llm.optimizer {
-                        OptimizerDefinition::Distro { quantize_1bit, .. } => quantize_1bit,
-                        _ => false,
-                    },
-                };
+                let quantize = self.quantize_1bit;
                 let finished = finished.clone();
 
                 let TrainingDataForStep {
@@ -346,6 +359,7 @@ impl TrainingStepMetadata {
                             let cancel_training = cancel_training.clone();
                             let prev_self_distro_results = prev_self_distro_results.clone();
                             in_progress.push(tokio::task::spawn_blocking(move || {
+                                event!(train::TrainingStarted { batch_id });
                                 trainer.train(
                                     step,
                                     Batch {
@@ -374,6 +388,12 @@ impl TrainingStepMetadata {
                                 cancelled,
                                 nonce,
                             } = completed_trainer.map_err(|_| TrainError::TrainCrashed)??;
+
+                            event!(train::TrainingFinished {
+                                batch_id,
+                                step: step.into(),
+                                loss: Some(loss.into())
+                            });
 
                             debug!(step=step, loss=loss, batch_id=%batch_id, "Got training output, DisTrO results generated");
 
@@ -506,7 +526,7 @@ impl TrainingStepMetadata {
         let (cold_start_warmup_steps, checkpoint_is_p2p) = match &state.model {
             model::Model::LLM(llm) => (
                 llm.cold_start_warmup_steps,
-                matches!(llm.checkpoint, model::Checkpoint::P2P(_)),
+                matches!(llm.checkpoint_source, model::CheckpointSource::P2P),
             ),
         };
         let warmup_lr_between = state.get_cold_start_warmup_bounds();
@@ -550,6 +570,10 @@ impl TrainingStepMetadata {
                         Some(x) => x,
                         None => {
                             let expected_trainer = data_assignments.get(&batch_id);
+                            event!(train::UntrainedBatchWarning {
+                                batch_id,
+                                expected_trainer: expected_trainer.map(|t| format!("{:?}", t)),
+                            });
                             warn!(
                                 integration_test_log_marker = %IntegrationTestLogMarker::UntrainedBatches,
                                 batch_id = %batch_id,
@@ -619,6 +643,7 @@ impl TrainingStepMetadata {
                     }
                 }
 
+                event!(train::ApplyDistroResultsStart);
                 let futures: Vec<JoinHandle<std::result::Result<Trainer, ApplyDistroResultError>>> =
                     trainers
                         .into_iter()
@@ -630,11 +655,23 @@ impl TrainingStepMetadata {
                             })
                         })
                         .collect::<Vec<_>>();
-                let trainers: Vec<_> = try_join_all(futures)
-                    .await
-                    .map_err(|_| ApplyDistroResultError::ThreadCrashed)?
-                    .into_iter()
-                    .collect::<Result<_, _>>()?;
+                let apply_result: Result<Vec<Trainer>, ApplyError> = async {
+                    let results = try_join_all(futures)
+                        .await
+                        .map_err(|_| ApplyDistroResultError::ThreadCrashed)?;
+                    let trainers: Vec<_> = results.into_iter().collect::<Result<_, _>>()?;
+                    Ok(trainers)
+                }.await;
+                let trainers: Vec<_> = match apply_result {
+                    Ok(trainers) => {
+                        event!(train::ApplyDistroResultsComplete(Ok(())));
+                        trainers
+                    }
+                    Err(e) => {
+                        event!(train::ApplyDistroResultsComplete(Err(e.to_string())));
+                        return Err(e);
+                    }
+                };
                 trace!(
                     "Apply time: {:.1}s, {} trainers ready",
                     (Instant::now() - apply_start).as_secs_f32(),
@@ -668,6 +705,10 @@ fn start_sending_health_checks(
                 for (index, client) in clients.iter().enumerate() {
                     let proof = committee_selection.get_committee(index as u64);
                     if !state.healthy(&client.id, &proof).unwrap_or(false) {
+                        event!(client::HealthCheckFailed {
+                            index: index as u64,
+                            round: state.epoch_state.rounds_head as u64,
+                        });
                         warn!(
                             integration_test_log_marker = %IntegrationTestLogMarker::HealthCheck,
                             index = index,

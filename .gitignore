@@ -49,6 +49,7 @@ bindings
 checkpoints/
 logs/
 txt/
+/events
 config/testing/dolma/
 **/devnet_funded_accounts
 config/solana-test/test-config.toml

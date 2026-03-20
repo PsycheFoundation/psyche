@@ -42,13 +42,10 @@ impl psyche_tui::CustomWidget for CoordinatorTui {
             let vsplit = Layout::vertical(Constraint::from_fills([1, 1])).split(coord_split[1]);
             {
                 Paragraph::new(
-                    [
-                        format!("Data Source: {}", state.data_source),
-                        format!("Model Checkpoint: {}", state.model_checkpoint),
-                    ]
-                    .into_iter()
-                    .map(Line::from)
-                    .collect::<Vec<_>>(),
+                    [format!("Model Checkpoint: {}", state.model_checkpoint)]
+                        .into_iter()
+                        .map(Line::from)
+                        .collect::<Vec<_>>(),
                 )
                 .block(Block::bordered().title("Config"))
                 .render(vsplit[0], buf);
@@ -168,7 +165,6 @@ pub struct CoordinatorTuiState {
     pub run_state: TuiRunState,
     pub height: u32,
     pub clients: Vec<String>,
-    pub data_source: String,
     pub model_checkpoint: String,
     pub exited_clients: usize,
     pub pending_pause: bool,
@@ -186,11 +182,13 @@ impl From<&Coordinator> for CoordinatorTuiState {
                 .iter()
                 .map(|c| format!("{:?}", c.id))
                 .collect(),
-            data_source: match &value.model {
-                Model::LLM(l) => format!("{:?}", l.data_type),
-            },
             model_checkpoint: match &value.model {
-                Model::LLM(l) => format!("{}", l.checkpoint),
+                Model::LLM(l) => format!(
+                    "{} ({})",
+                    l.checkpoint_source,
+                    l.decode_checkpoint()
+                        .map_or("unknown".to_string(), |d| format!("{:?}", d))
+                ),
             },
             exited_clients: value.epoch_state.exited_clients.len(),
             pending_pause: value.pending_pause.is_true(),

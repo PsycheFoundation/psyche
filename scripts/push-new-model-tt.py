@@ -1,6 +1,7 @@
 from torch import nn
 from torch.distributed.checkpoint import HuggingFaceStorageWriter
 from transformers import AutoConfig, AutoTokenizer
+from torchtitan.config.job_config import PEFT
 from huggingface_hub import HfApi
 from torchtitan.config import JobConfig
 from psyche.models.hf_transformers import auto_config_from_dict
@@ -35,7 +36,10 @@ def main(args):
     if args.device:
         torch.set_default_device(args.device)
 
-    model = train_spec.model_cls(config_tt)
+    try:
+        model = train_spec.model_cls(config_tt, PEFT())
+    except TypeError:
+        model = train_spec.model_cls(config_tt)
     with torch.no_grad():
         model.init_weights(buffer_device=None)
 

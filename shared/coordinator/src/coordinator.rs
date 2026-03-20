@@ -1,6 +1,6 @@
 use crate::{
     CheckpointerSelection, Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
-    model::{Checkpoint, Model},
+    model::{CheckpointBytes, CheckpointSource, Model},
 };
 
 use anchor_lang::{
@@ -624,7 +624,7 @@ impl Coordinator {
         &mut self,
         from: &NodeIdentity,
         index: u64,
-        checkpoint_repo: Checkpoint,
+        checkpoint_data: CheckpointBytes,
     ) -> std::result::Result<(), CoordinatorError> {
         let index = index as usize;
         if index >= self.epoch_state.clients.len() || self.epoch_state.clients[index].id != *from {
@@ -647,20 +647,11 @@ impl Coordinator {
         }
 
         let Model::LLM(llm) = &mut self.model;
-        match (&llm.checkpoint, checkpoint_repo) {
-            // If current is P2P, wrap the new checkpoint in its P2P equivalent
-            (Checkpoint::P2P(_) | Checkpoint::P2PGcs(_), new) => {
-                llm.checkpoint = new.to_p2p();
+        match llm.checkpoint_source {
+            CheckpointSource::Stored | CheckpointSource::P2P => {
+                llm.checkpoint_data = checkpoint_data;
             }
-            // If current is hosted (Hub/Gcs), accept hosted updates directly
-            (
-                Checkpoint::Hub(_) | Checkpoint::Gcs(_),
-                new @ (Checkpoint::Hub(_) | Checkpoint::Gcs(_)),
-            ) => {
-                llm.checkpoint = new;
-            }
-            // Ignore other combinations
-            _ => {}
+            CheckpointSource::Ephemeral => {}
         }
 
         self.epoch_state.checkpointed = true;
@@ -990,7 +981,9 @@ impl Coordinator {
                 .any(|client| pending_clients_unordered.contains(&client.id));
             if all_prev_clients_disconnected {
                 let Model::LLM(llm) = &mut self.model;
-                llm.checkpoint = llm.checkpoint.to_hosted();
+                if llm.checkpoint_source == CheckpointSource::P2P {
+                    llm.checkpoint_source = CheckpointSource::Stored;
+                }
             }
 
             let cold_start_epoch = self.epoch_state.cold_start_epoch;
@@ -1119,7 +1112,9 @@ impl Coordinator {
 
             // we've completed an epoch, switch to P2P from now on
             let Model::LLM(llm) = &mut self.model;
-            llm.checkpoint = llm.checkpoint.to_p2p();
+            if llm.checkpoint_source == CheckpointSource::Stored {
+                llm.checkpoint_source = CheckpointSource::P2P;
+            }
 
             if self.pending_pause.is_true() {
                 self.withdraw_all();
@@ -1236,24 +1231,69 @@ impl CoordinatorEpochState {
     }
 }
 
+#[derive(Debug)]
+pub enum ConfigError {
+    EpochTime,
+    WarmupTime,
+    MaxRoundTrainTime,
+    RoundWitnessTime,
+    MinClients,
+    InitMinClients,
+    GlobalBatchSize,
+    TotalSteps,
+    WitnessNodes,
+    CooldownTime,
+    WaitingForMembersExtraTime,
+}
+
 impl CoordinatorConfig {
     pub fn check(&self) -> bool {
-        self.epoch_time > 0
-            && self.warmup_time < self.epoch_time
-            && self.max_round_train_time != 0
-            && self.max_round_train_time < self.epoch_time
-            && self.round_witness_time != 0
-            && self.min_clients != 0
-            && self.init_min_clients >= self.min_clients
-            && self.init_min_clients as usize <= SOLANA_MAX_NUM_CLIENTS
-            && self.global_batch_size_start != 0
-            && self.global_batch_size_end != 0
-            && self.global_batch_size_end >= self.global_batch_size_start
-            && self.total_steps != 0
-            && self.witness_nodes <= self.min_clients
-            && self.witness_nodes as usize <= SOLANA_MAX_NUM_WITNESSES
-            && self.cooldown_time > 0
-            && self.waiting_for_members_extra_time > 0
+        self.check_error().is_ok()
+    }
+
+    #[inline(always)]
+    pub fn check_error(&self) -> Result<(), ConfigError> {
+        if self.epoch_time == 0 {
+            return Err(ConfigError::EpochTime);
+        }
+        if self.warmup_time >= self.epoch_time {
+            return Err(ConfigError::WarmupTime);
+        }
+        if self.max_round_train_time == 0 || self.max_round_train_time >= self.epoch_time {
+            return Err(ConfigError::MaxRoundTrainTime);
+        }
+        if self.round_witness_time == 0 {
+            return Err(ConfigError::RoundWitnessTime);
+        }
+        if self.min_clients == 0 {
+            return Err(ConfigError::MinClients);
+        }
+        if self.init_min_clients < self.min_clients
+            || self.init_min_clients as usize > SOLANA_MAX_NUM_CLIENTS
+        {
+            return Err(ConfigError::InitMinClients);
+        }
+        if self.global_batch_size_start == 0
+            || self.global_batch_size_end == 0
+            || self.global_batch_size_end < self.global_batch_size_start
+        {
+            return Err(ConfigError::GlobalBatchSize);
+        }
+        if self.total_steps == 0 {
+            return Err(ConfigError::TotalSteps);
+        }
+        if self.witness_nodes > self.min_clients
+            || self.witness_nodes as usize > SOLANA_MAX_NUM_WITNESSES
+        {
+            return Err(ConfigError::WitnessNodes);
+        }
+        if self.cooldown_time == 0 {
+            return Err(ConfigError::CooldownTime);
+        }
+        if self.waiting_for_members_extra_time == 0 {
+            return Err(ConfigError::WaitingForMembersExtraTime);
+        }
+        Ok(())
     }
 
     pub fn get_batch_size(&self, total_tokens_processed: u64) -> u16 {

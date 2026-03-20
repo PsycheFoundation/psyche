@@ -5,10 +5,10 @@ use psyche_centralized_server::app::App as ServerApp;
 use psyche_coordinator::{Client, Round};
 use psyche_coordinator::{
     Coordinator, CoordinatorConfig, CoordinatorEpochState, RunState, SOLANA_MAX_NUM_CLIENTS,
-    model::{Checkpoint, LLM, Model},
+    model::{CheckpointSource, LLM, Model},
 };
 use psyche_core::{FixedVec, NodeIdentity};
-use std::{collections::HashSet, mem::Discriminant, ops::ControlFlow};
+use std::{collections::HashSet, ops::ControlFlow};
 use tokio::{
     select,
     sync::{
@@ -44,7 +44,7 @@ enum TestingQueryMsg {
         respond_to: oneshot::Sender<u16>,
     },
     Checkpoint {
-        respond_to: oneshot::Sender<Checkpoint>,
+        respond_to: oneshot::Sender<CheckpointSource>,
     },
     Coordinator {
         respond_to: oneshot::Sender<Coordinator>,
@@ -101,6 +101,7 @@ impl CoordinatorServer {
         let server = ServerApp::new(
             false,
             coordinator,
+            None,
             None,
             None,
             None,
@@ -282,13 +283,11 @@ impl CoordinatorServerHandle {
         recv.await.expect("Coordinator actor task has been killed")
     }
 
-    // We only care about checking the checkpoint variant but not the hub repo value so we get the discriminant.
-    pub async fn get_checkpoint(&self) -> Discriminant<Checkpoint> {
-        let (send, recv) = oneshot::channel::<Checkpoint>();
+    pub async fn get_checkpoint(&self) -> CheckpointSource {
+        let (send, recv) = oneshot::channel::<CheckpointSource>();
         let msg = TestingQueryMsg::Checkpoint { respond_to: send };
         let _ = self.query_chan_sender.send(msg).await;
-        let checkpoint = recv.await.expect("Coordinator actor task has been killed");
-        std::mem::discriminant(&checkpoint)
+        recv.await.expect("Coordinator actor task has been killed")
     }
 
     pub async fn get_coordinator(&self) -> Coordinator {
