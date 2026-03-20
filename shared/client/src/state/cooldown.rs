@@ -2,7 +2,7 @@ use crate::CheckpointUploader;
 use psyche_coordinator::{
     CheckpointerSelection, Coordinator, model::Model, model_extra_data::CheckpointData,
 };
-use psyche_data_provider::{GcsManifestMetadata, UploadError, upload_to_gcs, upload_to_hub};
+use psyche_data_provider::{GcsManifestMetadata, UploadError, upload_to_gcs_signed, upload_to_hub};
 use psyche_event_sourcing::event;
 #[cfg(feature = "python")]
 use psyche_modeling::CausalLM;
@@ -216,6 +216,7 @@ impl CooldownStepMetadata {
                         keep_steps,
                         hub_token,
                         skip_upload,
+                        run_down_client,
                     } = checkpoint_info;
 
                     // When skip_upload is true (testing), skip all checkpoint saving
@@ -240,16 +241,12 @@ impl CooldownStepMetadata {
                                 None
                             }
                         }
-                        Some(CheckpointData::Gcs { ref bucket, ref prefix }) => {
-                            match CheckpointUploader::new_gcs(
-                                bucket.clone(),
-                                prefix.clone(),
-                            ).await {
-                                Ok(uploader) => Some(uploader),
-                                Err(err) => {
-                                    error!("Failed to create GCS uploader: {}", err);
-                                    None
-                                }
+                        Some(CheckpointData::Gcs { .. }) => {
+                            if let Some(ref client) = run_down_client {
+                                Some(CheckpointUploader::Gcs(client.clone()))
+                            } else {
+                                warn!("RunDownClient not configured, skipping GCS signed URL upload");
+                                None
                             }
                         }
                         _ => None,
@@ -350,11 +347,15 @@ async fn upload_checkpoint(
 ) -> Result<(), CheckpointError> {
     event!(cooldown::CheckpointUploadStarted);
     let result = match uploader {
-        CheckpointUploader::Gcs(gcs_info) => {
-            upload_to_gcs(gcs_info, manifest_metadata, local, step, cancellation_token)
-                .await
-                .map_err(CheckpointError::UploadError)
-        }
+        CheckpointUploader::Gcs(run_down_client) => upload_to_gcs_signed(
+            &run_down_client,
+            manifest_metadata,
+            local,
+            step,
+            cancellation_token,
+        )
+        .await
+        .map_err(CheckpointError::UploadError),
         CheckpointUploader::Hub(hub_info) => {
             upload_to_hub(hub_info, local, step, cancellation_token)
                 .await

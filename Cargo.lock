@@ -7511,6 +7511,7 @@ dependencies = [
  "anchor-lang",
  "anyhow",
  "async-trait",
+ "bs58",
  "bytemuck",
  "bytes",
  "chrono",
@@ -7575,6 +7576,7 @@ dependencies = [
 name = "psyche-deserialize-zerocopy-wasm"
 version = "0.2.0"
 dependencies = [
+ "anchor-lang",
  "psyche-coordinator",
  "psyche-core",
  "psyche-solana-coordinator",

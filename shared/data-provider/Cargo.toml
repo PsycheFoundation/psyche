@@ -27,6 +27,7 @@ postcard.workspace = true
 bytemuck.workspace = true
 google-cloud-storage.workspace = true
 reqwest = "0.12.12"
+bs58 = "0.5"
 bytes = "1"
 google-cloud-auth = "0.16"
 google-cloud-gax = "1.4.0"

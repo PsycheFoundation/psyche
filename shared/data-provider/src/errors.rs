@@ -16,6 +16,9 @@ pub enum UploadError {
     #[error("GCS error: {0}")]
     Gcs(String),
 
+    #[error("run-down service error: {0}")]
+    RunDown(String),
+
     // Common errors
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -37,6 +40,9 @@ pub enum DownloadError {
 
     #[error("GCS error: {0}")]
     Gcs(String),
+
+    #[error("run-down service error: {0}")]
+    RunDown(String),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

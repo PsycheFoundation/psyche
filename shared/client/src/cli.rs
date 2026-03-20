@@ -253,6 +253,7 @@ impl TrainArgs {
             keep_steps: self.keep_steps,
             hub_token,
             skip_upload: self.skip_checkpoint_upload,
+            run_down_client: None,
         })
     }
 
