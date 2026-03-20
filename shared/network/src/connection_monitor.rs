@@ -106,10 +106,36 @@ impl ConnectionMonitor {
                             .get(&remote_id)
                             .map(|d| d.bandwidth)
                             .unwrap_or(PeerBandwidth::NotMeasured);
+
+                        // Prefer direct (Ip) paths over relay paths. Only update
+                        // the stored path if:
+                        // - there is no existing entry, or
+                        // - the new path is a direct path (not relay), or
+                        // - the existing path is also relay (update RTT)
+                        let should_update_path = match conns.get(&remote_id) {
+                            None => true,
+                            Some(existing) => {
+                                let new_is_direct = selected_path
+                                    .as_ref()
+                                    .is_some_and(|p| !p.addr.contains("Relay"));
+                                let existing_is_relay = existing
+                                    .selected_path
+                                    .as_ref()
+                                    .is_some_and(|p| p.addr.contains("Relay"));
+                                new_is_direct || existing_is_relay || existing.selected_path.is_none()
+                            }
+                        };
+
+                        let path_to_store = if should_update_path {
+                            selected_path.clone()
+                        } else {
+                            conns.get(&remote_id).and_then(|d| d.selected_path.clone())
+                        };
+
                         conns.insert(remote_id, ConnectionData {
                             endpoint_id: remote_id,
                             bandwidth: prev_bandwidth,
-                            selected_path: selected_path.clone(),
+                            selected_path: path_to_store,
                         });
                     }
 
@@ -142,7 +168,29 @@ impl ConnectionMonitor {
 
                                     let mut conns = connections_clone.write().unwrap();
                                     if let Some(data) = conns.get_mut(&remote_id) {
-                                        let path_changed = data.selected_path != selected_path;
+                                        // Don't overwrite a known direct path with a relay
+                                        // path from the monitor. A new connection may have
+                                        // established a direct path that this (gossip)
+                                        // connection's watcher doesn't reflect.
+                                        let stored_is_direct = data
+                                            .selected_path
+                                            .as_ref()
+                                            .is_some_and(|p| !p.addr.contains("Relay"));
+                                        let new_is_relay = selected_path
+                                            .as_ref()
+                                            .is_some_and(|p| p.addr.contains("Relay"));
+                                        if stored_is_direct && new_is_relay {
+                                            // Keep the direct path, skip this update
+                                            continue;
+                                        }
+
+                                        // Compare only the address, not RTT — RTT jitter
+                                        // should not count as a path change.
+                                        let addr_changed = match (&data.selected_path, &selected_path) {
+                                            (Some(old), Some(new)) => old.addr != new.addr,
+                                            (None, None) => false,
+                                            _ => true,
+                                        };
 
                                         // calculate latency delta if both old and new have latency info
                                         let latency_delta = match (&data.selected_path, &selected_path) {
@@ -154,7 +202,7 @@ impl ConnectionMonitor {
 
                                         data.selected_path = selected_path.clone();
 
-                                        if path_changed {
+                                        if addr_changed {
                                             if let Some(ref path) = selected_path {
                                                 info!(
                                                     remote = %remote_id.fmt_short(),
