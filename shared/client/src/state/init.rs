@@ -11,8 +11,8 @@ use psyche_core::{
 use psyche_data_provider::{
     DataProvider, DataProviderTcpClient, DownloadError, DummyDataProvider,
     PreprocessedDataProvider, Split, WeightedDataProvider, download_dataset_repo_async,
-    download_model_from_gcs_async, download_model_from_gcs_signed_async,
-    download_model_repo_async, fetch_json_from_gcs, fetch_json_from_hub,
+    download_model_from_gcs_async, download_model_from_gcs_signed_async, download_model_repo_async,
+    fetch_json_from_gcs, fetch_json_from_hub,
     http::{FileURLs, HttpDataProvider},
 };
 use psyche_event_sourcing::event;
@@ -377,6 +377,7 @@ impl RunInitConfigAndIO {
                     })
                 } else {
                     let checkpoint_data = checkpoint_data.unwrap_or(CheckpointData::Dummy);
+                    let run_down_client = init_config.checkpoint_config.run_down_client.clone();
                     tokio::spawn(async move {
                         let (source, tokenizer, checkpoint_extra_files) = if is_p2p {
                             let (tx_model_config_response, rx_model_config_response) =
@@ -516,9 +517,13 @@ impl RunInitConfigAndIO {
                                     );
 
                                     event!(warmup::CheckpointDownloadStarted { size_bytes: 0 });
-                                    let repo_files = if let Some(ref run_down_client) = init_config.checkpoint_config.run_down_client {
+                                    let repo_files = if let Some(ref run_down_client) =
+                                        run_down_client
+                                    {
                                         info!("Using run-down signed URLs for GCS download");
-                                        match download_model_from_gcs_signed_async(run_down_client).await {
+                                        match download_model_from_gcs_signed_async(run_down_client)
+                                            .await
+                                        {
                                             Ok(files) => {
                                                 event!(warmup::CheckpointDownloadComplete(Ok(())));
                                                 files

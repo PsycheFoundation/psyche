@@ -263,7 +263,12 @@ impl App {
                     }
                     Ok(CheckpointData::Gcs { .. }) => {
                         // GCS uploads use run-down signed URLs; auth is validated at request time.
-                        if self.state_options.checkpoint_config.run_down_client.is_none() {
+                        if self
+                            .state_options
+                            .checkpoint_config
+                            .run_down_client
+                            .is_none()
+                        {
                             anyhow::bail!("RunDownClient not configured for GCS checkpoint upload");
                         }
                     }
