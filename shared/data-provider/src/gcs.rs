@@ -43,9 +43,9 @@ pub struct GcsManifestMetadata {
     pub run_id: String,
 }
 
-const MODEL_EXTENSIONS: [&str; 3] = [".safetensors", ".json", ".py"];
+pub(crate) const MODEL_EXTENSIONS: [&str; 3] = [".safetensors", ".json", ".py"];
 
-fn get_cache_base(bucket: &str) -> PathBuf {
+pub(crate) fn get_cache_base(bucket: &str) -> PathBuf {
     // Use HF_HOME if set, otherwise fall back to ~/.cache
     std::env::var("HF_HOME")
         .map(PathBuf::from)
@@ -59,7 +59,7 @@ fn get_cache_base(bucket: &str) -> PathBuf {
         .join(bucket)
 }
 
-fn get_cache_dir(
+pub(crate) fn get_cache_dir(
     bucket: &str,
     prefix: Option<&str>,
     step: u32,
@@ -74,7 +74,7 @@ fn get_cache_dir(
     }
 }
 
-fn get_cache_dir_no_manifest(bucket: &str, prefix: Option<&str>) -> PathBuf {
+pub(crate) fn get_cache_dir_no_manifest(bucket: &str, prefix: Option<&str>) -> PathBuf {
     let base = get_cache_base(bucket);
 
     match prefix {
@@ -83,7 +83,7 @@ fn get_cache_dir_no_manifest(bucket: &str, prefix: Option<&str>) -> PathBuf {
     }
 }
 
-fn collect_cached_files(
+pub(crate) fn collect_cached_files(
     cache_dir: &Path,
     manifest: &GcsCheckpointManifest,
 ) -> Option<Vec<PathBuf>> {
