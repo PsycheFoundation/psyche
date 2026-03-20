@@ -62,7 +62,7 @@ When you use the `--python` flag, Psyche automatically spawns Python sidecar pro
 python -m psyche.sidecar --parent-pid <pid> --backend <backend> --init-method <method> --world-size <size> --rank <rank>
 ```
 
-By default only one sidecar using one GPU will be spawned, the amount will change depending on two different arguments `--data-parallelism` and `--tensor-parallelism`. The first one will spawned one entire copy of the model per GPU and the latter will split the model across multiple GPUs. The amount of sidecars spawned will be the product of these two arguments. Take into account that you will need `tensor_parallelism * data_parallelism` GPUs to run that amount of sidecars.
+By default only one sidecar using one GPU will be spawned, the amount will change depending on two different arguments `--data-parallelism` and `--tensor-parallelism`. The first one will spawn one entire copy of the model per GPU and the latter will split the model across multiple GPUs. The amount of sidecars spawned will be the product of these two arguments. Take into account that you will need `tensor_parallelism * data_parallelism` GPUs to run that amount of sidecars.
 
 Here's an overview of the different options that the `psyche-sidecar` provides in case you want to test sidecars with different configurations.
 
