@@ -35,7 +35,7 @@ let
     owner = "NousResearch";
     repo = "torchtitan";
     rev = "efa84766c8471da45f614db3dc557d02ce4df055";
-    hash = "";
+    hash = "sha256-MfAnbQK5e3kiHB+J/FztjiWXh4f7JnolTlywW9Zqdn4=";
   };
   version = lib.removeSuffix "\n" (builtins.readFile (src + "/assets/version.txt"));
 in
