@@ -11,18 +11,20 @@ use iroh_blobs::{
     BlobsProtocol,
     api::downloader::Downloader,
     store::mem::{MemStore, Options as MemStoreOptions},
+    util::connection_pool::Options as PoolOptions,
 };
 use iroh_gossip::{
     api::{GossipReceiver, GossipSender},
     net::Gossip,
     proto::{HyparviewConfig, PlumtreeConfig},
 };
-use iroh_services::{ApiSecret, caps::NetDiagnosticsCap};
+use iroh_services::{API_SECRET_ENV_VAR_NAME, ApiSecret, caps::NetDiagnosticsCap};
 use n0_future::task::AbortOnDropHandle;
 pub use p2p_model_sharing::{
     MODEL_REQUEST_TIMEOUT_SECS, ModelConfigSharingMessage, ParameterSharingMessage,
     PeerManagerHandle,
 };
+use psyche_event_sourcing::event;
 use psyche_metrics::{ClientMetrics, PeerConnection};
 use router::{SupportedProtocols, spawn_router};
 use state::State;
@@ -102,8 +104,6 @@ use crate::p2p_model_sharing::ModelSharing;
 
 const USE_RELAY_HOSTNAME: &str = "use1-1.relay.nousresearch.psyche.iroh.link";
 const USW_RELAY_HOSTNAME: &str = "usw1-1.relay.nousresearch.psyche.iroh.link";
-
-const API_SECRET_ENV_VAR_NAME: &str = "N0DES_API_SECRET";
 
 /// How should this node discover other nodes?
 ///
@@ -342,9 +342,9 @@ where
 
         let endpoint = {
             let transport_config = QuicTransportConfig::builder()
-                .max_idle_timeout(Some(Duration::from_secs(10).try_into()?))
-                .keep_alive_interval(Duration::from_secs(1))
-                .set_max_remote_nat_traversal_addresses(50)
+                .max_idle_timeout(Some(Duration::from_secs(120).try_into()?))
+                .keep_alive_interval(Duration::from_secs(5))
+                .set_max_remote_nat_traversal_addresses(12)
                 .build();
 
             let relay_mode = match relay_kind {
@@ -354,7 +354,7 @@ where
             };
             debug!("Using relay servers: {}", fmt_relay_mode(&relay_mode));
 
-            let endpoint = Endpoint::builder()
+            let endpoint = Endpoint::builder(iroh::endpoint::presets::N0)
                 .secret_key(secret_key)
                 .relay_mode(relay_mode)
                 .transport_config(transport_config)
@@ -447,7 +447,13 @@ where
                 add_protected: None,
             }),
         });
-        let downloader = Downloader::new(&store, &endpoint);
+        let pool_options = PoolOptions {
+            idle_timeout: Duration::from_secs(60),
+            connect_timeout: Duration::from_secs(5),
+            max_connections: 1024,
+            on_connected: None,
+        };
+        let downloader = Downloader::new_with_opts(&store, &endpoint, pool_options);
         trace!("blobs store created!");
 
         trace!("creating gossip...");
@@ -570,6 +576,7 @@ where
             "broadcasted gossip message with hash {message_hash}: {:?}",
             message
         );
+
         tokio::spawn(async move { gossip_tx.broadcast(encoded_message).await });
         Ok(())
     }
@@ -588,7 +595,7 @@ where
         self.download_manager
             .add(ticket, tag.clone(), rx, download_type.clone());
         debug!(name: "blob_download_start", hash = %ticket_hash.fmt_short(), "started downloading blob {}", ticket_hash);
-
+        event!(p2p::BlobDownloadRequested { blob: ticket_hash });
         let latency_sorted = LatencySorted::new(
             std::iter::once(provider_endpoint_id.id)
                 .chain(additional_peers_to_try.iter().cloned())
@@ -603,7 +610,7 @@ where
 
             match progress {
                 Ok(mut progress) => {
-                    let result = tokio::time::timeout(Duration::from_secs(300), async {
+                    let result = tokio::time::timeout(Duration::from_secs(600), async {
                         while let Some(val) = progress.next().await {
                             if let Err(err) = tx.send(Ok(val)) {
                                 panic!("Failed to send download progress: {err:?} {:?}", err.0);
@@ -754,6 +761,7 @@ where
             update = self.download_manager.poll_next() => {
                 match update {
                     Some(DownloadManagerEvent::Complete(result)) => {
+                        event!(p2p::BlobDownloadCompleted { blob: result.hash, result: Ok(()) });
                         Ok(Some(NetworkEvent::DownloadComplete(result)))
                     }
                     Some(DownloadManagerEvent::Update(update)) => {
@@ -764,6 +772,7 @@ where
                         self.state.download_progesses.remove(&result.blob_ticket.hash());
                         let peer_id = result.blob_ticket.addr().id;
                         self.connection_monitor.update_peer_bandwidth(&peer_id, PeerBandwidth::Measured(0.0));
+                        event!(p2p::BlobDownloadCompleted { blob: result.blob_ticket.hash(), result: Err(result.error.to_string()) });
                         Ok(Some(NetworkEvent::DownloadFailed(result)))
                     }
                     None => Ok(None),
@@ -797,6 +806,22 @@ where
             .update_peer_bandwidth(&peer_id, peer_bw);
 
         let hash = update.blob_ticket.hash();
+
+        // Emit BlobDownloadStarted on first update, then BlobDownloadProgress on every update
+        // (including the first one). We don't include remote_id because the provider can change
+        // mid-download.
+        if !update.all_done {
+            if !self.state.download_progesses.contains_key(&hash) {
+                event!(p2p::BlobDownloadStarted {
+                    blob: hash,
+                    size_bytes: update.total_size
+                });
+            }
+            event!(p2p::BlobDownloadProgress {
+                blob: hash,
+                bytes_transferred: update.downloaded_size
+            });
+        }
 
         if update.all_done {
             self.state.download_progesses.remove(&hash);
@@ -900,14 +925,17 @@ fn parse_gossip_event<BroadcastMessage: Networkable>(
             let peers: Vec<_> = gossip.neighbors().collect();
             debug!(name: "gossip_new_peer", endpoint_id=%endpoint_id, all_gossip_peers = ?peers, "gossip connected to new peer {endpoint_id}, we now have {} peers", peers.len());
             metrics.update_p2p_gossip_neighbors(&peers);
+            event!(p2p::GossipNeighborUp { endpoint_id });
         }
         Ok(iroh_gossip::api::Event::NeighborDown(endpoint_id)) => {
             let peers: Vec<_> = gossip.neighbors().collect();
             debug!(name: "gossip_lost_peer", endpoint_id=%endpoint_id, all_gossip_peers = ?peers, "gossip disconnected from peer {endpoint_id}, we now have {} peers", peers.len());
             metrics.update_p2p_gossip_neighbors(&peers);
+            event!(p2p::GossipNeighborDown { endpoint_id })
         }
         Ok(iroh_gossip::api::Event::Lagged) => {
-            error!(name: "gossip_lagged","Gossip lagged. We missed some events.")
+            error!(name: "gossip_lagged","Gossip lagged. We missed some events.");
+            event!(p2p::GossipLagged);
         }
         Err(err) => {
             warn!("Error on gossip event RX: {err}");

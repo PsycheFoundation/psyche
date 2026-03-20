@@ -11,6 +11,7 @@ use iroh::PublicKey;
 use iroh_blobs::api::Tag;
 use iroh_blobs::api::downloader::DownloadProgressItem;
 use iroh_blobs::ticket::BlobTicket;
+use psyche_event_sourcing::event;
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, future::Future, marker::PhantomData, pin::Pin, sync::Arc};
 use tokio::{
@@ -308,17 +309,24 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
         let event = match result {
             Ok(progress) => match progress {
                 DownloadProgressItem::TryProvider {
-                    id: _id,
+                    id,
                     request: _request,
-                } => Some(DownloadManagerEvent::Update(DownloadUpdate {
-                    blob_ticket: download.blob_ticket.clone(),
-                    tag,
-                    downloaded_size_delta: 0,
-                    downloaded_size: 0,
-                    total_size: 0,
-                    all_done: false,
-                    download_type: download.download_type.clone(),
-                })),
+                } => {
+                    let blob = download.blob_ticket.hash();
+                    event!(p2p::BlobDownloadTryProvider {
+                        blob,
+                        endpoint_id: id,
+                    });
+                    Some(DownloadManagerEvent::Update(DownloadUpdate {
+                        blob_ticket: download.blob_ticket.clone(),
+                        tag,
+                        downloaded_size_delta: 0,
+                        downloaded_size: 0,
+                        total_size: 0,
+                        all_done: false,
+                        download_type: download.download_type.clone(),
+                    }))
+                }
                 DownloadProgressItem::Progress(bytes_amount) => {
                     let delta = bytes_amount.saturating_sub(download.last_offset);
                     download.last_offset = bytes_amount;
@@ -361,17 +369,24 @@ impl<D: Networkable + Send + 'static> DownloadManager<D> {
                     }))
                 }
                 DownloadProgressItem::ProviderFailed {
-                    id: _id,
+                    id,
                     request: _request,
-                } => Some(DownloadManagerEvent::Update(DownloadUpdate {
-                    blob_ticket: download.blob_ticket.clone(),
-                    tag,
-                    downloaded_size_delta: 0,
-                    downloaded_size: download.last_offset,
-                    total_size: download.total_size,
-                    all_done: false,
-                    download_type: download.download_type.clone(),
-                })),
+                } => {
+                    let blob = download.blob_ticket.hash();
+                    event!(p2p::BlobDownloadProviderFailed {
+                        blob,
+                        endpoint_id: id,
+                    });
+                    Some(DownloadManagerEvent::Update(DownloadUpdate {
+                        blob_ticket: download.blob_ticket.clone(),
+                        tag,
+                        downloaded_size_delta: 0,
+                        downloaded_size: download.last_offset,
+                        total_size: download.total_size,
+                        all_done: false,
+                        download_type: download.download_type.clone(),
+                    }))
+                }
             },
             Err(err) => Some(DownloadManagerEvent::Failed(DownloadFailed {
                 blob_ticket: download.blob_ticket.clone(),
