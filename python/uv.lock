@@ -200,6 +200,7 @@ name = "psyche-deps"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "einops" },
     { name = "flash-linear-attention" },
     { name = "transformers" },
 ]
@@ -211,6 +212,7 @@ tests = [
 
 [package.metadata]
 requires-dist = [
+    { name = "einops" },
     { name = "flash-linear-attention", specifier = "==0.4.0" },
     { name = "pytest", marker = "extra == 'tests'" },
     { name = "transformers", specifier = "==4.57.3" },
