@@ -31,6 +31,7 @@ let
 
   env = {
     LIBTORCH_USE_PYTORCH = 1;
+    LIBTORCH_BYPASS_VERSION_CHECK = 1;
   };
 
   rustWorkspaceDeps = {
