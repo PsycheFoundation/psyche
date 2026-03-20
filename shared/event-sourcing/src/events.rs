@@ -18,6 +18,7 @@ pub enum RpcCallType {
     Witness,
     WarmupWitness,
     HealthCheck,
+    CooldownWitness,
     Checkpoint,
     Join,
     Tick,

@@ -1,14 +1,13 @@
 use anyhow::{Error, Result};
 use bytemuck::Zeroable;
-use hf_hub::Repo;
 use psyche_centralized_shared::{ClientToServerMessage, ServerToClientMessage};
-use psyche_client::HubUploadInfo;
-use psyche_client::UploadInfo;
 use psyche_client::{
-    Client, ClientTUI, ClientTUIState, ModelExtraData, NC, RunInitConfig, TrainArgs,
-    read_identity_secret_key,
+    CheckpointUploader, Client, ClientTUI, ClientTUIState, ModelExtraData, NC, RunInitConfig,
+    TrainArgs, read_identity_secret_key,
 };
-use psyche_coordinator::{Coordinator, HealthChecks, model};
+use psyche_coordinator::model::{self, CheckpointSource};
+use psyche_coordinator::model_extra_data::CheckpointData;
+use psyche_coordinator::{Coordinator, HealthChecks};
 use psyche_core::NodeIdentity;
 use psyche_event_sourcing::event;
 use psyche_event_sourcing::events::RpcCallType;
@@ -172,26 +171,6 @@ impl App {
         p2p: NC,
         state_options: RunInitConfig,
     ) -> Result<()> {
-        // sanity checks
-        if let Some(checkpoint_config) = &state_options.checkpoint_config {
-            if let Some(UploadInfo::Hub(HubUploadInfo {
-                hub_repo,
-                hub_token,
-            })) = &checkpoint_config.upload_info
-            {
-                let api = hf_hub::api::tokio::ApiBuilder::new()
-                    .with_token(Some(hub_token.clone()))
-                    .build()?;
-                let repo_api = api.repo(Repo::new(hub_repo.clone(), hf_hub::RepoType::Model));
-                if !repo_api.is_writable().await {
-                    anyhow::bail!(
-                        "Checkpoint upload repo {} is not writable with the passed API key.",
-                        hub_repo
-                    )
-                }
-            }
-        }
-
         event!(coordinator::RpcCallSubmitted {
             call_type: RpcCallType::Join
         });
@@ -215,7 +194,50 @@ impl App {
             }
         }
 
+        // Wait for the first coordinator state to validate upload credentials with repo info.
+        let first_coordinator_state = select! {
+            _ = self.cancel.cancelled() => {
+                return Ok(());
+            }
+            message = self.server_conn.receive() => {
+                match message? {
+                    ServerToClientMessage::Coordinator(state) => {
+                        self.coordinator_state = *state;
+                        *state
+                    }
+                }
+            }
+        };
+
+        // Validate upload credentials now that we have the coordinator state with checkpoint info.
+        if !state_options.checkpoint_config.skip_upload {
+            let model::Model::LLM(ref llm) = first_coordinator_state.model;
+            if llm.checkpoint_source != CheckpointSource::Ephemeral {
+                match CheckpointData::from_fixed_vec(&llm.checkpoint_data) {
+                    Ok(CheckpointData::Hub { ref repo_id, .. }) => {
+                        let token = state_options.checkpoint_config.hub_token.as_ref()
+                            .ok_or_else(|| anyhow::anyhow!(
+                                "No HF_TOKEN found for checkpointing to Hub repo {}. Set HF_TOKEN environment variable.",
+                                repo_id
+                            ))?;
+                        // Validate write permissions — the uploader is dropped after validation,
+                        // it will be re-created during cooldown with the current coordinator state.
+                        CheckpointUploader::new_hub(repo_id.clone(), token.clone()).await?;
+                    }
+                    Ok(CheckpointData::Gcs {
+                        ref bucket,
+                        ref prefix,
+                    }) => {
+                        CheckpointUploader::new_gcs(bucket.clone(), prefix.clone()).await?;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         let (tx_from_server_message, rx_from_server_message) = mpsc::unbounded_channel();
+        // Forward the first coordinator state we already received.
+        tx_from_server_message.send(first_coordinator_state)?;
         let (tx_to_server_message, mut rx_to_server_message) = mpsc::unbounded_channel();
         let mut client = Client::new(
             Backend {
@@ -251,6 +273,7 @@ impl App {
                             let ct = match **w {
                                 OpportunisticData::WitnessStep(..) => RpcCallType::Witness,
                                 OpportunisticData::WarmupStep(..) => RpcCallType::WarmupWitness,
+                                OpportunisticData::CooldownStep(..) => RpcCallType::CooldownWitness,
                             };
                             (ClientToServerMessage::Witness(match to_send { ToSend::Witness(w) => w, _ => unreachable!() }), ct)
                         }

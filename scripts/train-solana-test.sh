@@ -20,23 +20,31 @@ elif [[ -z "${WALLET_FILE:-}" ]]; then
     trap "echo 'Cleaning up ephemeral wallet file...'; rm -f '${WALLET_FILE}'" EXIT
 fi
 
-RPC=${RPC:-"http://127.0.0.1:8899"}
-WS_RPC=${WS_RPC:-"ws://127.0.0.1:8900"}
+RPC=${RPC:-"http://localhost:8899"}
+WS_RPC=${WS_RPC:-"ws://localhost:8900"}
 RUN_ID=${RUN_ID:-"test"}
 AUTHORIZER=${AUTHORIZER:-"11111111111111111111111111111111"}
+
+if [[ "$CHECKPOINT" == true ]]; then
+    echo -e "\n[+] Starting Solana training with checkpointing enabled..."
+else
+    echo -e "\n[+] Starting Solana training without checkpointing..."
+fi
 
 # presets for a DGX or an HGX
 DP=${DP:-"8"}
 TP=${TP:-"1"}
 BATCH_SIZE=${BATCH_SIZE:-"1"}
+export HF_TOKEN=${HF_TOKEN:-""}
+export GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-""}
 
 # Optional checkpoint args
 CHECKPOINT_ARGS=()
 if [[ "$CHECKPOINT" == "true" ]]; then
     echo -e "\n[+] Starting Solana training with checkpointing enabled..."
-    CHECKPOINT_ARGS+=(--skip-checkpoint-upload)
 else
     echo -e "\n[+] Starting Solana training without checkpointing..."
+    CHECKPOINT_ARGS+=(--skip-checkpoint-upload)
 fi
 
 # fine if this fails

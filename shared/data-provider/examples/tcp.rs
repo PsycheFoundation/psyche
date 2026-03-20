@@ -2,6 +2,7 @@ use anyhow::{Result, bail};
 use async_trait::async_trait;
 use bytemuck::Zeroable;
 use futures::future::try_join_all;
+use parquet::data_type::AsBytes;
 use psyche_coordinator::{Coordinator, HealthChecks, model};
 use psyche_core::BatchId;
 use psyche_data_provider::{

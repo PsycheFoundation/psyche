@@ -1,84 +1,16 @@
 use crate::{Client, Coordinator, CoordinatorError, SOLANA_MAX_NUM_WITNESSES};
+use psyche_core::{NodeIdentity, compute_shuffled_index, sha256};
 
-use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
-use bytemuck::Zeroable;
-use psyche_core::{NodeIdentity, SmallBoolean, compute_shuffled_index, sha256, sha256v};
-use serde::{Deserialize, Serialize};
-use ts_rs::TS;
-
-pub const COMMITTEE_SALT: &str = "committee";
-pub const WITNESS_SALT: &str = "witness";
-
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    PartialEq,
-    Zeroable,
-    AnchorDeserialize,
-    AnchorSerialize,
-    Serialize,
-    Deserialize,
-)]
-#[repr(C)]
-pub enum Committee {
-    #[default]
-    TieBreaker,
-    Verifier,
-    Trainer,
-}
+use super::checkpointer_selection::get_round_by_offset;
+use super::types::{Committee, CommitteeProof, WitnessProof, salts};
 
 #[derive(Clone)]
 pub struct CommitteeSelection {
-    tie_breaker_nodes: u64,
-    verifier_nodes: u64,
-    total_nodes: u64,
-    witness_nodes: u64,
-    seed: [u8; 32],
-}
-
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    PartialEq,
-    Zeroable,
-    AnchorDeserialize,
-    AnchorSerialize,
-    Serialize,
-    Deserialize,
-)]
-#[repr(C)]
-pub struct CommitteeProof {
-    pub committee: Committee,
-    pub position: u64,
-    pub index: u64,
-}
-
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    PartialEq,
-    Zeroable,
-    Default,
-    AnchorDeserialize,
-    AnchorSerialize,
-    Serialize,
-    Deserialize,
-    InitSpace,
-    TS,
-)]
-#[repr(C)]
-pub struct WitnessProof {
-    // position in virtual shuffle, as determined by seed
-    pub position: u64,
-    // index into epoch_state.clients of sender
-    pub index: u64,
-    // assertion of witness membership or non-membership
-    pub witness: SmallBoolean,
+    pub(crate) tie_breaker_nodes: u64,
+    pub(crate) verifier_nodes: u64,
+    pub(crate) total_nodes: u64,
+    pub(crate) witness_nodes: u64,
+    pub(crate) seed: [u8; 32],
 }
 
 impl CommitteeSelection {
@@ -89,25 +21,15 @@ impl CommitteeSelection {
         total_nodes: usize,
         seed: u64,
     ) -> Result<Self, CoordinatorError> {
-        if total_nodes >= u64::MAX as usize {
-            return Err(CoordinatorError::InvalidCommitteeSelection);
-        }
-
-        if total_nodes < tie_breaker_nodes {
-            return Err(CoordinatorError::InvalidCommitteeSelection);
-        }
-
-        if witness_nodes != 0 && total_nodes < witness_nodes {
-            return Err(CoordinatorError::InvalidCommitteeSelection);
-        }
-
-        if verification_percent > 100 {
-            return Err(CoordinatorError::InvalidCommitteeSelection);
-        }
+        Self::validate_params(
+            tie_breaker_nodes,
+            witness_nodes,
+            verification_percent,
+            total_nodes,
+        )?;
 
         let free_nodes = total_nodes - tie_breaker_nodes;
         let verifier_nodes = (free_nodes * verification_percent as usize) / 100;
-
         let seed = sha256(&seed.to_le_bytes());
 
         Ok(Self {
@@ -119,19 +41,32 @@ impl CommitteeSelection {
         })
     }
 
+    fn validate_params(
+        tie_breaker_nodes: usize,
+        witness_nodes: usize,
+        verification_percent: u8,
+        total_nodes: usize,
+    ) -> Result<(), CoordinatorError> {
+        if total_nodes >= u64::MAX as usize {
+            return Err(CoordinatorError::InvalidCommitteeSelection);
+        }
+        if total_nodes < tie_breaker_nodes {
+            return Err(CoordinatorError::InvalidCommitteeSelection);
+        }
+        if witness_nodes != 0 && total_nodes < witness_nodes {
+            return Err(CoordinatorError::InvalidCommitteeSelection);
+        }
+        if verification_percent > 100 {
+            return Err(CoordinatorError::InvalidCommitteeSelection);
+        }
+        Ok(())
+    }
+
     pub fn from_coordinator(
         coordinator: &Coordinator,
         offset: isize,
     ) -> Result<Self, CoordinatorError> {
-        let round = match offset {
-            -2 => coordinator.previous_previous_round(),
-            -1 => coordinator.previous_round(),
-            0 => coordinator.current_round(),
-            _ => {
-                return Err(CoordinatorError::NoActiveRound);
-            }
-        }
-        .ok_or(CoordinatorError::NoActiveRound)?;
+        let round = get_round_by_offset(coordinator, offset)?;
         Self::new(
             round.tie_breaker_tasks as usize,
             coordinator.config.witness_nodes as usize,
@@ -142,8 +77,8 @@ impl CommitteeSelection {
     }
 
     pub fn get_witness(&self, index: u64) -> WitnessProof {
-        let position = self.compute_shuffled_index(index, WITNESS_SALT);
-        let witness = self.get_witness_from_position(position);
+        let position = self.compute_shuffled_index(index, salts::WITNESS);
+        let witness = self.is_witness_at_position(position);
         WitnessProof {
             witness: witness.into(),
             position,
@@ -151,40 +86,9 @@ impl CommitteeSelection {
         }
     }
 
-    pub fn get_committee(&self, index: u64) -> CommitteeProof {
-        let position = self.compute_shuffled_index(index, COMMITTEE_SALT);
-        let committee = self.get_committee_from_position(position);
-        CommitteeProof {
-            committee,
-            position,
-            index,
-        }
-    }
-
-    pub fn get_committee_from_position(&self, committee_position: u64) -> Committee {
-        if committee_position < self.tie_breaker_nodes {
-            Committee::TieBreaker
-        } else if committee_position < self.tie_breaker_nodes + self.verifier_nodes {
-            Committee::Verifier
-        } else {
-            Committee::Trainer
-        }
-    }
-
-    fn get_witness_from_position(&self, witness_position: u64) -> bool {
-        match self.witness_nodes {
-            0 => witness_position < SOLANA_MAX_NUM_WITNESSES as u64,
-            witness_nodes => witness_position < witness_nodes,
-        }
-    }
-
-    pub fn verify_committee_for_client(
-        &self,
-        client_id: &NodeIdentity,
-        proof: &CommitteeProof,
-        clients: &[Client],
-    ) -> bool {
-        Self::verify_client(client_id, proof.index, clients) && self.verify_committee(proof)
+    pub fn verify_witness(&self, proof: &WitnessProof) -> bool {
+        let position = self.compute_shuffled_index(proof.index, salts::WITNESS);
+        proof.position == position && proof.witness == self.is_witness_at_position(position).into()
     }
 
     pub fn verify_witness_for_client(
@@ -196,25 +100,54 @@ impl CommitteeSelection {
         Self::verify_client(client_id, proof.index, clients) && self.verify_witness(proof)
     }
 
+    fn is_witness_at_position(&self, position: u64) -> bool {
+        match self.witness_nodes {
+            0 => position < SOLANA_MAX_NUM_WITNESSES as u64,
+            witness_nodes => position < witness_nodes,
+        }
+    }
+
+    pub fn get_committee(&self, index: u64) -> CommitteeProof {
+        let position = self.compute_shuffled_index(index, salts::COMMITTEE);
+        let committee = self.get_committee_from_position(position);
+        CommitteeProof {
+            committee,
+            position,
+            index,
+        }
+    }
+
+    pub fn get_committee_from_position(&self, position: u64) -> Committee {
+        if position < self.tie_breaker_nodes {
+            Committee::TieBreaker
+        } else if position < self.tie_breaker_nodes + self.verifier_nodes {
+            Committee::Verifier
+        } else {
+            Committee::Trainer
+        }
+    }
+
+    pub fn verify_committee(&self, proof: &CommitteeProof) -> bool {
+        let position = self.compute_shuffled_index(proof.index, salts::COMMITTEE);
+        proof.position == position && proof.committee == self.get_committee_from_position(position)
+    }
+
+    pub fn verify_committee_for_client(
+        &self,
+        client_id: &NodeIdentity,
+        proof: &CommitteeProof,
+        clients: &[Client],
+    ) -> bool {
+        Self::verify_client(client_id, proof.index, clients) && self.verify_committee(proof)
+    }
+
     fn verify_client(client_id: &NodeIdentity, index: u64, clients: &[Client]) -> bool {
         clients.get(index as usize).map(|c| &c.id) == Some(client_id)
     }
 
-    fn verify_committee(&self, proof: &CommitteeProof) -> bool {
-        let position = self.compute_shuffled_index(proof.index, COMMITTEE_SALT);
-        proof.position == position && proof.committee == self.get_committee_from_position(position)
-    }
-
-    fn verify_witness(&self, proof: &WitnessProof) -> bool {
-        let position = self.compute_shuffled_index(proof.index, WITNESS_SALT);
-        proof.position == position
-            && proof.witness == self.get_witness_from_position(position).into()
-    }
-
     fn compute_shuffled_index(&self, index: u64, salt: &str) -> u64 {
         let mut seed = [0u8; 32];
-        seed.copy_from_slice(&sha256v(&[&self.seed, salt.as_bytes()]));
-
+        seed.copy_from_slice(&psyche_core::sha256v(&[&self.seed, salt.as_bytes()]));
         compute_shuffled_index(index, self.total_nodes, &seed)
     }
 
@@ -235,19 +168,10 @@ impl CommitteeSelection {
     }
 }
 
-impl std::fmt::Display for Committee {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Committee::TieBreaker => write!(f, "Tie breaker"),
-            Committee::Verifier => write!(f, "Verifier"),
-            Committee::Trainer => write!(f, "Trainer"),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{Committee, CommitteeProof, WitnessProof};
 
     #[test]
     fn test_new_committee_selection() {
@@ -385,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_committee_selections() {
+    fn test_invalid_comittee_selections() {
         // verification_percent > 100
         assert!(CommitteeSelection::new(10, 5, 101, 100, 12345).is_err());
         // total_nodes < tie_breaker_nodes

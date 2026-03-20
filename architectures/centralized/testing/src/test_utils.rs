@@ -127,6 +127,7 @@ pub fn dummy_client_app_params_with_training_delay(
     run_id: &str,
     training_delay_secs: u64,
 ) -> AppParams {
+    std::env::set_var("HF_TOKEN", "dummy_token");
     AppParams {
         cancel: CancellationToken::default(),
         server_addr: format!("localhost:{server_port}").to_string(),
@@ -141,6 +142,7 @@ pub fn dummy_client_app_params_with_training_delay(
             "--max-concurrent-parameter-requests", "10",
             "--hub-max-concurrent-downloads", "1",
             "--dummy-training-delay-secs", training_delay_secs.to_string().as_str(),
+            "--skip-checkpoint-upload",
         ])
         .train_args,
     }

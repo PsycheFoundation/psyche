@@ -350,6 +350,15 @@ impl SolanaBackend {
                 ),
                 RpcCallType::WarmupWitness,
             ),
+            OpportunisticData::CooldownStep(witness) => (
+                instructions::coordinator_cooldown_witness(
+                    &coordinator_instance,
+                    &coordinator_account,
+                    &user,
+                    witness,
+                ),
+                RpcCallType::CooldownWitness,
+            ),
         };
         self.spawn_scheduled_send("Witness", &[instruction], &[], call_type);
     }

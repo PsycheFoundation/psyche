@@ -10,10 +10,14 @@ use anchor_client::{
 };
 use anyhow::{Result, anyhow};
 use psyche_client::{
-    Client, ClientTUI, ClientTUIState, ModelExtraData, NC, RunInitConfig, TrainArgs,
-    read_identity_secret_key,
+    CheckpointUploader, Client, ClientTUI, ClientTUIState, ModelExtraData, NC, RunInitConfig,
+    TrainArgs, read_identity_secret_key,
 };
-use psyche_coordinator::{ClientState, Coordinator, CoordinatorError, RunState};
+use psyche_coordinator::{
+    ClientState, Coordinator, CoordinatorError, RunState,
+    model::{CheckpointSource, Model},
+    model_extra_data::CheckpointData,
+};
 use psyche_core::sha256;
 use psyche_metrics::ClientMetrics;
 
@@ -232,6 +236,30 @@ impl App {
 
         let mut joined_run_this_epoch = None;
         let mut ever_joined_run = false;
+
+        // sanity checks — skip credential validation when checkpoint upload is disabled
+        if !self.state_options.checkpoint_config.skip_upload {
+            let Model::LLM(ref llm) = start_coordinator_state.model;
+            if llm.checkpoint_source != CheckpointSource::Ephemeral {
+                match CheckpointData::from_fixed_vec(&llm.checkpoint_data) {
+                    Ok(CheckpointData::Hub { ref repo_id, .. }) => {
+                        let token = self.state_options.checkpoint_config.hub_token.as_ref()
+                            .ok_or_else(|| anyhow!(
+                                "No HF_TOKEN found for checkpointing to Hub repo {}. Set HF_TOKEN environment variable.",
+                                repo_id
+                            ))?;
+                        CheckpointUploader::new_hub(repo_id.clone(), token.clone()).await?;
+                    }
+                    Ok(CheckpointData::Gcs {
+                        ref bucket,
+                        ref prefix,
+                    }) => {
+                        CheckpointUploader::new_gcs(bucket.clone(), prefix.clone()).await?;
+                    }
+                    _ => {}
+                }
+            }
+        }
 
         // if we're already in "WaitingForMembers" we won't get an update saying that
         // (subscription is on change), so check if it's in that state right at boot

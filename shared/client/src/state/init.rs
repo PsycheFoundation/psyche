@@ -72,7 +72,7 @@ pub struct RunInitConfig {
     pub write_gradients_dir: Option<PathBuf>,
 
     // checkpointing
-    pub checkpoint_config: Option<CheckpointConfig>,
+    pub checkpoint_config: CheckpointConfig,
 
     // configurable dummy training time (in seconds) for this client - relevant just for testing
     pub dummy_training_delay_secs: Option<u64>,
@@ -168,7 +168,6 @@ pub struct RunInitConfigAndIO {
 
     pub tx_health_check: UnboundedSender<HealthChecks>,
     pub tx_witness: UnboundedSender<OpportunisticData>,
-    pub tx_checkpoint: UnboundedSender<model::CheckpointBytes>,
     pub tx_model: UnboundedSender<HashMap<String, Tensor>>,
     pub tx_parameters_req: UnboundedSender<(Vec<String>, OneshotModelParameterSender)>,
     pub tx_config: UnboundedSender<(String, String)>,
@@ -187,7 +186,6 @@ impl RunInitConfigAndIO {
             init_config,
             tx_witness,
             tx_health_check,
-            tx_checkpoint,
             tx_model,
             tx_config,
             tx_parameters_req,
@@ -215,43 +213,42 @@ impl RunInitConfigAndIO {
 
         // Use model extra data override if provided (only meant for testing/debugging),
         // otherwise fetch from GCS/Hub
-        let model_extra_data: ModelExtraData = if let Some(config) =
-            init_config.model_extra_data_override.clone()
-        {
-            info!("Using model extra data override from CLI");
-            config
-        } else {
-            match llm.decode_checkpoint() {
-                Some(CheckpointData::Gcs { bucket, .. }) => {
-                    let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
-                    debug!("Fetching model extra data from gs://{}/{}", bucket, path);
-                    fetch_json_from_gcs(&bucket, &path).await?
-                }
-                Some(CheckpointData::Hub { repo_id, revision }) => {
-                    let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
-                    debug!("Fetching model extra data from Hub: {}/{}", repo_id, path);
-                    match fetch_json_from_hub(
-                        &repo_id,
-                        revision,
-                        &path,
-                        init_config.hub_read_token.clone(),
-                    )
-                    .await
-                    {
-                        Ok(config) => config,
-                        Err(e) => {
-                            error!(
-                                "Failed to fetch model extra data from Hub ({}): {}",
-                                repo_id, e
-                            );
-                            return Err(InitRunError::HubModelLoad(e));
+        let model_extra_data: ModelExtraData =
+            if let Some(config) = init_config.model_extra_data_override.clone() {
+                info!("Using model extra data override from CLI");
+                config
+            } else {
+                match llm.decode_checkpoint() {
+                    Some(CheckpointData::Gcs { bucket, .. }) => {
+                        let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
+                        debug!("Fetching model extra data from gs://{}/{}", bucket, path);
+                        fetch_json_from_gcs(&bucket, &path).await?
+                    }
+                    Some(CheckpointData::Hub { repo_id, revision }) => {
+                        let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
+                        debug!("Fetching model extra data from Hub: {}/{}", repo_id, path);
+                        match fetch_json_from_hub(
+                            &repo_id,
+                            revision,
+                            &path,
+                            init_config.hub_read_token.clone(),
+                        )
+                        .await
+                        {
+                            Ok(config) => config,
+                            Err(e) => {
+                                error!(
+                                    "Failed to fetch model extra data from Hub ({}): {}",
+                                    repo_id, e
+                                );
+                                return Err(InitRunError::HubModelLoad(e));
+                            }
                         }
                     }
+                    // Dummy/Ephemeral/unknown checkpoints use default model extra data (for testing)
+                    _ => ModelExtraData::default(),
                 }
-                // Dummy/Ephemeral/unknown checkpoints use default model extra data (for testing)
-                _ => ModelExtraData::default(),
-            }
-        };
+            };
 
         let hub_read_token = init_config.hub_read_token.clone();
         let hub_max_concurrent_downloads = init_config.hub_max_concurrent_downloads;
@@ -963,7 +960,6 @@ impl RunInitConfigAndIO {
         };
 
         let cooldown = CooldownStepMetadata::new(
-            tx_checkpoint,
             tx_model,
             init_config.checkpoint_config,
             checkpoint_extra_files,

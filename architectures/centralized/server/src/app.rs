@@ -443,6 +443,10 @@ impl App {
                         Self::get_timestamp(),
                         rand::rng().next_u64(),
                     ),
+                    OpportunisticData::CooldownStep(witness) => self.coordinator.cooldown_witness(
+                        &NodeIdentity::from_single_key(*from.as_bytes()),
+                        witness,
+                    ),
                 } {
                     warn!("Error when processing witness: {error}");
                 };

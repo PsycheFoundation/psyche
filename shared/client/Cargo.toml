@@ -38,6 +38,7 @@ hf-hub.workspace = true
 clap.workspace = true
 sysinfo = "0.32.0"
 iroh-blobs.workspace = true
+google-cloud-storage.workspace = true
 
 [features]
 parallelism = ["psyche-modeling/parallelism"]
