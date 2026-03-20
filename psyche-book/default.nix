@@ -3,8 +3,7 @@
   stdenvNoCC,
   mdbook,
   mdbook-mermaid,
-  mdbook-linkcheck,
-  fetchFromGitHub,
+  mdbook-linkcheck2,
 
   # custom args
   rustPackages,
@@ -18,24 +17,7 @@ stdenvNoCC.mkDerivation {
   nativeBuildInputs = [
     mdbook
     mdbook-mermaid
-    (mdbook-linkcheck.overrideAttrs (
-      final: prev: {
-        version = "unstable-2025-12-04";
-        src = fetchFromGitHub {
-          owner = "schilkp";
-          repo = "mdbook-linkcheck";
-          rev = "ed981be6ded11562e604fff290ae4c08f1c419c5";
-          sha256 = "sha256-GTVWc/vkqY9Hml2fmm3iCHOzd/HPP1i/8NIIjFqGGbQ=";
-        };
-
-        cargoDeps = prev.cargoDeps.overrideAttrs (previousAttrs: {
-          vendorStaging = previousAttrs.vendorStaging.overrideAttrs {
-            inherit (final) src;
-            outputHash = "sha256-+73aI/jt5mu6dR6PR9Q08hPdOsWukb/z9crIdMMeF7U=";
-          };
-        });
-      }
-    ))
+    mdbook-linkcheck2
   ];
 
   postPatch = ''
