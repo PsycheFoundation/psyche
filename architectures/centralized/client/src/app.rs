@@ -224,11 +224,8 @@ impl App {
                         // it will be re-created during cooldown with the current coordinator state.
                         CheckpointUploader::new_hub(repo_id.clone(), token.clone()).await?;
                     }
-                    Ok(CheckpointData::Gcs {
-                        ref bucket,
-                        ref prefix,
-                    }) => {
-                        CheckpointUploader::new_gcs(bucket.clone(), prefix.clone()).await?;
+                    Ok(CheckpointData::Gcs { .. }) => {
+                        // GCS uploads use run-down signed URLs; auth is validated at request time.
                     }
                     _ => {}
                 }

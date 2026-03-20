@@ -19,6 +19,7 @@ use psyche_coordinator::{
     model_extra_data::CheckpointData,
 };
 use psyche_core::sha256;
+use psyche_data_provider::RunDownClient;
 use psyche_metrics::ClientMetrics;
 
 use psyche_network::{DiscoveryMode, NetworkTUIState, NetworkTui, SecretKey, allowlist};
@@ -96,8 +97,18 @@ pub async fn build_app(
 
     let eval_tasks = p.eval_tasks()?;
     let hub_read_token = std::env::var("HF_TOKEN").ok();
-    let checkpoint_config = p.checkpoint_config()?;
+    let mut checkpoint_config = p.checkpoint_config()?;
     let model_extra_data_override: Option<ModelExtraData> = p.model_extra_data_override()?;
+
+    // Construct RunDownClient using the wallet keypair for signing.
+    // This enables GCS checkpoint upload/download via run-down signed URLs.
+    let run_down_keypair = wallet_keypair.clone();
+    let run_down_client = Arc::new(RunDownClient::new(
+        p.run_id.clone(),
+        wallet_keypair.pubkey().to_string(),
+        move |msg| run_down_keypair.sign_message(msg).as_ref().to_vec(),
+    ));
+    checkpoint_config.run_down_client = Some(run_down_client);
 
     let solana_pubkey = wallet_keypair.pubkey();
     let wandb_info = p.wandb_info(format!("{}-{solana_pubkey}", p.run_id))?;
@@ -250,11 +261,11 @@ impl App {
                             ))?;
                         CheckpointUploader::new_hub(repo_id.clone(), token.clone()).await?;
                     }
-                    Ok(CheckpointData::Gcs {
-                        ref bucket,
-                        ref prefix,
-                    }) => {
-                        CheckpointUploader::new_gcs(bucket.clone(), prefix.clone()).await?;
+                    Ok(CheckpointData::Gcs { .. }) => {
+                        // GCS uploads use run-down signed URLs; auth is validated at request time.
+                        if self.state_options.checkpoint_config.run_down_client.is_none() {
+                            anyhow::bail!("RunDownClient not configured for GCS checkpoint upload");
+                        }
                     }
                     _ => {}
                 }
