@@ -40,6 +40,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "aes-gcm"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "831010a0f742e1209b3bcea8fab6a8e149051ba6099432c8cb2cc117dec3ead1"
+dependencies = [
+ "aead",
+ "aes",
+ "cipher",
+ "ctr",
+ "ghash",
+ "subtle",
+]
+
+[[package]]
 name = "aes-gcm-siv"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -715,19 +729,6 @@ dependencies = [
  "concurrent-queue",
  "event-listener 2.5.3",
  "futures-core",
-]
-
-[[package]]
-name = "async-compat"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1ba85bc55464dcbf728b56d97e119d673f4cf9062be330a9a26f3acf504a590"
-dependencies = [
- "futures-core",
- "futures-io",
- "once_cell",
- "pin-project-lite",
- "tokio",
 ]
 
 [[package]]
@@ -3344,6 +3345,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ghash"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0d8a4362ccb29cb0b265253fb0a2728f592895ee6854fd9bc13f2ffda266ff1"
+dependencies = [
+ "opaque-debug",
+ "polyval",
+]
+
+[[package]]
 name = "gif"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4448,9 +4459,9 @@ dependencies = [
 
 [[package]]
 name = "iroh"
-version = "0.96.1"
+version = "0.97.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5236da4d5681f317ec393c8fe2b7e3d360d31c6bb40383991d0b7429ca5ad117"
+checksum = "feb56e7e4b0ec7fba7efa6a236b016a52b5d927d50244aceb9e20566159b1a32"
 dependencies = [
  "backon",
  "bytes",
@@ -4462,22 +4473,22 @@ dependencies = [
  "getrandom 0.3.4",
  "hickory-resolver",
  "http 1.4.0",
- "igd-next",
+ "ipnet",
  "iroh-base",
  "iroh-metrics 0.38.2",
- "iroh-quinn",
- "iroh-quinn-proto",
- "iroh-quinn-udp",
  "iroh-relay",
  "n0-error",
  "n0-future",
  "n0-watcher",
- "netdev",
  "netwatch",
+ "noq",
+ "noq-proto",
+ "noq-udp",
  "papaya",
  "pin-project",
  "pkarr",
  "pkcs8 0.11.0-rc.11",
+ "portable-atomic",
  "portmapper",
  "rand 0.9.2",
  "reqwest 0.12.28",
@@ -4487,7 +4498,7 @@ dependencies = [
  "rustls-webpki 0.103.9",
  "serde",
  "smallvec",
- "strum 0.27.2",
+ "strum 0.28.0",
  "sync_wrapper 1.0.2",
  "time",
  "tokio",
@@ -4501,9 +4512,9 @@ dependencies = [
 
 [[package]]
 name = "iroh-base"
-version = "0.96.1"
+version = "0.97.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20c99d836a1c99e037e98d1bf3ef209c3a4df97555a00ce9510eb78eccdf5567"
+checksum = "55a354e3396b62c14717ee807dfee9a7f43f6dad47e4ac0fd1d49f1ffad14ef0"
 dependencies = [
  "curve25519-dalek 5.0.0-pre.1",
  "data-encoding",
@@ -4521,9 +4532,9 @@ dependencies = [
 
 [[package]]
 name = "iroh-blobs"
-version = "0.98.0"
+version = "0.99.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1f253ea06293e51e166a88a3faa019b67e187d12bd7c6a04369a0ec86f53272"
+checksum = "51b06914e77bd07bc1b3600096be66e2a63d391e8f4a901f61771630e20f2116"
 dependencies = [
  "arrayvec",
  "bao-tree",
@@ -4539,12 +4550,12 @@ dependencies = [
  "iroh-base",
  "iroh-io",
  "iroh-metrics 0.38.2",
- "iroh-quinn",
  "iroh-tickets",
  "irpc",
  "n0-error",
  "n0-future",
  "nested_enum_utils",
+ "noq",
  "postcard",
  "rand 0.9.2",
  "range-collections",
@@ -4560,9 +4571,9 @@ dependencies = [
 
 [[package]]
 name = "iroh-gossip"
-version = "0.96.0"
+version = "0.97.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d04f83254c847ac61a9b2215b95a36d598d87af033ca12a546cd1c6a2e06dab"
+checksum = "4db5b64f3cb0a0c8b68b57888acd4cefcd2f0774f1a132d2a498cbb2a92fbc55"
 dependencies = [
  "blake3",
  "bytes",
@@ -4655,71 +4666,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "iroh-quinn"
-version = "0.16.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "034ed21f34c657a123d39525d948c885aacba59508805e4dd67d71f022e7151b"
-dependencies = [
- "bytes",
- "cfg_aliases",
- "iroh-quinn-proto",
- "iroh-quinn-udp",
- "pin-project-lite",
- "rustc-hash",
- "rustls 0.23.36",
- "socket2 0.6.2",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tracing",
- "web-time",
-]
-
-[[package]]
-name = "iroh-quinn-proto"
-version = "0.15.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0de99ad8adc878ee0e68509ad256152ce23b8bbe45f5539d04e179630aca40a9"
-dependencies = [
- "bytes",
- "derive_more",
- "enum-assoc",
- "fastbloom",
- "getrandom 0.3.4",
- "identity-hash",
- "lru-slab",
- "rand 0.9.2",
- "ring",
- "rustc-hash",
- "rustls 0.23.36",
- "rustls-pki-types",
- "rustls-platform-verifier",
- "slab",
- "sorted-index-buffer",
- "thiserror 2.0.18",
- "tinyvec",
- "tracing",
- "web-time",
-]
-
-[[package]]
-name = "iroh-quinn-udp"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f981dadd5a072a9e0efcd24bdcc388e570073f7e51b33505ceb1ef4668c80c86"
-dependencies = [
- "cfg_aliases",
- "libc",
- "socket2 0.6.2",
- "tracing",
- "windows-sys 0.61.2",
-]
-
-[[package]]
 name = "iroh-relay"
-version = "0.96.1"
+version = "0.97.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd2b63e654b9dec799a73372cdc79b529ca6c7248c0c8de7da78a02e3a46f03c"
+checksum = "d786b260cadfe82ae0b6a9e372e8c78949096a06c857d1c3521355cefced0f55"
 dependencies = [
  "blake3",
  "bytes",
@@ -4734,11 +4684,11 @@ dependencies = [
  "hyper-util",
  "iroh-base",
  "iroh-metrics 0.38.2",
- "iroh-quinn",
- "iroh-quinn-proto",
  "lru 0.16.3",
  "n0-error",
  "n0-future",
+ "noq",
+ "noq-proto",
  "num_enum",
  "pin-project",
  "pkarr",
@@ -4749,7 +4699,7 @@ dependencies = [
  "rustls-pki-types",
  "serde",
  "serde_bytes",
- "strum 0.27.2",
+ "strum 0.28.0",
  "tokio",
  "tokio-rustls 0.26.4",
  "tokio-util 0.7.18",
@@ -4764,9 +4714,9 @@ dependencies = [
 
 [[package]]
 name = "iroh-services"
-version = "0.11.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80e90cec7e16813b8b29eba1d955cccc2505e29c34ceed76722d3857bf2c9072"
+checksum = "983bab90919b719b2f0c73277c78f7d77c9eccb5e9fdcbab4383be97a233c489"
 dependencies = [
  "anyhow",
  "built",
@@ -4798,9 +4748,9 @@ dependencies = [
 
 [[package]]
 name = "iroh-tickets"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09cd580bf680db919cbbce6886a47314acb0e9b4f7b639acebcea5e9f485d183"
+checksum = "ab64bac4bb573b9cfd2142bd2876ed65ca792efbc4398361a4ee51a0f9afbed6"
 dependencies = [
  "data-encoding",
  "derive_more",
@@ -4812,16 +4762,16 @@ dependencies = [
 
 [[package]]
 name = "irpc"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1bbc84aaeab13a6d7502bae4f40f2517b643924842e0230ea0bf807477cc208"
+checksum = "4f47b7c52662d673df377b5ac40c121c7ff56eb764e520fae6543686132f7957"
 dependencies = [
  "futures-buffered",
  "futures-util",
- "iroh-quinn",
  "irpc-derive",
  "n0-error",
  "n0-future",
+ "noq",
  "postcard",
  "rcgen",
  "rustls 0.23.36",
@@ -4834,9 +4784,9 @@ dependencies = [
 
 [[package]]
 name = "irpc-derive"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58148196d2230183c9679431ac99b57e172000326d664e8456fa2cd27af6505a"
+checksum = "83c1a4b460634aeed6dc01236a0047867de70e30562d91a0ad031dcb3ac33fb4"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4845,9 +4795,9 @@ dependencies = [
 
 [[package]]
 name = "irpc-iroh"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0f6bddffe7992adcfb793dca9711d86b31bd3427d2443eff90525ac8593f268"
+checksum = "6dd882f8cc059ac28ff54195a4933226807206c939c14680281c0ddb8434b3a8"
 dependencies = [
  "getrandom 0.3.4",
  "iroh",
@@ -5719,9 +5669,9 @@ dependencies = [
 
 [[package]]
 name = "netdev"
-version = "0.40.0"
+version = "0.40.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc9815643a243856e7bd84524e1ff739e901e846cfb06ad9627cd2b6d59bd737"
+checksum = "1b0a0096d9613ee878dba89bbe595f079d373e3f1960d882e4f2f78ff9c30a0a"
 dependencies = [
  "block2",
  "dispatch2",
@@ -5730,7 +5680,7 @@ dependencies = [
  "libc",
  "mac-addr",
  "netlink-packet-core",
- "netlink-packet-route 0.25.1",
+ "netlink-packet-route",
  "netlink-sys",
  "objc2-core-foundation",
  "objc2-system-configuration",
@@ -5750,21 +5700,9 @@ dependencies = [
 
 [[package]]
 name = "netlink-packet-route"
-version = "0.25.1"
+version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ec2f5b6839be2a19d7fa5aab5bc444380f6311c2b693551cb80f45caaa7b5ef"
-dependencies = [
- "bitflags 2.10.0",
- "libc",
- "log",
- "netlink-packet-core",
-]
-
-[[package]]
-name = "netlink-packet-route"
-version = "0.28.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ce3636fa715e988114552619582b530481fd5ef176a1e5c1bf024077c2c9445"
+checksum = "df9854ea6ad14e3f4698a7f03b65bce0833dd2d81d594a0e4a984170537146b6"
 dependencies = [
  "bitflags 2.10.0",
  "libc",
@@ -5801,15 +5739,14 @@ dependencies = [
 
 [[package]]
 name = "netwatch"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "454b8c0759b2097581f25ed5180b4a1d14c324fde6d0734932a288e044d06232"
+checksum = "3b1b27babe89ef9f2237bc6c028bea24fa84163a1b6f8f17ff93573ebd7d861f"
 dependencies = [
  "atomic-waker",
  "bytes",
  "cfg_aliases",
  "derive_more",
- "iroh-quinn-udp",
  "js-sys",
  "libc",
  "n0-error",
@@ -5817,9 +5754,10 @@ dependencies = [
  "n0-watcher",
  "netdev",
  "netlink-packet-core",
- "netlink-packet-route 0.28.0",
+ "netlink-packet-route",
  "netlink-proto",
  "netlink-sys",
+ "noq-udp",
  "objc2-core-foundation",
  "objc2-system-configuration",
  "pin-project-lite",
@@ -5869,6 +5807,68 @@ name = "nonzero_ext"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38bf9645c8b145698bb0b18a4637dcacbc421ea49bef2317e4fd8065a387cf21"
+
+[[package]]
+name = "noq"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8df966fb44ac763bc86da97fa6c811c54ae82ef656575949f93c6dae0c9f09bf"
+dependencies = [
+ "bytes",
+ "cfg_aliases",
+ "noq-proto",
+ "noq-udp",
+ "pin-project-lite",
+ "rustc-hash",
+ "rustls 0.23.36",
+ "socket2 0.6.2",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "web-time",
+]
+
+[[package]]
+name = "noq-proto"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c61b72abd670eebc05b5cf720e077b04a3ef3354bc7bc19f1c3524cb424db7b"
+dependencies = [
+ "aes-gcm",
+ "bytes",
+ "derive_more",
+ "enum-assoc",
+ "fastbloom",
+ "getrandom 0.3.4",
+ "identity-hash",
+ "lru-slab",
+ "rand 0.9.2",
+ "ring",
+ "rustc-hash",
+ "rustls 0.23.36",
+ "rustls-pki-types",
+ "rustls-platform-verifier",
+ "slab",
+ "sorted-index-buffer",
+ "thiserror 2.0.18",
+ "tinyvec",
+ "tracing",
+ "web-time",
+]
+
+[[package]]
+name = "noq-udp"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb9be4fedd6b98f3ba82ccd3506f4d0219fb723c3f97c67e12fe1494aa020e44"
+dependencies = [
+ "cfg_aliases",
+ "libc",
+ "socket2 0.6.2",
+ "tracing",
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "normalize-line-endings"
@@ -6652,29 +6652,17 @@ version = "5.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1d346b545765a0ef58b6a7e160e17ddaa7427f439b7b9a287df6c88c9e04bf2"
 dependencies = [
- "async-compat",
  "base32",
  "bytes",
  "cfg_aliases",
  "document-features",
- "dyn-clone",
  "ed25519-dalek 3.0.0-pre.1",
- "futures-buffered",
- "futures-lite",
  "getrandom 0.3.4",
- "log",
- "lru 0.16.3",
  "ntimestamp",
- "reqwest 0.12.28",
  "self_cell",
  "serde",
- "sha1_smol",
  "simple-dns",
  "thiserror 2.0.18",
- "tokio",
- "tracing",
- "url",
- "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -6804,9 +6792,9 @@ dependencies = [
 
 [[package]]
 name = "portmapper"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d2a8825353ace3285138da3378b1e21860d60351942f7aa3b99b13b41f80318"
+checksum = "74748bc706fa6b6aebac6bbe0bbe0de806b384cb5c557ea974f771360a4e3858"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -9027,12 +9015,6 @@ dependencies = [
  "cpufeatures",
  "digest 0.10.7",
 ]
-
-[[package]]
-name = "sha1_smol"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbfa15b3dddfee50a0fff136974b3e1bde555604ba463834a7eb7deb6417705d"
 
 [[package]]
 name = "sha2"

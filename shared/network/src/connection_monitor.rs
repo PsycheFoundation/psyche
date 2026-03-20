@@ -217,7 +217,7 @@ impl ConnectionMonitor {
             .find(|p| p.is_selected())
             .map(|path| SelectedPath {
                 addr: format!("{:?}", path.remote_addr()),
-                rtt: path.rtt(),
+                rtt: path.rtt().unwrap_or_default(),
             })
     }
 
