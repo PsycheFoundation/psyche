@@ -3,7 +3,7 @@ use iroh::{EndpointId, Watcher};
 use n0_future::task::AbortOnDropHandle;
 use psyche_event_sourcing::event;
 use psyche_metrics::SelectedPath;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
@@ -72,6 +72,10 @@ impl ConnectionMonitor {
         connections: Arc<RwLock<HashMap<EndpointId, ConnectionData>>>,
     ) {
         let mut tasks = JoinSet::new();
+        // Track which remotes already have a monitoring task to avoid duplicates.
+        // Multiple connections (different ALPNs) to the same remote would otherwise
+        // spawn competing tasks that overwrite each other's path state.
+        let mut monitored_remotes = HashSet::new();
 
         loop {
             tokio::select! {
@@ -110,6 +114,19 @@ impl ConnectionMonitor {
                     }
 
                     event!(p2p::ConnectionChanged { endpoint_id: remote_id, connection_path: selected_path });
+
+                    // Only spawn one monitoring task per remote endpoint.
+                    // Additional connections to the same remote (different ALPNs)
+                    // share the same path state in iroh, so one watcher suffices.
+                    if monitored_remotes.contains(&remote_id) {
+                        debug!(
+                            remote = %remote_id.fmt_short(),
+                            %alpn,
+                            "skipping duplicate monitor task"
+                        );
+                        continue;
+                    }
+                    monitored_remotes.insert(remote_id);
 
                     // spawn a task to monitor this connection continuously
                     let connections_clone = connections.clone();
@@ -193,17 +210,20 @@ impl ConnectionMonitor {
                                 }
                             }
                         }
+                        // Return the remote_id so we can remove it from monitored_remotes
+                        remote_id
                     }.instrument(tracing::Span::current()));
                 }
                 Some(res) = tasks.join_next(), if !tasks.is_empty() => {
-                    res.expect("connection close task panicked");
+                    let remote_id = res.expect("connection close task panicked");
+                    monitored_remotes.remove(&remote_id);
                 }
                 else => break,
             }
         }
 
         while let Some(res) = tasks.join_next().await {
-            res.expect("connection close task panicked");
+            let _ = res.expect("connection close task panicked");
         }
     }
 
