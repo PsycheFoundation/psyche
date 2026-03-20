@@ -3,11 +3,11 @@ use iroh::{EndpointId, Watcher};
 use n0_future::task::AbortOnDropHandle;
 use psyche_event_sourcing::event;
 use psyche_metrics::SelectedPath;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::task::JoinSet;
+use tokio_util::task::AbortOnDropHandle as TokioAbortOnDropHandle;
 use tracing::{Instrument, debug, info};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -31,6 +31,10 @@ impl ConnectionData {
     pub fn latency(&self) -> Option<Duration> {
         self.selected_path.as_ref().map(|p| p.rtt)
     }
+}
+
+fn is_direct_path(path: &SelectedPath) -> bool {
+    !path.addr.contains("Relay")
 }
 
 /// track active connections and their metadata
@@ -71,11 +75,10 @@ impl ConnectionMonitor {
         mut rx: UnboundedReceiver<ConnectionInfo>,
         connections: Arc<RwLock<HashMap<EndpointId, ConnectionData>>>,
     ) {
-        let mut tasks = JoinSet::new();
-        // Track which remotes already have a monitoring task to avoid duplicates.
-        // Multiple connections (different ALPNs) to the same remote would otherwise
-        // spawn competing tasks that overwrite each other's path state.
-        let mut monitored_remotes = HashSet::new();
+        // One monitoring task per remote. When a new connection arrives with a
+        // better path (direct vs relay), we abort the old task and spawn a new
+        // one watching the better connection's path watcher.
+        let mut monitor_tasks: HashMap<EndpointId, MonitorEntry> = HashMap::new();
 
         loop {
             tokio::select! {
@@ -100,64 +103,52 @@ impl ConnectionMonitor {
                         );
                     }
 
+                    // Decide whether to replace the existing monitor task.
+                    // Replace if: no existing task, or new path is direct and old was relay/none.
+                    let new_is_direct = selected_path.as_ref().is_some_and(is_direct_path);
+                    let should_replace = match monitor_tasks.get(&remote_id) {
+                        None => true,
+                        Some(entry) => new_is_direct && !entry.is_direct,
+                    };
+
                     {
                         let mut conns = connections.write().unwrap();
                         let prev_bandwidth = conns
                             .get(&remote_id)
                             .map(|d| d.bandwidth)
                             .unwrap_or(PeerBandwidth::NotMeasured);
-
-                        // Prefer direct (Ip) paths over relay paths. Only update
-                        // the stored path if:
-                        // - there is no existing entry, or
-                        // - the new path is a direct path (not relay), or
-                        // - the existing path is also relay (update RTT)
-                        let should_update_path = match conns.get(&remote_id) {
-                            None => true,
-                            Some(existing) => {
-                                let new_is_direct = selected_path
-                                    .as_ref()
-                                    .is_some_and(|p| !p.addr.contains("Relay"));
-                                let existing_is_relay = existing
-                                    .selected_path
-                                    .as_ref()
-                                    .is_some_and(|p| p.addr.contains("Relay"));
-                                new_is_direct || existing_is_relay || existing.selected_path.is_none()
-                            }
-                        };
-
-                        let path_to_store = if should_update_path {
-                            selected_path.clone()
-                        } else {
-                            conns.get(&remote_id).and_then(|d| d.selected_path.clone())
-                        };
-
                         conns.insert(remote_id, ConnectionData {
                             endpoint_id: remote_id,
                             bandwidth: prev_bandwidth,
-                            selected_path: path_to_store,
+                            selected_path: selected_path.clone(),
                         });
                     }
 
                     event!(p2p::ConnectionChanged { endpoint_id: remote_id, connection_path: selected_path });
 
-                    // Only spawn one monitoring task per remote endpoint.
-                    // Additional connections to the same remote (different ALPNs)
-                    // share the same path state in iroh, so one watcher suffices.
-                    if monitored_remotes.contains(&remote_id) {
+                    if !should_replace {
                         debug!(
                             remote = %remote_id.fmt_short(),
                             %alpn,
-                            "skipping duplicate monitor task"
+                            "skipping monitor replacement (existing monitor has equal or better path)"
                         );
                         continue;
                     }
-                    monitored_remotes.insert(remote_id);
 
-                    // spawn a task to monitor this connection continuously
+                    // Abort old monitor task if present (drop the handle aborts it)
+                    if let Some(old) = monitor_tasks.remove(&remote_id) {
+                        debug!(
+                            remote = %remote_id.fmt_short(),
+                            %alpn,
+                            "replacing monitor task (new connection has better path)"
+                        );
+                        drop(old);
+                    }
+
+                    // Spawn a new monitoring task for this connection
                     let connections_clone = connections.clone();
                     let paths_watcher = conn.paths();
-                    tasks.spawn(async move {
+                    let handle = tokio::spawn(async move {
                         let mut update_interval = tokio::time::interval(Duration::from_secs(5));
                         update_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -168,22 +159,6 @@ impl ConnectionMonitor {
 
                                     let mut conns = connections_clone.write().unwrap();
                                     if let Some(data) = conns.get_mut(&remote_id) {
-                                        // Don't overwrite a known direct path with a relay
-                                        // path from the monitor. A new connection may have
-                                        // established a direct path that this (gossip)
-                                        // connection's watcher doesn't reflect.
-                                        let stored_is_direct = data
-                                            .selected_path
-                                            .as_ref()
-                                            .is_some_and(|p| !p.addr.contains("Relay"));
-                                        let new_is_relay = selected_path
-                                            .as_ref()
-                                            .is_some_and(|p| p.addr.contains("Relay"));
-                                        if stored_is_direct && new_is_relay {
-                                            // Keep the direct path, skip this update
-                                            continue;
-                                        }
-
                                         // Compare only the address, not RTT — RTT jitter
                                         // should not count as a path change.
                                         let addr_changed = match (&data.selected_path, &selected_path) {
@@ -258,20 +233,15 @@ impl ConnectionMonitor {
                                 }
                             }
                         }
-                        // Return the remote_id so we can remove it from monitored_remotes
-                        remote_id
                     }.instrument(tracing::Span::current()));
-                }
-                Some(res) = tasks.join_next(), if !tasks.is_empty() => {
-                    let remote_id = res.expect("connection close task panicked");
-                    monitored_remotes.remove(&remote_id);
+
+                    monitor_tasks.insert(remote_id, MonitorEntry {
+                        _handle: TokioAbortOnDropHandle::new(handle),
+                        is_direct: new_is_direct,
+                    });
                 }
                 else => break,
             }
-        }
-
-        while let Some(res) = tasks.join_next().await {
-            let _ = res.expect("connection close task panicked");
         }
     }
 
@@ -328,4 +298,12 @@ impl ConnectionMonitor {
             data.bandwidth = PeerBandwidth::NotMeasured;
         }
     }
+}
+
+/// Tracks a monitoring task for a remote peer
+struct MonitorEntry {
+    /// Dropping this aborts the monitoring task
+    _handle: TokioAbortOnDropHandle<()>,
+    /// Whether this monitor is watching a direct (non-relay) path
+    is_direct: bool,
 }
