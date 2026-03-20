@@ -11,8 +11,8 @@ use psyche_core::{
 use psyche_data_provider::{
     DataProvider, DataProviderTcpClient, DownloadError, DummyDataProvider,
     PreprocessedDataProvider, Split, WeightedDataProvider, download_dataset_repo_async,
-    download_model_from_gcs_async, download_model_repo_async, fetch_json_from_gcs,
-    fetch_json_from_hub,
+    download_model_from_gcs_async, download_model_from_gcs_signed_async,
+    download_model_repo_async, fetch_json_from_gcs, fetch_json_from_hub,
     http::{FileURLs, HttpDataProvider},
 };
 use psyche_event_sourcing::event;
@@ -516,21 +516,37 @@ impl RunInitConfigAndIO {
                                     );
 
                                     event!(warmup::CheckpointDownloadStarted { size_bytes: 0 });
-                                    let repo_files = match download_model_from_gcs_async(
-                                        &bucket,
-                                        prefix.as_deref(),
-                                    )
-                                    .await
-                                    {
-                                        Ok(files) => {
-                                            event!(warmup::CheckpointDownloadComplete(Ok(())));
-                                            files
+                                    let repo_files = if let Some(ref run_down_client) = init_config.checkpoint_config.run_down_client {
+                                        info!("Using run-down signed URLs for GCS download");
+                                        match download_model_from_gcs_signed_async(run_down_client).await {
+                                            Ok(files) => {
+                                                event!(warmup::CheckpointDownloadComplete(Ok(())));
+                                                files
+                                            }
+                                            Err(e) => {
+                                                event!(warmup::CheckpointDownloadComplete(Err(
+                                                    e.to_string()
+                                                )));
+                                                return Err(e.into());
+                                            }
                                         }
-                                        Err(e) => {
-                                            event!(warmup::CheckpointDownloadComplete(Err(
-                                                e.to_string()
-                                            )));
-                                            return Err(e.into());
+                                    } else {
+                                        match download_model_from_gcs_async(
+                                            &bucket,
+                                            prefix.as_deref(),
+                                        )
+                                        .await
+                                        {
+                                            Ok(files) => {
+                                                event!(warmup::CheckpointDownloadComplete(Ok(())));
+                                                files
+                                            }
+                                            Err(e) => {
+                                                event!(warmup::CheckpointDownloadComplete(Err(
+                                                    e.to_string()
+                                                )));
+                                                return Err(e.into());
+                                            }
                                         }
                                     };
 
