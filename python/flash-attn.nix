@@ -32,13 +32,13 @@ buildPythonPackage rec {
   __structuredAttrs = true;
 
   pname = "flash-attn";
-  version = "2.8.2";
+  version = "2.8.3";
 
   src = fetchFromGitHub {
     owner = "Dao-AILab";
     repo = "flash-attention";
     rev = "refs/tags/v${version}";
-    hash = "sha256-RrayQOxQzGJMQK5jmMziR59p8CTF8mpEyJsqzouEW1s=";
+    hash = "sha256-8n/ZKOaH1Wm5RDYJZP6BDWTP1IzXOoDQnUcZ/5DNe84=";
   };
 
   pyproject = true;
