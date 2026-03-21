@@ -15,4 +15,4 @@ additional-css = ["./theme/psyche.css"]
 default-theme = "psyche-light"
 preferred-dark-theme = "psyche-dark"
 
-[output.linkcheck]
+[output.linkcheck2]
