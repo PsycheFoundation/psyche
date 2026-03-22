@@ -1,8 +1,12 @@
-use anchor_lang::prelude::borsh;
-use psyche_core::{FixedVec, LearningRateSchedule, OptimizerDefinition};
+use psyche_coordinator::fixed_vec::FixedVec;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{LLMArchitecture, LLMTrainingDataLocation, LLMTrainingDataType};
+use crate::{
+    ConstantLR, LearningRateSchedule, OptimizerDefinition,
+    coordinator::{
+        HttpTrainingDataLocation, LLMArchitecture, LLMTrainingDataLocation, LLMTrainingDataType,
+    },
+};
 
 /// Path within the bucket where config is stored
 pub const CONFIG_PREFIX: &str = "config";
@@ -42,7 +46,7 @@ impl Default for ModelExtraData {
             architecture: LLMArchitecture::HfLlama,
             data_type: LLMTrainingDataType::Pretraining,
             data_location: LLMTrainingDataLocation::default(),
-            lr_schedule: LearningRateSchedule::Constant(psyche_core::ConstantLR::default()),
+            lr_schedule: LearningRateSchedule::Constant(ConstantLR::default()),
             optimizer: OptimizerDefinition::Dummy,
             run_metadata: None,
             checkpoint: CheckpointData::default(),
@@ -84,18 +88,15 @@ impl ModelExtraData {
             LLMTrainingDataLocation::Dummy => false,
             LLMTrainingDataLocation::Server(url) => url.is_empty(),
             LLMTrainingDataLocation::Local(_) => false,
-            LLMTrainingDataLocation::Http(http_loc) => {
-                use crate::model::HttpTrainingDataLocation;
-                match &http_loc.location {
-                    HttpTrainingDataLocation::SingleUrl(url) => url.is_empty(),
-                    HttpTrainingDataLocation::NumberedFiles {
-                        url_template,
-                        num_files,
-                        ..
-                    } => url_template.is_empty() || *num_files == 0,
-                    HttpTrainingDataLocation::Gcp { bucket_name, .. } => bucket_name.is_empty(),
-                }
-            }
+            LLMTrainingDataLocation::Http(http_loc) => match &http_loc.location {
+                HttpTrainingDataLocation::SingleUrl(url) => url.is_empty(),
+                HttpTrainingDataLocation::NumberedFiles {
+                    url_template,
+                    num_files,
+                    ..
+                } => url_template.is_empty() || *num_files == 0,
+                HttpTrainingDataLocation::Gcp { bucket_name, .. } => bucket_name.is_empty(),
+            },
             LLMTrainingDataLocation::WeightedHttp(url) => url.is_empty(),
             LLMTrainingDataLocation::Preprocessed(url) => url.is_empty(),
         };
@@ -114,9 +115,7 @@ impl ModelExtraData {
 
 /// Off-chain checkpoint data that gets serialized into opaque bytes for on-chain storage.
 /// This decouples the on-chain account layout from storage backend details.
-#[derive(
-    Debug, Clone, Serialize, Deserialize, borsh::BorshSerialize, borsh::BorshDeserialize, Default,
-)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum CheckpointData {
     #[default]
     Dummy,
@@ -134,19 +133,16 @@ pub const CHECKPOINT_DATA_MAX_LEN: usize = 256;
 
 impl CheckpointData {
     pub fn to_fixed_vec(&self) -> FixedVec<u8, CHECKPOINT_DATA_MAX_LEN> {
-        let bytes =
-            borsh::to_vec(self).expect("CheckpointData borsh serialization should not fail");
-        let mut fv = FixedVec::new();
-        for b in bytes {
-            fv.push(b)
-                .expect("CheckpointData serialized size exceeds CHECKPOINT_DATA_MAX_LEN");
-        }
-        fv
+        let bytes = postcard::to_stdvec(self)
+            .expect("CheckpointData postcard serialization should not fail");
+
+        FixedVec::try_from_iter(bytes)
+            .expect("CheckpointData serialized size exceeds CHECKPOINT_DATA_MAX_LEN")
     }
 
     pub fn from_fixed_vec(
         fv: &FixedVec<u8, CHECKPOINT_DATA_MAX_LEN>,
-    ) -> Result<Self, std::io::Error> {
-        borsh::BorshDeserialize::try_from_slice(&fv[..])
+    ) -> Result<Self, postcard::Error> {
+        postcard::from_bytes(&fv[..])
     }
 }

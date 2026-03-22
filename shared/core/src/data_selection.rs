@@ -1,7 +1,12 @@
-use crate::{Committee, CommitteeSelection, Coordinator, Round};
-
-use psyche_core::{BatchId, ClosedInterval, NodeIdentity, deterministic_shuffle};
+use psyche_coordinator::{
+    committee_selection::CommitteeSelection,
+    coordinator::{Coordinator, Round},
+    node_identity::NodeIdentity,
+    types::Committee,
+};
 use std::{collections::BTreeMap, fmt};
+
+use crate::{BatchId, ClosedInterval, deterministic_shuffle};
 
 /// Assigns data batches to nodes based on committee roles.
 pub fn assign_data_for_state(
@@ -131,9 +136,11 @@ pub fn get_data_index_for_step(coordinator: &Coordinator, target_step: u32) -> u
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Client, ClientState, CommitteeSelection, Coordinator};
     use bytemuck::Zeroable;
-    use psyche_core::{FixedVec, NodeIdentity};
+    use psyche_coordinator::{
+        coordinator::{Client, ClientState},
+        fixed_vec::FixedVec,
+    };
 
     fn create_test_coordinator(
         num_nodes: usize,

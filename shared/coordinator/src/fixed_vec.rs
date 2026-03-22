@@ -1,11 +1,13 @@
 use anchor_lang::{AnchorDeserialize, AnchorSerialize, prelude::borsh};
 use bytemuck::Zeroable;
-use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut, Range, RangeFrom, RangeFull, RangeTo};
+
+#[cfg(feature = "client")]
 use ts_rs::TS;
 
-#[derive(Clone, Copy, Zeroable, AnchorSerialize, AnchorDeserialize, PartialEq, TS)]
-#[ts(type = "Array<T>", bound = "T: TS")]
+#[derive(Clone, Copy, Zeroable, AnchorSerialize, AnchorDeserialize, PartialEq)]
+#[cfg_attr(feature = "client", derive(TS))]
+#[cfg_attr(feature = "client", ts(type = "Array<T>", bound = "T: TS"))]
 #[repr(C)]
 pub struct FixedVec<T, const N: usize> {
     data: [T; N],
@@ -317,7 +319,8 @@ impl<T: Default + Copy, const N: usize, const M: usize> TryFrom<[T; M]> for Fixe
     }
 }
 
-impl<T: Serialize + Default + Copy, const N: usize> Serialize for FixedVec<T, N> {
+#[cfg(feature = "client")]
+impl<T: serde::Serialize + Default + Copy, const N: usize> serde::Serialize for FixedVec<T, N> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -327,7 +330,8 @@ impl<T: Serialize + Default + Copy, const N: usize> Serialize for FixedVec<T, N>
     }
 }
 
-impl<'de, T: Deserialize<'de> + Default + Copy, const N: usize> Deserialize<'de>
+#[cfg(feature = "client")]
+impl<'de, T: serde::Deserialize<'de> + Default + Copy, const N: usize> serde::Deserialize<'de>
     for FixedVec<T, N>
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

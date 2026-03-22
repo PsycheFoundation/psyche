@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
-use psyche_coordinator::CoordinatorConfig;
-use psyche_coordinator::CoordinatorProgress;
+use psyche_coordinator::coordinator::CoordinatorConfig;
+use psyche_coordinator::coordinator::CoordinatorProgress;
 use psyche_coordinator::model::Model;
 use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::CoordinatorInstance;

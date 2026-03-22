@@ -1,10 +1,10 @@
 use anchor_lang::InstructionData;
 use anchor_lang::ToAccountMetas;
 use anyhow::Result;
-use psyche_coordinator::CoordinatorConfig;
-use psyche_coordinator::CoordinatorProgress;
+use psyche_coordinator::coordinator::CoordinatorConfig;
+use psyche_coordinator::coordinator::CoordinatorProgress;
 use psyche_coordinator::model::Model;
-use psyche_core::NodeIdentity;
+use psyche_coordinator::node_identity::NodeIdentity;
 use psyche_solana_coordinator::accounts::FreeCoordinatorAccounts;
 use psyche_solana_coordinator::accounts::InitCoordinatorAccounts;
 use psyche_solana_coordinator::accounts::JoinRunAccounts;

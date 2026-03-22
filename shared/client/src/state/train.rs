@@ -3,12 +3,23 @@ use crate::{
     state::types::{DeserializeError, PayloadState},
 };
 
+use super::{
+    evals::{MaybeRunningEvals, ModelTaskRunner},
+    round_state::RoundState,
+    types::DistroBroadcastAndPayload,
+};
 use futures::{StreamExt, future::try_join_all, stream::FuturesUnordered};
 use psyche_coordinator::{
-    BLOOM_FALSE_RATE, Commitment, CommitteeSelection, Coordinator, CoordinatorError, HealthChecks,
-    assign_data_for_state, get_batch_ids_for_node, get_batch_ids_for_round, model,
+    bloom::Bloom,
+    committee_selection::CommitteeSelection,
+    coordinator::{BLOOM_FALSE_RATE, Coordinator, CoordinatorError, HealthChecks},
+    model::CheckpointSource,
+    node_identity::NodeIdentity,
 };
-use psyche_core::{BatchId, Bloom, IntegrationTestLogMarker, NodeIdentity};
+use psyche_core::{
+    BatchId, Commitment, IntegrationTestLogMarker, assign_data_for_state, get_batch_ids_for_node,
+    get_batch_ids_for_round, select_consensus_commitment_by_witnesses,
+};
 use psyche_event_sourcing::event;
 use psyche_modeling::{
     ApplyDistroResultError, Batch, BatchData, DistroResult, TrainOutput, Trainer,
@@ -31,12 +42,6 @@ use thiserror::Error;
 use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, error, info, trace, trace_span, warn};
-
-use super::{
-    evals::{MaybeRunningEvals, ModelTaskRunner},
-    round_state::RoundState,
-    types::DistroBroadcastAndPayload,
-};
 
 #[derive(Debug)]
 pub struct FinishedTrainers {
@@ -523,12 +528,10 @@ impl TrainingStepMetadata {
                 .witnesses
                 .len() as u16,
         );
-        let (cold_start_warmup_steps, checkpoint_is_p2p) = match &state.model {
-            model::Model::LLM(llm) => (
-                llm.cold_start_warmup_steps,
-                matches!(llm.checkpoint_source, model::CheckpointSource::P2P),
-            ),
-        };
+        let (cold_start_warmup_steps, checkpoint_is_p2p) = (
+            state.model.cold_start_warmup_steps,
+            matches!(state.model.checkpoint_source, CheckpointSource::P2P),
+        );
         let warmup_lr_between = state.get_cold_start_warmup_bounds();
 
         // coordinator has already advanced to the next round (unless we're in cooldown) but we haven't started ours yet.
@@ -584,7 +587,7 @@ impl TrainingStepMetadata {
                         }
                     };
                     trace!("Commitments for batch {batch_id}: {batch_commitments:?}");
-                    let consensus = match Coordinator::select_consensus_commitment_by_witnesses(
+                    let consensus = match select_consensus_commitment_by_witnesses(
                         &batch_commitments
                             .iter()
                             .map(|x| x.1.0)

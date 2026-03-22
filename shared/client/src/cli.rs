@@ -2,7 +2,7 @@ use crate::{CheckpointConfig, WandBInfo};
 
 use anyhow::{Context, Result, anyhow, bail};
 use clap::Args;
-use psyche_coordinator::model_extra_data::ModelExtraData;
+use psyche_core::ModelExtraData;
 use psyche_eval::tasktype_from_name;
 use psyche_modeling::Devices;
 use psyche_network::{DiscoveryMode, RelayKind, SecretKey};

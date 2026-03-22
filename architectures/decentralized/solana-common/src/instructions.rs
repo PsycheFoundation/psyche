@@ -5,6 +5,12 @@ use anchor_client::solana_sdk::instruction::Instruction;
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anchor_spl::associated_token;
 use anchor_spl::token;
+use psyche_coordinator::coordinator::CoordinatorConfig;
+use psyche_coordinator::coordinator::CoordinatorProgress;
+use psyche_coordinator::coordinator::Witness;
+use psyche_coordinator::model::Model;
+use psyche_coordinator::node_identity::NodeIdentity;
+use psyche_coordinator::types::CommitteeProof;
 
 pub fn coordinator_init_coordinator(
     payer: &Pubkey,
@@ -57,9 +63,9 @@ pub fn coordinator_update(
     run_id: &str,
     coordinator_account: &Pubkey,
     main_authority: &Pubkey,
-    config: Option<psyche_coordinator::CoordinatorConfig>,
-    model: Option<psyche_coordinator::model::Model>,
-    progress: Option<psyche_coordinator::CoordinatorProgress>,
+    config: Option<CoordinatorConfig>,
+    model: Option<Model>,
+    progress: Option<CoordinatorProgress>,
 ) -> Instruction {
     let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(run_id);
     anchor_instruction(
@@ -99,7 +105,7 @@ pub fn coordinator_join_run(
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
     authorization: &Pubkey,
-    client_id: psyche_core::NodeIdentity,
+    client_id: NodeIdentity,
 ) -> Instruction {
     anchor_instruction(
         psyche_solana_coordinator::ID,
@@ -135,7 +141,7 @@ pub fn coordinator_witness(
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
     user: &Pubkey,
-    witness: psyche_coordinator::Witness,
+    witness: Witness,
     metadata: Vec<u8>,
 ) -> Instruction {
     anchor_instruction(
@@ -159,7 +165,7 @@ pub fn coordinator_warmup_witness(
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
     user: &Pubkey,
-    witness: psyche_coordinator::Witness,
+    witness: Witness,
 ) -> Instruction {
     anchor_instruction(
         psyche_solana_coordinator::ID,
@@ -181,7 +187,7 @@ pub fn coordinator_cooldown_witness(
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
     user: &Pubkey,
-    witness: psyche_coordinator::Witness,
+    witness: Witness,
 ) -> Instruction {
     anchor_instruction(
         psyche_solana_coordinator::ID,
@@ -203,8 +209,8 @@ pub fn coordinator_health_check(
     coordinator_instance: &Pubkey,
     coordinator_account: &Pubkey,
     user: &Pubkey,
-    client_id: psyche_core::NodeIdentity,
-    check: psyche_coordinator::CommitteeProof,
+    client_id: NodeIdentity,
+    check: CommitteeProof,
 ) -> Instruction {
     anchor_instruction(
         psyche_solana_coordinator::ID,

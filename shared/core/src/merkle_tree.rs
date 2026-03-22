@@ -1,13 +1,8 @@
 #![allow(clippy::manual_is_multiple_of)]
 
-use std::fmt::Debug;
-
-use crate::sha256::sha256v;
-
 use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
-use bytemuck::Zeroable;
-use serde::{Deserialize, Serialize};
-use ts_rs::TS;
+use psyche_coordinator::{hash_wrapper::HashWrapper, sha::sha256v};
+use std::fmt::Debug;
 
 // from https://github.com/solana-labs/solana/blob/27eff8408b7223bb3c4ab70523f8a8dca3ca6645/merkle-tree/src/merkle_tree.rs
 
@@ -32,54 +27,6 @@ macro_rules! hash_intermediate {
     }
 }
 
-/// This wrapper is used to implement the `Space` trait for the actual hash.
-#[derive(
-    AnchorSerialize,
-    AnchorDeserialize,
-    Serialize,
-    Deserialize,
-    PartialEq,
-    Eq,
-    Clone,
-    Default,
-    Zeroable,
-    Copy,
-    TS,
-)]
-pub struct HashWrapper {
-    pub inner: [u8; 32],
-}
-
-impl HashWrapper {
-    pub fn new(inner: [u8; 32]) -> Self {
-        Self { inner }
-    }
-
-    pub fn fmt_short(&self) -> String {
-        data_encoding::HEXLOWER.encode(&self.inner[..5])
-    }
-
-    pub fn fmt_full(&self) -> String {
-        data_encoding::HEXLOWER.encode(&self.inner)
-    }
-}
-
-impl Debug for HashWrapper {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "HashWrapper({})", self.fmt_full())
-    }
-}
-
-impl AsRef<[u8]> for HashWrapper {
-    fn as_ref(&self) -> &[u8] {
-        &self.inner
-    }
-}
-
-impl anchor_lang::Space for HashWrapper {
-    const INIT_SPACE: usize = 32;
-}
-
 #[derive(Debug)]
 pub struct MerkleTree {
     leaf_count: usize,
@@ -93,17 +40,7 @@ pub struct ProofEntry<'a>(
     Option<&'a HashWrapper>,
 );
 
-#[derive(
-    Debug,
-    PartialEq,
-    Eq,
-    Clone,
-    Serialize,
-    Deserialize,
-    AnchorDeserialize,
-    AnchorSerialize,
-    InitSpace,
-)]
+#[derive(Debug, PartialEq, Eq, Clone, AnchorDeserialize, AnchorSerialize, InitSpace)]
 pub struct OwnedProofEntry {
     target: HashWrapper,
     left_sibling: Option<HashWrapper>,
@@ -134,18 +71,7 @@ impl<'a> From<ProofEntry<'a>> for OwnedProofEntry {
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Proof<'a>(Vec<ProofEntry<'a>>);
 
-#[derive(
-    Debug,
-    Default,
-    PartialEq,
-    Eq,
-    Clone,
-    AnchorDeserialize,
-    AnchorSerialize,
-    Deserialize,
-    Serialize,
-    InitSpace,
-)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, AnchorDeserialize, AnchorSerialize, InitSpace)]
 pub struct OwnedProof {
     #[max_len(SOLANA_MAX_PROOFS_LEN)]
     entries: Vec<OwnedProofEntry>,

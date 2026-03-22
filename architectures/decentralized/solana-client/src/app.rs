@@ -1,3 +1,4 @@
+use psyche_core::{CheckpointData, ModelExtraData};
 use psyche_solana_rpc::SolanaBackend;
 
 use anchor_client::{
@@ -10,15 +11,15 @@ use anchor_client::{
 };
 use anyhow::{Result, anyhow};
 use psyche_client::{
-    CheckpointUploader, Client, ClientTUI, ClientTUIState, ModelExtraData, NC, RunInitConfig,
-    TrainArgs, read_identity_secret_key,
+    CheckpointUploader, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs,
+    read_identity_secret_key,
 };
 use psyche_coordinator::{
-    ClientState, Coordinator, CoordinatorError, RunState,
-    model::{CheckpointSource, Model},
-    model_extra_data::CheckpointData,
+    coordinator::{ClientState, Coordinator, CoordinatorError, RunState},
+    model::CheckpointSource,
+    node_identity::NodeIdentity,
+    sha::sha256,
 };
-use psyche_core::sha256;
 use psyche_metrics::ClientMetrics;
 
 use psyche_network::{DiscoveryMode, NetworkTUIState, NetworkTui, SecretKey, allowlist};
@@ -89,7 +90,7 @@ pub async fn build_app(
                 let mut rng = ChaCha20Rng::from_seed(sha256(&seed_preimage));
                 SecretKey::generate(&mut rng)
             });
-    let identity = psyche_core::NodeIdentity::new(
+    let identity = NodeIdentity::new(
         wallet_keypair.pubkey().to_bytes(),
         *identity_secret_key.public().as_bytes(),
     );
@@ -239,7 +240,7 @@ impl App {
 
         // sanity checks — skip credential validation when checkpoint upload is disabled
         if !self.state_options.checkpoint_config.skip_upload {
-            let Model::LLM(ref llm) = start_coordinator_state.model;
+            let llm = start_coordinator_state.model;
             if llm.checkpoint_source != CheckpointSource::Ephemeral {
                 match CheckpointData::from_fixed_vec(&llm.checkpoint_data) {
                     Ok(CheckpointData::Hub { ref repo_id, .. }) => {
@@ -269,7 +270,7 @@ impl App {
                 .join_run(
                     coordinator_instance_pubkey,
                     coordinator_account,
-                    psyche_core::NodeIdentity::new(signer.to_bytes(), *p2p_identity.as_bytes()),
+                    NodeIdentity::new(signer.to_bytes(), *p2p_identity.as_bytes()),
                     self.authorizer,
                 )
                 .await?;
@@ -301,7 +302,7 @@ impl App {
             self.metrics,
         );
 
-        let id = psyche_core::NodeIdentity::new(signer.to_bytes(), *p2p_identity.as_bytes());
+        let id = NodeIdentity::new(signer.to_bytes(), *p2p_identity.as_bytes());
 
         loop {
             select! {
@@ -328,7 +329,7 @@ impl App {
                         None
                     };
 
-                    let pending_clients_ids: Option<Vec<psyche_core::NodeIdentity>> = coordinator_state_in_waiting_for_members
+                    let pending_clients_ids: Option<Vec<NodeIdentity>> = coordinator_state_in_waiting_for_members
                         .as_ref()
                         .map(|state| state.clients_state.get_active_clients_ids().collect());
 

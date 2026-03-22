@@ -288,7 +288,7 @@ impl FileWriterState {
 mod tests {
     use super::*;
     use crate::{event, events::*};
-    use psyche_coordinator::RunState;
+    use psyche_coordinator::coordinator::RunState;
     use psyche_core::{BatchId, ClosedInterval};
     use serial_test::serial;
     use std::fs;

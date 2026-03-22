@@ -1,10 +1,10 @@
 use anchor_lang::prelude::*;
-use psyche_core::NodeIdentity;
+use psyche_coordinator::node_identity::NodeIdentity;
 use psyche_solana_authorizer::state::Authorization;
 
 use crate::CoordinatorAccount;
 use crate::CoordinatorInstance;
-use crate::bytes_from_string;
+use crate::bytes_from_str;
 use crate::program_error::ProgramError;
 
 pub const JOIN_RUN_AUTHORIZATION_SCOPE: &[u8] = b"CoordinatorJoinRun";
@@ -27,7 +27,7 @@ pub struct JoinRunAccounts<'info> {
     #[account(
         seeds = [
             CoordinatorInstance::SEEDS_PREFIX,
-            bytes_from_string(&coordinator_instance.run_id)
+            &bytes_from_str(&coordinator_instance.run_id)
         ],
         bump = coordinator_instance.bump,
     )]

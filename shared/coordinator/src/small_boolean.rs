@@ -2,23 +2,13 @@ use std::fmt::Debug;
 
 use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
 use bytemuck::{Pod, Zeroable};
-use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 #[derive(
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    Hash,
-    Zeroable,
-    Pod,
-    AnchorDeserialize,
-    AnchorSerialize,
-    Serialize,
-    Deserialize,
-    InitSpace,
-    TS,
+    Copy, Clone, Eq, PartialEq, Hash, Zeroable, Pod, AnchorDeserialize, AnchorSerialize, InitSpace,
+)]
+#[cfg_attr(
+    feature = "client",
+    derive(serde::Serialize, serde::Deserialize, ts_rs::TS)
 )]
 #[repr(transparent)]
 pub struct SmallBoolean(pub u8);

@@ -1,11 +1,10 @@
-use psyche_coordinator::Round;
-use psyche_coordinator::RunState;
+use psyche_coordinator::coordinator::Round;
+use psyche_coordinator::coordinator::RunState;
+use psyche_coordinator::fixed_string::FixedString;
+use psyche_coordinator::fixed_vec::FixedVec;
 use psyche_coordinator::model::CheckpointSource;
-use psyche_coordinator::model::Model;
-use psyche_coordinator::model_extra_data::CheckpointData;
-use psyche_core::FixedString;
-use psyche_core::FixedVec;
-use psyche_core::SmallBoolean;
+use psyche_coordinator::small_boolean::SmallBoolean;
+use psyche_core::CheckpointData;
 use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::coordinator_account_from_bytes;
 
@@ -30,25 +29,26 @@ pub async fn run() {
     assert_eq!(coordinator.run_state_start_unix_timestamp, 0);
     assert_eq!(coordinator.pending_pause, SmallBoolean::FALSE);
     // Coordinator model
-    match coordinator.model {
-        Model::LLM(llm) => {
-            assert_eq!(llm.max_seq_len, 2048);
-            assert_eq!(llm.cold_start_warmup_steps, 0);
-            assert_eq!(llm.checkpoint_source, CheckpointSource::Stored);
-            {
-                let checkpoint_data =
-                    CheckpointData::from_fixed_vec(&llm.checkpoint_data)
-                        .unwrap();
-                match checkpoint_data {
-                    CheckpointData::Hub { repo_id, revision } => {
-                        assert_eq!(repo_id, "emozilla/llama2-1.1b-gqa-init");
-                        assert_eq!(revision, None);
-                    },
-                    _ => panic!("Expected Hub checkpoint data"),
-                }
-            }
-        },
-    };
+
+    assert_eq!(coordinator.model.max_seq_len, 2048);
+    assert_eq!(coordinator.model.cold_start_warmup_steps, 0);
+    assert_eq!(
+        coordinator.model.checkpoint_source,
+        CheckpointSource::Stored
+    );
+    {
+        let checkpoint_data =
+            CheckpointData::from_fixed_vec(&coordinator.model.checkpoint_data)
+                .unwrap();
+        match checkpoint_data {
+            CheckpointData::Hub { repo_id, revision } => {
+                assert_eq!(repo_id, "emozilla/llama2-1.1b-gqa-init");
+                assert_eq!(revision, None);
+            },
+            _ => panic!("Expected Hub checkpoint data"),
+        }
+    }
+
     // Coordinator config
     assert_eq!(coordinator.config.warmup_time, 15);
     assert_eq!(coordinator.config.cooldown_time, 30);

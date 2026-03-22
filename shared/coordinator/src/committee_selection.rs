@@ -1,5 +1,7 @@
-use crate::{Client, Coordinator, CoordinatorError, SOLANA_MAX_NUM_WITNESSES};
-use psyche_core::{NodeIdentity, compute_shuffled_index, sha256};
+use crate::coordinator::{Client, Coordinator, CoordinatorError, SOLANA_MAX_NUM_WITNESSES};
+use crate::node_identity::NodeIdentity;
+use crate::sha::{sha256, sha256v};
+use crate::swap_or_not::compute_shuffled_index;
 
 use super::checkpointer_selection::get_round_by_offset;
 use super::types::{Committee, CommitteeProof, WitnessProof, salts};
@@ -147,7 +149,7 @@ impl CommitteeSelection {
 
     fn compute_shuffled_index(&self, index: u64, salt: &str) -> u64 {
         let mut seed = [0u8; 32];
-        seed.copy_from_slice(&psyche_core::sha256v(&[&self.seed, salt.as_bytes()]));
+        seed.copy_from_slice(&sha256v(&[&self.seed, salt.as_bytes()]));
         compute_shuffled_index(index, self.total_nodes, &seed)
     }
 

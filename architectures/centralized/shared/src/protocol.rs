@@ -1,4 +1,7 @@
-use psyche_coordinator::{Coordinator, HealthChecks, model};
+use psyche_coordinator::{
+    coordinator::{Coordinator, HealthChecks},
+    model,
+};
 use psyche_watcher::OpportunisticData;
 use serde::{Deserialize, Serialize};
 

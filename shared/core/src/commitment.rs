@@ -1,8 +1,8 @@
-use anchor_lang::{AnchorDeserialize, AnchorSerialize, prelude::borsh};
 use bytemuck::Zeroable;
+use psyche_coordinator::coordinator::Witness;
 use serde::{Deserialize, Deserializer, Serialize};
 
-#[derive(Clone, Debug, Zeroable, Copy, AnchorDeserialize, AnchorSerialize)]
+#[derive(Clone, Debug, Zeroable, Copy)]
 #[repr(C)]
 pub struct Commitment {
     pub data_hash: [u8; 32],
@@ -44,4 +44,26 @@ impl<'de> Deserialize<'de> for Commitment {
             signature,
         })
     }
+}
+
+pub fn select_consensus_commitment_by_witnesses(
+    commitments: &[Commitment],
+    witnesses: &[Witness],
+    witness_quorum: u16,
+) -> Option<usize> {
+    let mut scores = vec![0; commitments.len()];
+    for witness in witnesses {
+        for (index, commitment) in commitments.iter().enumerate() {
+            if witness.broadcast_bloom.contains(&commitment.data_hash) {
+                scores[index] += 1;
+                break;
+            }
+        }
+    }
+    scores
+        .into_iter()
+        .enumerate()
+        .filter(|(_, score)| *score >= witness_quorum)
+        .max_by_key(|(_, score)| *score)
+        .map(|(index, _)| index)
 }

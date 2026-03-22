@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use psyche_coordinator::CoordinatorError;
+use psyche_coordinator::coordinator::CoordinatorError;
 
 #[error_code]
 pub enum ProgramError {

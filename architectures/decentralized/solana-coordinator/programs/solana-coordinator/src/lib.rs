@@ -10,33 +10,21 @@ pub use client::Client;
 pub use instance_state::CoordinatorInstanceState;
 use logic::*;
 pub use program_error::ProgramError;
-use psyche_coordinator::Committee;
-use psyche_coordinator::CommitteeProof;
-use psyche_coordinator::CoordinatorConfig;
-use psyche_coordinator::CoordinatorProgress;
-use psyche_coordinator::SOLANA_MAX_NUM_CLIENTS;
-use psyche_coordinator::SOLANA_MAX_STRING_LEN;
-use psyche_coordinator::Witness;
-use psyche_coordinator::WitnessBloom;
-use psyche_coordinator::WitnessProof;
+use psyche_coordinator::coordinator::SOLANA_MAX_NUM_CLIENTS;
+use psyche_coordinator::coordinator::SOLANA_MAX_STRING_LEN;
 use psyche_coordinator::model::Model;
-use psyche_core::MerkleRoot;
-use psyche_core::NodeIdentity;
-use serde::Deserialize;
-use serde::Serialize;
-use ts_rs::TS;
 
 declare_id!("4SHugWqSXwKE5fqDchkJcPEqnoZE22VYKtSTVm7axbT7");
 
 pub const SOLANA_MAX_NUM_PENDING_CLIENTS: usize = SOLANA_MAX_NUM_CLIENTS;
 
-pub fn bytes_from_string(str: &str) -> &[u8] {
+pub fn bytes_from_str(str: &str) -> &[u8] {
     &str.as_bytes()[..SOLANA_MAX_STRING_LEN.min(str.len())]
 }
 
 pub fn find_coordinator_instance(run_id: &str) -> Pubkey {
     Pubkey::find_program_address(
-        &[CoordinatorInstance::SEEDS_PREFIX, bytes_from_string(run_id)],
+        &[CoordinatorInstance::SEEDS_PREFIX, bytes_from_str(run_id)],
         &crate::ID,
     )
     .0
@@ -122,7 +110,10 @@ pub fn coordinator_account_from_bytes_mut(
 
 #[account(zero_copy)]
 #[repr(C)]
-#[derive(Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "client",
+    derive(serde::Serialize, serde::Deserialize, ts_rs::TS)
+)]
 pub struct CoordinatorAccount {
     pub version: u64,
     pub state: CoordinatorInstanceState,
@@ -158,11 +149,21 @@ impl CoordinatorInstance {
     pub const SEEDS_PREFIX: &'static [u8] = b"coordinator";
 }
 
+use psyche_coordinator::coordinator::CoordinatorConfig;
+use psyche_coordinator::coordinator::CoordinatorProgress;
+use psyche_coordinator::coordinator::Witness;
+use psyche_coordinator::coordinator::WitnessBloom;
+use psyche_coordinator::fixed_string::FixedString;
+use psyche_coordinator::hash_wrapper::HashWrapper;
+use psyche_coordinator::node_identity::NodeIdentity;
+use psyche_coordinator::types::Committee;
+use psyche_coordinator::types::CommitteeProof;
+use psyche_coordinator::types::WitnessProof;
+
 #[program]
 pub mod psyche_solana_coordinator {
 
     use super::*;
-    use psyche_core::FixedString;
 
     pub fn init_coordinator(
         context: Context<InitCoordinatorAccounts>,
@@ -248,7 +249,7 @@ pub mod psyche_solana_coordinator {
         proof: WitnessProof,
         participant_bloom: WitnessBloom,
         broadcast_bloom: WitnessBloom,
-        broadcast_merkle: MerkleRoot,
+        broadcast_merkle: HashWrapper,
         metadata: Vec<u8>,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
@@ -269,7 +270,7 @@ pub mod psyche_solana_coordinator {
         proof: WitnessProof,
         participant_bloom: WitnessBloom,
         broadcast_bloom: WitnessBloom,
-        broadcast_merkle: MerkleRoot,
+        broadcast_merkle: HashWrapper,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();
@@ -289,7 +290,7 @@ pub mod psyche_solana_coordinator {
         proof: WitnessProof,
         participant_bloom: WitnessBloom,
         broadcast_bloom: WitnessBloom,
-        broadcast_merkle: MerkleRoot,
+        broadcast_merkle: HashWrapper,
     ) -> Result<()> {
         let mut account = ctx.accounts.coordinator_account.load_mut()?;
         account.increment_nonce();
@@ -344,7 +345,7 @@ pub struct OwnerCoordinatorAccounts<'info> {
     #[account(
         seeds = [
             CoordinatorInstance::SEEDS_PREFIX,
-            bytes_from_string(&coordinator_instance.run_id)
+             &bytes_from_str(&coordinator_instance.run_id)
         ],
         bump = coordinator_instance.bump,
         constraint = coordinator_instance.main_authority == authority.key()
@@ -367,7 +368,7 @@ pub struct PermissionlessCoordinatorAccounts<'info> {
     #[account(
         seeds = [
             CoordinatorInstance::SEEDS_PREFIX,
-            bytes_from_string(&coordinator_instance.run_id)
+            &bytes_from_str(&coordinator_instance.run_id)
         ],
         bump = coordinator_instance.bump
     )]

@@ -1,31 +1,38 @@
 #![allow(unexpected_cfgs)]
 
 mod batch_id;
-mod bloom;
 mod bounded_queue;
 mod boxed_future;
 mod cancellable_barrier;
+mod commitment;
+mod coordinator;
+mod data_selection;
 mod data_shuffle;
 mod definitions;
 mod deterministic_shuffle;
-mod fixed_string;
-mod fixed_vec;
 mod interval_tree;
 mod lcg;
 mod merkle_tree;
-mod node_identity;
+mod model_extra_data;
 mod running_average;
 mod serde_utils;
-mod sha256;
 mod similarity;
 mod sized_iterator;
-mod small_boolean;
-mod swap_or_not;
 mod testing;
 mod token_size;
 
+pub use coordinator::{
+    HttpLLMTrainingDataLocation, HttpTrainingDataLocation, LLMArchitecture,
+    LLMTrainingDataLocation, LLMTrainingDataLocationAndWeight, LLMTrainingDataType,
+    WitnessEvalResult, WitnessMetadata,
+};
+
+pub use commitment::{Commitment, select_consensus_commitment_by_witnesses};
+pub use data_selection::{
+    assign_data_for_state, get_batch_ids_for_node, get_batch_ids_for_round, get_data_index_for_step,
+};
+
 pub use batch_id::BatchId;
-pub use bloom::Bloom;
 pub use bounded_queue::BoundedQueue;
 pub use boxed_future::BoxedFuture;
 pub use cancellable_barrier::{Barrier, CancellableBarrier, CancelledBarrier};
@@ -35,24 +42,19 @@ pub use definitions::{
     OptimizerDefinition,
 };
 pub use deterministic_shuffle::deterministic_shuffle;
-pub use fixed_string::FixedString;
-pub use fixed_vec::FixedVec;
 pub use interval_tree::{ClosedInterval, IntervalTree};
 pub use lcg::LCG;
-pub use merkle_tree::{HashWrapper as MerkleRoot, MerkleTree, OwnedProof, Proof};
-pub use node_identity::NodeIdentity;
-pub use running_average::RunningAverage;
-pub use serde_utils::{
-    serde_deserialize_optional_string, serde_deserialize_string, serde_deserialize_vec_to_array,
-    serde_serialize_array_as_vec, serde_serialize_optional_string, serde_serialize_string,
+pub use merkle_tree::{MerkleTree, OwnedProof, Proof};
+pub use model_extra_data::{
+    CHECKPOINT_DATA_MAX_LEN, CONFIG_PREFIX, CheckpointData, MODEL_CONFIG_FILENAME, ModelExtraData,
+    RunMetadata,
 };
-pub use sha256::{sha256, sha256v};
+pub use running_average::RunningAverage;
+pub use serde_utils::{serde_deserialize_vec_to_array, serde_serialize_array_as_vec};
 pub use similarity::{
     DistanceThresholds, hamming_distance, is_similar, jaccard_distance, manhattan_distance,
 };
 pub use sized_iterator::SizedIterator;
-pub use small_boolean::SmallBoolean;
-pub use swap_or_not::compute_shuffled_index;
 pub use testing::IntegrationTestLogMarker;
 pub use token_size::TokenSize;
 

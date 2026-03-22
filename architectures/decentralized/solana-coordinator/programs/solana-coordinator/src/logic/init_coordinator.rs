@@ -1,11 +1,11 @@
 use anchor_lang::prelude::*;
-use psyche_coordinator::SOLANA_RUN_ID_MAX_LEN;
-use psyche_core::FixedString;
+use psyche_coordinator::coordinator::SOLANA_RUN_ID_MAX_LEN;
+use psyche_coordinator::fixed_string::FixedString;
 
 use crate::CoordinatorAccount;
 use crate::CoordinatorInstance;
 use crate::ProgramError;
-use crate::bytes_from_string;
+use crate::bytes_from_str;
 
 #[derive(Accounts)]
 #[instruction(params: InitCoordinatorParams)]
@@ -19,7 +19,7 @@ pub struct InitCoordinatorAccounts<'info> {
         space = 8 + CoordinatorInstance::INIT_SPACE,
         seeds = [
             CoordinatorInstance::SEEDS_PREFIX,
-            bytes_from_string(&params.run_id)
+            &bytes_from_str(&params.run_id)
         ],
         bump
     )]

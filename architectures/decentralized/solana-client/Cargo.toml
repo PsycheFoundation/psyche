@@ -19,7 +19,7 @@ psyche-metrics.workspace = true
 psyche-modeling.workspace = true
 psyche-network.workspace = true
 psyche-solana-rpc.workspace = true
-psyche-solana-coordinator.workspace = true
+psyche-solana-coordinator = { workspace = true, features = ["client"] }
 psyche-tui.workspace = true
 psyche-watcher.workspace = true
 rand.workspace = true

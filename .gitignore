@@ -13,6 +13,8 @@ target/
 
 ### Python ###
 __pycache__
+.uv-python/
+.uv-cache/
 
 ### Windows ###
 Thumbs.db
@@ -42,6 +44,7 @@ slurm*
 node_modules/
 bindings
 .pre-commit-config.yaml
+.claude/
 
 ### Data folders ###
 /data

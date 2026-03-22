@@ -1,17 +1,20 @@
-use crate::{
-    CheckpointerSelection, Commitment, Committee, CommitteeProof, CommitteeSelection, WitnessProof,
-    model::{CheckpointBytes, CheckpointSource, Model},
-};
+use std::collections::HashSet;
+use std::hash::Hash;
 
-use anchor_lang::{
-    AnchorDeserialize, AnchorSerialize, InitSpace,
-    prelude::{borsh, msg},
-};
+use anchor_lang::prelude::*;
 use bytemuck::{Pod, Zeroable};
-use psyche_core::{Bloom, FixedString, FixedVec, MerkleRoot, NodeIdentity, SmallBoolean, sha256};
-use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, hash::Hash};
-use ts_rs::TS;
+
+use crate::bloom::Bloom;
+use crate::checkpointer_selection::CheckpointerSelection;
+use crate::committee_selection::CommitteeSelection;
+use crate::fixed_string::FixedString;
+use crate::fixed_vec::FixedVec;
+use crate::hash_wrapper::HashWrapper;
+use crate::model::{CheckpointBytes, CheckpointSource, Model};
+use crate::node_identity::NodeIdentity;
+use crate::sha::sha256;
+use crate::small_boolean::SmallBoolean;
+use crate::types::{Committee, CommitteeProof, WitnessProof};
 
 pub const SOLANA_MAX_STRING_LEN: usize = 64;
 pub const SOLANA_MAX_URL_STRING_LEN: usize = 192;
@@ -20,7 +23,6 @@ pub const SOLANA_MAX_NUM_WITNESSES: usize = 32;
 pub const SOLANA_MAX_NUM_CHECKPOINTERS: usize = 16;
 // run_id must be at most 32 bytes because of PDA constraints
 pub const SOLANA_RUN_ID_MAX_LEN: usize = 32;
-
 pub const BLOOM_FALSE_RATE: f64 = 0.01f64;
 pub const WITNESS_QUORUM_RAIO: f64 = 2.0f64 / 3.0f64;
 pub const WAITING_FOR_MEMBERS_EXTRA_SECONDS: u64 = 10;
@@ -31,18 +33,11 @@ pub const MAX_TOKENS_TO_SEND: usize = 16;
 pub type WitnessBloom = Bloom<16, 8>;
 
 #[derive(
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    PartialEq,
-    Zeroable,
-    AnchorDeserialize,
-    AnchorSerialize,
-    Serialize,
-    Deserialize,
-    InitSpace,
-    TS,
+    Clone, Copy, Default, PartialEq, Zeroable, AnchorDeserialize, AnchorSerialize, InitSpace,
+)]
+#[cfg_attr(
+    feature = "client",
+    derive(Debug, serde::Serialize, serde::Deserialize, ts_rs::TS)
 )]
 #[repr(u8)]
 pub enum RunState {
@@ -58,18 +53,11 @@ pub enum RunState {
 }
 
 #[derive(
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    PartialEq,
-    Zeroable,
-    AnchorDeserialize,
-    AnchorSerialize,
-    Serialize,
-    Deserialize,
-    InitSpace,
-    TS,
+    Clone, Copy, Default, PartialEq, Zeroable, AnchorDeserialize, AnchorSerialize, InitSpace,
+)]
+#[cfg_attr(
+    feature = "client",
+    derive(Debug, serde::Serialize, serde::Deserialize, ts_rs::TS)
 )]
 #[repr(u8)]
 pub enum ClientState {
@@ -80,18 +68,11 @@ pub enum ClientState {
     Ejected = 3,
 }
 
-#[derive(
-    Clone,
-    Debug,
-    Zeroable,
-    Default,
-    Copy,
-    Serialize,
-    Deserialize,
-    AnchorDeserialize,
-    AnchorSerialize,
-    TS,
+#[cfg_attr(
+    feature = "client",
+    derive(Debug, serde::Serialize, serde::Deserialize, ts_rs::TS)
 )]
+#[derive(Clone, Zeroable, Default, Copy, AnchorDeserialize, AnchorSerialize)]
 #[repr(C)]
 pub struct Client {
     pub id: NodeIdentity,
@@ -116,19 +97,11 @@ impl Hash for Client {
     }
 }
 
-#[derive(
-    Clone,
-    Default,
-    Debug,
-    Zeroable,
-    Copy,
-    Serialize,
-    Deserialize,
-    AnchorSerialize,
-    AnchorDeserialize,
-    PartialEq,
-    TS,
+#[cfg_attr(
+    feature = "client",
+    derive(Debug, serde::Serialize, serde::Deserialize, ts_rs::TS)
 )]
+#[derive(Clone, Default, Zeroable, Copy, AnchorSerialize, AnchorDeserialize, PartialEq)]
 #[repr(C)]
 pub struct Round {
     pub witnesses: FixedVec<Witness, { SOLANA_MAX_NUM_WITNESSES }>,
@@ -140,76 +113,17 @@ pub struct Round {
     pub tie_breaker_tasks: u16,
 }
 
-#[derive(
-    Clone,
-    Debug,
-    Zeroable,
-    Default,
-    Copy,
-    AnchorDeserialize,
-    AnchorSerialize,
-    Serialize,
-    Deserialize,
-    PartialEq,
-    TS,
+#[cfg_attr(
+    feature = "client",
+    derive(Debug, serde::Serialize, serde::Deserialize, ts_rs::TS)
 )]
+#[derive(Clone, Zeroable, Default, Copy, AnchorDeserialize, AnchorSerialize, PartialEq)]
 #[repr(C)]
 pub struct Witness {
     pub proof: WitnessProof,
     pub participant_bloom: WitnessBloom,
     pub broadcast_bloom: WitnessBloom,
-    pub broadcast_merkle: MerkleRoot,
-}
-
-#[derive(
-    Clone,
-    Copy,
-    Zeroable,
-    AnchorSerialize,
-    AnchorDeserialize,
-    Serialize,
-    Deserialize,
-    TS,
-    Default,
-    Debug,
-)]
-#[repr(C)]
-pub struct WitnessMetadata {
-    pub step: u32,
-    pub tokens_per_sec: f32,
-    pub bandwidth_per_sec: f32,
-    pub loss: f32,
-    pub evals: FixedVec<WitnessEvalResult, 8>,
-    pub prompt_results: FixedVec<i32, { MAX_TOKENS_TO_SEND }>,
-    pub prompt_index: u8,
-    pub efficency: f32,
-}
-
-#[derive(
-    Clone,
-    Copy,
-    Zeroable,
-    AnchorSerialize,
-    AnchorDeserialize,
-    Serialize,
-    Deserialize,
-    TS,
-    Default,
-    Debug,
-)]
-#[repr(C)]
-pub struct WitnessEvalResult {
-    pub name: FixedString<32>,
-    pub value: f32,
-}
-
-impl WitnessEvalResult {
-    pub fn new_trunc_name(name: &str, value: f32) -> Self {
-        Self {
-            name: FixedString::from_str_truncated(name),
-            value,
-        }
-    }
+    pub broadcast_merkle: HashWrapper,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -237,8 +151,10 @@ pub type HealthChecks = Vec<(NodeIdentity, CommitteeProof)>;
 
 pub const NUM_STORED_ROUNDS: usize = 4;
 
-#[derive(
-    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorDeserialize, AnchorSerialize, TS,
+#[derive(Clone, Zeroable, Copy, AnchorDeserialize, AnchorSerialize)]
+#[cfg_attr(
+    feature = "client",
+    derive(Debug, serde::Serialize, serde::Deserialize, ts_rs::TS)
 )]
 #[repr(C)]
 pub struct CoordinatorConfig {
@@ -263,8 +179,10 @@ pub struct CoordinatorConfig {
     pub waiting_for_members_extra_time: u8,
 }
 
-#[derive(
-    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorSerialize, AnchorDeserialize, TS,
+#[derive(Clone, Zeroable, Copy, AnchorSerialize, AnchorDeserialize)]
+#[cfg_attr(
+    feature = "client",
+    derive(Debug, serde::Serialize, serde::Deserialize, ts_rs::TS)
 )]
 #[repr(C)]
 pub struct CoordinatorEpochState {
@@ -286,8 +204,10 @@ pub struct CoordinatorEpochState {
     pub checkpointed: bool,
 }
 
-#[derive(
-    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorSerialize, AnchorDeserialize, TS,
+#[derive(Clone, Zeroable, Copy, AnchorSerialize, AnchorDeserialize)]
+#[cfg_attr(
+    feature = "client",
+    derive(Debug, serde::Serialize, serde::Deserialize, ts_rs::TS)
 )]
 #[repr(C)]
 pub struct CoordinatorProgress {
@@ -296,8 +216,10 @@ pub struct CoordinatorProgress {
     pub epoch_start_data_index: u64,
 }
 
-#[derive(
-    Clone, Debug, Zeroable, Copy, Serialize, Deserialize, AnchorSerialize, AnchorDeserialize, TS,
+#[derive(Clone, Copy, AnchorSerialize, AnchorDeserialize)]
+#[cfg_attr(
+    feature = "client",
+    derive(Debug, serde::Serialize, serde::Deserialize, ts_rs::TS)
 )]
 #[repr(C)]
 pub struct Coordinator {
@@ -309,20 +231,26 @@ pub struct Coordinator {
 
     pub config: CoordinatorConfig,
 
-    #[serde(default)]
+    #[cfg_attr(feature = "client", serde(default))]
     pub progress: CoordinatorProgress,
 
-    #[serde(default)]
+    #[cfg_attr(feature = "client", serde(default))]
     pub epoch_state: CoordinatorEpochState, // note, gets zeroed at the start of every epoch (not persistent through epochs)
 
-    #[serde(default)]
+    #[cfg_attr(feature = "client", serde(default))]
     pub run_state_start_unix_timestamp: u64,
 
-    #[serde(default)]
+    #[cfg_attr(feature = "client", serde(default))]
     pub pending_pause: SmallBoolean,
 }
 
-unsafe impl Pod for Coordinator {}
+unsafe impl Pod for Coordinator {
+    // BAD BAD BAD UNSAFE WRONG FIXME TODO XXX
+}
+
+unsafe impl Zeroable for Coordinator {
+    // BAD BAD BAD UNSAFE WRONG FIXME TODO XXX
+}
 
 impl TryFrom<usize> for RunState {
     type Error = CoordinatorError;
@@ -342,20 +270,6 @@ impl TryFrom<usize> for RunState {
     }
 }
 
-impl From<RunState> for usize {
-    fn from(val: RunState) -> Self {
-        match val {
-            RunState::Uninitialized => 0,
-            RunState::WaitingForMembers => 1,
-            RunState::Warmup => 2,
-            RunState::RoundTrain => 3,
-            RunState::RoundWitness => 4,
-            RunState::Cooldown => 5,
-            RunState::Finished => 6,
-            RunState::Paused => 7,
-        }
-    }
-}
 impl PartialEq for Client {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
@@ -646,10 +560,9 @@ impl Coordinator {
             return Err(CoordinatorError::InvalidWitness);
         }
 
-        let Model::LLM(llm) = &mut self.model;
-        match llm.checkpoint_source {
+        match self.model.checkpoint_source {
             CheckpointSource::Stored | CheckpointSource::P2P => {
-                llm.checkpoint_data = checkpoint_data;
+                self.model.checkpoint_data = checkpoint_data;
             }
             CheckpointSource::Ephemeral => {}
         }
@@ -695,7 +608,7 @@ impl Coordinator {
         }
     }
 
-    pub fn resume(&mut self, unix_timestamp: u64) -> Result<(), CoordinatorError> {
+    pub fn resume(&mut self, unix_timestamp: u64) -> std::result::Result<(), CoordinatorError> {
         if self.run_state != RunState::Paused {
             return Err(CoordinatorError::CannotResume);
         }
@@ -707,7 +620,7 @@ impl Coordinator {
         &self,
         id: &NodeIdentity,
         proof: &CommitteeProof,
-    ) -> Result<bool, CoordinatorError> {
+    ) -> std::result::Result<bool, CoordinatorError> {
         let round = self
             .previous_round()
             .ok_or(CoordinatorError::NoActiveRound)?;
@@ -750,7 +663,10 @@ impl Coordinator {
         }
     }
 
-    pub fn trainer_healthy(&self, id: &NodeIdentity) -> Result<bool, CoordinatorError> {
+    pub fn trainer_healthy(
+        &self,
+        id: &NodeIdentity,
+    ) -> std::result::Result<bool, CoordinatorError> {
         let prev_round_witnesses = &self
             .previous_round()
             .ok_or(CoordinatorError::NoActiveRound)?
@@ -773,28 +689,6 @@ impl Coordinator {
         }
 
         score
-    }
-
-    pub fn select_consensus_commitment_by_witnesses(
-        commitments: &[Commitment],
-        witnesses: &[Witness],
-        witness_quorum: u16,
-    ) -> Option<usize> {
-        let mut scores = vec![0; commitments.len()];
-        for witness in witnesses {
-            for (index, commitment) in commitments.iter().enumerate() {
-                if witness.broadcast_bloom.contains(&commitment.data_hash) {
-                    scores[index] += 1;
-                    break;
-                }
-            }
-        }
-        scores
-            .into_iter()
-            .enumerate()
-            .filter(|(_, score)| *score >= witness_quorum)
-            .max_by_key(|(_, score)| *score)
-            .map(|(index, _)| index)
     }
 
     pub fn current_round(&self) -> Option<&Round> {
@@ -886,9 +780,7 @@ impl Coordinator {
     }
 
     pub fn get_sequence_length(&self) -> u32 {
-        match &self.model {
-            Model::LLM(llm) => llm.max_seq_len,
-        }
+        self.model.max_seq_len
     }
 
     pub fn get_target_global_batch_size(&self, round: Option<&Round>) -> u16 {
@@ -906,8 +798,7 @@ impl Coordinator {
     }
 
     pub fn get_cold_start_warmup_bounds(&self) -> Option<(u32, u32)> {
-        let Model::LLM(llm) = &self.model;
-        let cold_start_warmup_steps = llm.cold_start_warmup_steps;
+        let cold_start_warmup_steps = self.model.cold_start_warmup_steps;
         if self.epoch_state.cold_start_epoch.is_false() || cold_start_warmup_steps == 0 {
             return None;
         }
@@ -919,16 +810,15 @@ impl Coordinator {
 
     /// Check that cold_start_warmup_steps can be completed within a single epoch.
     pub fn check_cold_start_warmup_steps(&self) -> bool {
-        let Model::LLM(llm) = &self.model;
-        if llm.cold_start_warmup_steps == 0 {
+        if self.model.cold_start_warmup_steps == 0 {
             return true;
         }
         let training_time = self.config.epoch_time - self.config.warmup_time;
         let estimated_training_rounds = training_time / self.config.max_round_train_time;
-        if llm.cold_start_warmup_steps as u64 > estimated_training_rounds {
+        if self.model.cold_start_warmup_steps as u64 > estimated_training_rounds {
             msg!(
                 "cold_start_warmup_steps ({}) exceeds estimated training rounds per epoch ((epoch_time={} - warmup_time={}) / max_round_train_time={} = {})",
-                llm.cold_start_warmup_steps,
+                self.model.cold_start_warmup_steps,
                 self.config.epoch_time,
                 self.config.warmup_time,
                 self.config.max_round_train_time,
@@ -979,11 +869,10 @@ impl Coordinator {
                 .clients
                 .iter()
                 .any(|client| pending_clients_unordered.contains(&client.id));
-            if all_prev_clients_disconnected {
-                let Model::LLM(llm) = &mut self.model;
-                if llm.checkpoint_source == CheckpointSource::P2P {
-                    llm.checkpoint_source = CheckpointSource::Stored;
-                }
+            if all_prev_clients_disconnected
+                && self.model.checkpoint_source == CheckpointSource::P2P
+            {
+                self.model.checkpoint_source = CheckpointSource::Stored;
             }
 
             let cold_start_epoch = self.epoch_state.cold_start_epoch;
@@ -1111,9 +1000,8 @@ impl Coordinator {
             self.move_clients_to_exited(height);
 
             // we've completed an epoch, switch to P2P from now on
-            let Model::LLM(llm) = &mut self.model;
-            if llm.checkpoint_source == CheckpointSource::Stored {
-                llm.checkpoint_source = CheckpointSource::P2P;
+            if self.model.checkpoint_source == CheckpointSource::Stored {
+                self.model.checkpoint_source = CheckpointSource::P2P;
             }
 
             if self.pending_pause.is_true() {
@@ -1252,7 +1140,7 @@ impl CoordinatorConfig {
     }
 
     #[inline(always)]
-    pub fn check_error(&self) -> Result<(), ConfigError> {
+    pub fn check_error(&self) -> std::result::Result<(), ConfigError> {
         if self.epoch_time == 0 {
             return Err(ConfigError::EpochTime);
         }

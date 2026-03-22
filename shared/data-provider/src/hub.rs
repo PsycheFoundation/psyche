@@ -7,7 +7,7 @@ use hf_hub::{
         tokio::{ApiError, UploadSource},
     },
 };
-use psyche_coordinator::model_extra_data::ModelExtraData;
+use psyche_core::ModelExtraData;
 use std::{path::PathBuf, time::Instant};
 use tracing::{debug, error, info};
 

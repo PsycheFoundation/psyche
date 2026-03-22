@@ -1,4 +1,4 @@
-use crate::sha256::sha256v;
+use crate::sha::sha256v;
 
 const SHUFFLE_ROUND_COUNT: u8 = 90;
 

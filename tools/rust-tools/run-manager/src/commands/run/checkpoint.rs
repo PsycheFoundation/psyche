@@ -2,8 +2,8 @@ use crate::commands::Command;
 use anyhow::Result;
 use async_trait::async_trait;
 use clap::Args;
-use psyche_coordinator::model_extra_data::CheckpointData;
 
+use psyche_core::CheckpointData;
 use psyche_solana_rpc::SolanaBackend;
 use psyche_solana_rpc::instructions;
 

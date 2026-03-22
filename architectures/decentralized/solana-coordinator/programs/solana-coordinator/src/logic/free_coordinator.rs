@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 
 use crate::CoordinatorAccount;
 use crate::CoordinatorInstance;
-use crate::bytes_from_string;
+use crate::bytes_from_str;
 use crate::program_error::ProgramError;
 
 #[derive(Accounts)]
@@ -19,7 +19,7 @@ pub struct FreeCoordinatorAccounts<'info> {
         mut,
         seeds = [
             CoordinatorInstance::SEEDS_PREFIX,
-            bytes_from_string(&coordinator_instance.run_id)
+            &bytes_from_str(&coordinator_instance.run_id)
         ],
         bump = coordinator_instance.bump,
         constraint = coordinator_instance.main_authority == authority.key(),

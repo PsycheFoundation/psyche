@@ -1,5 +1,5 @@
-use psyche_coordinator::{Coordinator, get_batch_ids_for_node};
-use psyche_core::{BatchId, NodeIdentity};
+use psyche_coordinator::{coordinator::Coordinator, node_identity::NodeIdentity};
+use psyche_core::{BatchId, get_batch_ids_for_node};
 use psyche_data_provider::{DataProvider, TokenizedDataProvider};
 use psyche_event_sourcing::event;
 use psyche_modeling::{Batch, BatchData, BatchDataCPU};

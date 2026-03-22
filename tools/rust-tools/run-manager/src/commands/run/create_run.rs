@@ -9,7 +9,7 @@ use anyhow::Result;
 use anyhow::bail;
 use async_trait::async_trait;
 use clap::Args;
-use psyche_coordinator::SOLANA_RUN_ID_MAX_LEN;
+use psyche_coordinator::coordinator::SOLANA_RUN_ID_MAX_LEN;
 
 use crate::commands::Command;
 use psyche_solana_rpc::SolanaBackend;

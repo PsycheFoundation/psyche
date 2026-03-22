@@ -3,7 +3,7 @@ use derive_more::Display;
 use first_class_variants::first_class_variants;
 use iroh::EndpointId;
 use iroh_blobs::Hash as BlobHash;
-use psyche_coordinator::RunState;
+use psyche_coordinator::coordinator::RunState;
 use psyche_core::BatchId;
 use serde::{Deserialize, Serialize};
 

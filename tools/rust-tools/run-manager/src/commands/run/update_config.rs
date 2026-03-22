@@ -1,20 +1,21 @@
 use crate::commands::Command;
 use async_trait::async_trait;
+use psyche_coordinator::{
+    coordinator::{CoordinatorConfig, CoordinatorProgress},
+    model::{CheckpointSource, Model},
+};
+use psyche_core::{
+    CONFIG_PREFIX, CheckpointData, MODEL_CONFIG_FILENAME, ModelExtraData, get_data_index_for_step,
+};
 use std::path::PathBuf;
 
+use crate::{SolanaBackend, instructions};
 use anyhow::{Context, Result, bail};
 use clap::Args;
-use psyche_coordinator::{
-    CoordinatorConfig, CoordinatorProgress, get_data_index_for_step,
-    model::{CheckpointSource, Model},
-    model_extra_data::{CONFIG_PREFIX, CheckpointData, MODEL_CONFIG_FILENAME, ModelExtraData},
-};
 use psyche_data_provider::upload_json_to_gcs;
 use psyche_solana_treasurer::logic::RunUpdateParams;
 use serde::{Deserialize, Serialize};
 use tracing::info;
-
-use crate::{SolanaBackend, instructions};
 
 #[derive(Debug, Clone, Args)]
 #[command()]
@@ -91,18 +92,16 @@ impl Command for CommandUpdateConfig {
         };
 
         if let (Some(ref model_extra_data), Some(ref mut model)) = (&model_extra_data, &mut model) {
-            let Model::LLM(llm) = model;
-            llm.checkpoint_data = model_extra_data.checkpoint.to_fixed_vec();
-            llm.checkpoint_source = CheckpointSource::Stored;
+            model.checkpoint_data = model_extra_data.checkpoint.to_fixed_vec();
+            model.checkpoint_source = CheckpointSource::Stored;
         }
 
         model = if switch_to_hub {
-            let Model::LLM(mut llm) =
-                model.unwrap_or(coordinator_account_state.state.coordinator.model);
-            if llm.checkpoint_source == CheckpointSource::P2P {
-                llm.checkpoint_source = CheckpointSource::Stored;
+            let mut model = model.unwrap_or(coordinator_account_state.state.coordinator.model);
+            if model.checkpoint_source == CheckpointSource::P2P {
+                model.checkpoint_source = CheckpointSource::Stored;
             }
-            Some(Model::LLM(llm))
+            Some(model)
         } else {
             model
         };
@@ -119,8 +118,8 @@ impl Command for CommandUpdateConfig {
         // Upload model extra data to GCS or hub repo depending of the model checkpoint
         if !skip_upload_model_extra_data {
             if let Some(model_extra_data) = model_extra_data {
-                let Model::LLM(llm) = &coordinator_account_state.state.coordinator.model;
-                match llm.decode_checkpoint() {
+                let llm = &coordinator_account_state.state.coordinator.model;
+                match CheckpointData::from_fixed_vec(&llm.checkpoint_data).ok() {
                     Some(CheckpointData::Gcs { bucket, .. }) => {
                         let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
                         info!("Uploading model extra data to gs://{}/{}", bucket, path);

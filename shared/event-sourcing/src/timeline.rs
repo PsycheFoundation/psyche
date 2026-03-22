@@ -5,7 +5,9 @@ use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
-use psyche_coordinator::{CommitteeSelection, Coordinator, assign_data_for_state};
+use psyche_coordinator::committee_selection::CommitteeSelection;
+use psyche_coordinator::coordinator::Coordinator;
+use psyche_core::assign_data_for_state;
 
 use crate::events::Event;
 use crate::projection::{ClusterProjection, ClusterSnapshot, CoordinatorStateSnapshot};
@@ -55,9 +57,8 @@ fn coordinator_to_snapshot(
     timestamp: DateTime<Utc>,
     coord: &Coordinator,
 ) -> CoordinatorStateSnapshot {
-    let checkpoint_source = match coord.model {
-        psyche_coordinator::model::Model::LLM(llm) => llm.checkpoint_source,
-    };
+    let checkpoint_source = coord.model.checkpoint_source;
+
     let client_ids: Vec<String> = coord
         .epoch_state
         .clients

@@ -1,5 +1,13 @@
-use psyche_coordinator::{Coordinator, Witness, WitnessMetadata};
-use psyche_core::{MerkleRoot, MerkleTree, NodeIdentity};
+use super::{
+    evals::{EvalError, MaybeRunningEvals, ModelTaskRunner, RunningEvals},
+    round_state::RoundState,
+};
+use psyche_coordinator::{
+    coordinator::{Coordinator, Witness},
+    hash_wrapper::HashWrapper,
+    node_identity::NodeIdentity,
+};
+use psyche_core::{MerkleTree, WitnessMetadata};
 use psyche_watcher::OpportunisticData;
 use thiserror::Error;
 use tokio::{
@@ -7,11 +15,6 @@ use tokio::{
     task::JoinHandle,
 };
 use tracing::{info, trace};
-
-use super::{
-    evals::{EvalError, MaybeRunningEvals, ModelTaskRunner, RunningEvals},
-    round_state::RoundState,
-};
 
 #[derive(Debug, Error)]
 pub enum WitnessingError {
@@ -99,7 +102,7 @@ impl WitnessStep {
         }
 
         let merkle = MerkleTree::new(&previous_round.broadcasts);
-        let broadcast_merkle = merkle.get_root().cloned().unwrap_or(MerkleRoot::default());
+        let broadcast_merkle = merkle.get_root().cloned().unwrap_or(HashWrapper::default());
 
         let (participant_bloom, broadcast_bloom) =
             previous_round.blooms.lock().unwrap().unwrap_or_default();

@@ -5,6 +5,7 @@ use crate::client::ClientHandle;
 use crate::server::CoordinatorServerHandle;
 use clap::Parser;
 use psyche_client::TrainArgs;
+use psyche_coordinator::coordinator::Coordinator;
 use rand::distr::{Alphanumeric, SampleString};
 use std::env;
 use tokio_util::sync::CancellationToken;
@@ -98,9 +99,7 @@ pub async fn assert_witnesses_healthy_score(
     // calculate score
     let mut score = 0;
     clients.iter().for_each(|client| {
-        score += psyche_coordinator::Coordinator::trainer_healthy_score_by_witnesses(
-            &client.id, witnesses,
-        );
+        score += Coordinator::trainer_healthy_score_by_witnesses(&client.id, witnesses);
     });
 
     assert_eq!(

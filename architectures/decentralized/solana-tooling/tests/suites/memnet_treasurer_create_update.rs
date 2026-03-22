@@ -1,9 +1,8 @@
-use psyche_coordinator::CoordinatorConfig;
-use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
+use psyche_coordinator::coordinator::CoordinatorConfig;
+use psyche_coordinator::coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
 use psyche_coordinator::model::CheckpointSource;
-use psyche_coordinator::model::LLM;
 use psyche_coordinator::model::Model;
-use psyche_coordinator::model_extra_data::CheckpointData;
+use psyche_core::CheckpointData;
 use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
 use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_run_create;
@@ -47,12 +46,12 @@ pub async fn run() {
             waiting_for_members_extra_time: WAITING_FOR_MEMBERS_EXTRA_SECONDS
                 as u8,
         }),
-        model: Some(Model::LLM(LLM {
+        model: Some(Model {
             checkpoint_source: CheckpointSource::Stored,
             checkpoint_data: CheckpointData::Dummy.to_fixed_vec(),
             max_seq_len: 4096,
             cold_start_warmup_steps: 0,
-        })),
+        }),
         progress: None,
         epoch_earning_rate_total_shared: Some(66),
         epoch_slashing_rate_per_client: None,

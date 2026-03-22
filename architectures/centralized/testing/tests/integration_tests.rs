@@ -9,7 +9,7 @@ use psyche_centralized_testing::{
         spawn_clients_with_training_delay,
     },
 };
-use psyche_coordinator::{RunState, model::CheckpointSource};
+use psyche_coordinator::{coordinator::RunState, model::CheckpointSource};
 use tracing::info;
 
 #[test_log::test(tokio::test(flavor = "multi_thread"))]

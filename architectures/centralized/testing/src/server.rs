@@ -2,12 +2,14 @@ use crate::{COOLDOWN_TIME, test_utils::sample_rand_run_id};
 use crate::{MAX_ROUND_TRAIN_TIME, ROUND_WITNESS_TIME, WARMUP_TIME};
 use bytemuck::Zeroable;
 use psyche_centralized_server::app::App as ServerApp;
-use psyche_coordinator::{Client, Round};
-use psyche_coordinator::{
-    Coordinator, CoordinatorConfig, CoordinatorEpochState, RunState, SOLANA_MAX_NUM_CLIENTS,
-    model::{CheckpointSource, LLM, Model},
+use psyche_coordinator::coordinator::{
+    Client, Coordinator, CoordinatorConfig, CoordinatorEpochState, Round, RunState,
+    SOLANA_MAX_NUM_CLIENTS,
 };
-use psyche_core::{FixedVec, NodeIdentity};
+use psyche_coordinator::fixed_vec::FixedVec;
+use psyche_coordinator::model::{CheckpointSource, Model};
+use psyche_coordinator::node_identity::NodeIdentity;
+use psyche_core::CheckpointData;
 use std::{collections::HashSet, ops::ControlFlow};
 use tokio::{
     select,
@@ -90,7 +92,7 @@ impl CoordinatorServer {
         let run_id = sample_rand_run_id();
         let coordinator: Coordinator = Coordinator {
             run_id: run_id.as_str().try_into().unwrap(),
-            model: Model::LLM(LLM::dummy()),
+            model: Model::dummy(CheckpointData::Dummy.to_fixed_vec()),
             config: coordinator_config,
             epoch_state,
             ..Coordinator::zeroed()

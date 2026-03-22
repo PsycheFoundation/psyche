@@ -1,14 +1,15 @@
+use crate::dashboard::{DashboardState, DashboardTui};
 use anyhow::{Result, bail};
 use async_trait::async_trait;
 use psyche_centralized_shared::{ClientToServerMessage, ServerToClientMessage};
-use psyche_coordinator::model::{self, CheckpointSource, Model};
-use psyche_coordinator::model_extra_data::CheckpointData;
-use psyche_coordinator::{
+use psyche_coordinator::coordinator::{
     Client, ClientState, Coordinator, CoordinatorError, HealthChecks, Round, RunState,
     SOLANA_MAX_NUM_CLIENTS, TickResult,
 };
-
-use psyche_core::{FixedVec, NodeIdentity, Shuffle, SizedIterator, TokenSize};
+use psyche_coordinator::fixed_vec::FixedVec;
+use psyche_coordinator::model::{CheckpointBytes, CheckpointSource};
+use psyche_coordinator::node_identity::NodeIdentity;
+use psyche_core::{CheckpointData, Shuffle, SizedIterator, TokenSize};
 use psyche_data_provider::{
     DataProviderTcpServer, DataServerTui, LocalDataProvider, download_model_from_gcs_async,
     download_model_repo_async,
@@ -33,8 +34,6 @@ use tokio::time::{MissedTickBehavior, interval};
 use tokio::{select, time::Interval};
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, debug, info, info_span, warn};
-
-use crate::dashboard::{DashboardState, DashboardTui};
 
 pub(super) type TabWidgetTypes = (
     DashboardTui,
@@ -83,7 +82,7 @@ impl psyche_watcher::Backend for ChannelCoordinatorBackend {
         bail!("Server does not send health checks");
     }
 
-    async fn send_checkpoint(&mut self, _checkpoint: model::CheckpointBytes) -> Result<()> {
+    async fn send_checkpoint(&mut self, _checkpoint: CheckpointBytes) -> Result<()> {
         bail!("Server does not send checkpoints");
     }
 }
@@ -137,9 +136,7 @@ impl App {
     }
 
     pub fn get_checkpoint(&self) -> CheckpointSource {
-        match self.coordinator.model {
-            Model::LLM(llm) => llm.checkpoint_source,
-        }
+        self.coordinator.model.checkpoint_source
     }
 
     pub fn get_port(&self) -> u16 {
@@ -191,7 +188,7 @@ impl App {
             }) = data_server_config
             {
                 // Download model if needed based on checkpoint type
-                let Model::LLM(llm) = &coordinator.model;
+                let llm = &coordinator.model;
                 if llm.checkpoint_source == CheckpointSource::Ephemeral {
                     bail!("Can't start up a run with an Ephemeral checkpoint.")
                 }

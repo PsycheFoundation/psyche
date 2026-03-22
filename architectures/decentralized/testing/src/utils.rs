@@ -8,10 +8,10 @@ use anchor_client::{
     },
 };
 use psyche_coordinator::{
-    NUM_STORED_ROUNDS, Round, RunState,
-    model::{CheckpointSource, Model},
+    coordinator::{Client, NUM_STORED_ROUNDS, Round, RunState, SOLANA_MAX_NUM_CLIENTS},
+    fixed_vec::FixedVec,
+    model::CheckpointSource,
 };
-use psyche_core::FixedVec;
 use psyche_solana_coordinator::SOLANA_MAX_NUM_PENDING_CLIENTS;
 use std::env;
 use std::path::PathBuf;
@@ -46,7 +46,7 @@ impl SolanaTestClient {
         let program = client.program(psyche_solana_coordinator::ID).unwrap();
         let seeds = &[
             psyche_solana_coordinator::CoordinatorInstance::SEEDS_PREFIX,
-            psyche_solana_coordinator::bytes_from_string(&run_id),
+            psyche_solana_coordinator::bytes_from_str(&run_id),
         ];
         let (instance, _) = Pubkey::find_program_address(seeds, &program.id());
         let coordinator_instance: psyche_solana_coordinator::CoordinatorInstance =
@@ -82,9 +82,7 @@ impl SolanaTestClient {
 
     pub async fn get_checkpoint(&self) -> CheckpointSource {
         let coordinator = self.get_coordinator_account().await;
-        match coordinator.state.coordinator.model {
-            Model::LLM(llm) => llm.checkpoint_source,
-        }
+        coordinator.state.coordinator.model.checkpoint_source
     }
 
     pub async fn get_clients(
@@ -94,9 +92,7 @@ impl SolanaTestClient {
         coordinator.state.clients_state.clients
     }
 
-    pub async fn get_current_epoch_clients(
-        &self,
-    ) -> FixedVec<psyche_coordinator::Client, { psyche_coordinator::SOLANA_MAX_NUM_CLIENTS }> {
+    pub async fn get_current_epoch_clients(&self) -> FixedVec<Client, { SOLANA_MAX_NUM_CLIENTS }> {
         let coordinator = self.get_coordinator_account().await;
         coordinator.state.coordinator.epoch_state.clients
     }

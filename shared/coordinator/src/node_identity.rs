@@ -1,22 +1,13 @@
 use std::fmt::{Debug, Display};
 
-use anchor_lang::{Space, prelude::*};
+use anchor_lang::prelude::*;
 use bytemuck::{Pod, Zeroable};
-use serde::{Deserialize, Serialize};
-use ts_rs::TS;
-
 #[derive(
-    Clone,
-    Copy,
-    Default,
-    Zeroable,
-    Pod,
-    AnchorSerialize,
-    AnchorDeserialize,
-    Serialize,
-    Deserialize,
-    TS,
-    Eq,
+    Clone, Copy, Default, Zeroable, Pod, AnchorSerialize, AnchorDeserialize, Eq, InitSpace,
+)]
+#[cfg_attr(
+    feature = "client",
+    derive(serde::Serialize, serde::Deserialize, ts_rs::TS)
 )]
 #[repr(C)]
 pub struct NodeIdentity {
@@ -45,6 +36,7 @@ impl NodeIdentity {
 
     /// In non-Solana usage, we don't have a signer - so
     /// both signer and p2p_identity are the same pubkey.
+    #[cfg(feature = "client")]
     pub fn from_single_key(key: [u8; 32]) -> Self {
         Self {
             signer: key,
@@ -83,8 +75,4 @@ impl Debug for NodeIdentity {
         }
         write!(f, ")")
     }
-}
-
-impl Space for NodeIdentity {
-    const INIT_SPACE: usize = 64;
 }

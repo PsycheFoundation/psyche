@@ -1,6 +1,6 @@
 use crate::instructions::{self, coordinator_tick};
 use crate::retry::{RetryError, retry_function_with_params};
-use anchor_client::anchor_lang::{AccountDeserialize, AnchorSerialize};
+use anchor_client::anchor_lang::AccountDeserialize;
 use anchor_client::solana_sdk::hash::hash;
 use anchor_client::solana_sdk::instruction::Instruction;
 use anchor_client::solana_sdk::program_pack::Pack;
@@ -20,8 +20,10 @@ use anchor_client::{
 };
 use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
-use psyche_coordinator::model::{self, CheckpointBytes};
-use psyche_coordinator::{CommitteeProof, Coordinator, HealthChecks};
+use psyche_coordinator::coordinator::{Coordinator, HealthChecks};
+use psyche_coordinator::model::CheckpointBytes;
+use psyche_coordinator::node_identity::NodeIdentity;
+use psyche_coordinator::types::CommitteeProof;
 use psyche_core::IntegrationTestLogMarker;
 use psyche_event_sourcing::event;
 use psyche_event_sourcing::events::RpcCallType;
@@ -183,7 +185,7 @@ impl SolanaBackend {
         self,
         run_id: String,
         coordinator_account: Pubkey,
-    ) -> Result<SolanaBackendRunner> {
+    ) -> anyhow::Result<SolanaBackendRunner> {
         let (tx_update, rx_update) = broadcast::channel(32);
         let commitment_config = self.get_commitment_config();
 
@@ -274,7 +276,7 @@ impl SolanaBackend {
         &self,
         coordinator_instance: Pubkey,
         coordinator_account: Pubkey,
-        id: psyche_core::NodeIdentity,
+        id: NodeIdentity,
         authorizer: Option<Pubkey>,
     ) -> Result<Signature> {
         let coordinator_instance_state =
@@ -336,8 +338,7 @@ impl SolanaBackend {
                     &coordinator_account,
                     &user,
                     witness,
-                    AnchorSerialize::try_to_vec(&metadata)
-                        .expect("failed to serialize WitnessMetadata"),
+                    postcard::to_stdvec(&metadata).expect("failed to serialize WitnessMetadata"),
                 ),
                 RpcCallType::Witness,
             ),
@@ -367,7 +368,7 @@ impl SolanaBackend {
         &self,
         coordinator_instance: Pubkey,
         coordinator_account: Pubkey,
-        id: psyche_core::NodeIdentity,
+        id: NodeIdentity,
         check: CommitteeProof,
     ) {
         let user = self.get_payer();
@@ -713,7 +714,7 @@ impl WatcherBackend for SolanaBackendRunner {
         Ok(())
     }
 
-    async fn send_checkpoint(&mut self, checkpoint: model::CheckpointBytes) -> Result<()> {
+    async fn send_checkpoint(&mut self, checkpoint: CheckpointBytes) -> Result<()> {
         self.backend
             .send_checkpoint(self.instance, self.account, checkpoint);
         Ok(())

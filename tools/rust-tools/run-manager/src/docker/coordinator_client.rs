@@ -3,9 +3,8 @@ use anchor_client::solana_sdk::{
 };
 use anchor_lang::AccountDeserialize;
 use anyhow::{Context, Result};
-use psyche_coordinator::RunState;
-use psyche_coordinator::model::Model;
-use psyche_coordinator::model_extra_data::CheckpointData;
+use psyche_coordinator::coordinator::RunState;
+use psyche_core::CheckpointData;
 use psyche_solana_authorizer::state::Authorization;
 use psyche_solana_coordinator::{
     CoordinatorInstance, coordinator_account_from_bytes, find_coordinator_instance,
@@ -227,7 +226,7 @@ impl CoordinatorClient {
         let coordinator_account = coordinator_account_from_bytes(&coordinator_account_data.data)
             .context("Failed to deserialize CoordinatorAccount")?;
 
-        let Model::LLM(ref llm) = coordinator_account.state.coordinator.model;
+        let llm = coordinator_account.state.coordinator.model;
         CheckpointData::from_fixed_vec(&llm.checkpoint_data)
             .map_err(|e| anyhow::anyhow!("Failed to decode checkpoint data: {e}"))
     }
