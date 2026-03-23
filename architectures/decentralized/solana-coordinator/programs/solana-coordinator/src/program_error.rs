@@ -74,6 +74,9 @@ pub enum ProgramError {
 
     #[msg("run_id must be 32 bytes or less")]
     RunIdInvalidLength,
+
+    #[msg("Fixed string conversion failed due to string being too long")]
+    FixedStringTooLong,
 }
 
 impl From<CoordinatorError> for ProgramError {

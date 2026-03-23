@@ -199,8 +199,8 @@ export async function startWatchCoordinatorChainLoop(
 				// so it's safe to hardcode the index here.
 				switch (decoded.name) {
 					case 'init_coordinator': {
-						const runPdaAddr = i.accounts[1].toString()
-						const coordinatorAddr = i.accounts[2].toString()
+						const runPdaAddr = i.accounts[2].toString()
+						const coordinatorAddr = i.accounts[3].toString()
 						const expectedRunAddr = getRunPDA(
 							coordinator.programId,
 							decoded.data.params.run_id
@@ -332,6 +332,17 @@ export async function startWatchCoordinatorChainLoop(
 						break
 					}
 					case 'warmup_witness': {
+						const runPdaAddr = i.accounts[1].toString()
+						const coordinatorAddr = i.accounts[2].toString()
+						runUpdates.getAndTouchCurrentRun({
+							runPdaAddr,
+							coordinatorAddr,
+							decoded,
+							tx,
+						})
+						break
+					}
+					case 'set_join_authority': {
 						const runPdaAddr = i.accounts[1].toString()
 						const coordinatorAddr = i.accounts[2].toString()
 						runUpdates.getAndTouchCurrentRun({

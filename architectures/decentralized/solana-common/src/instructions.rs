@@ -19,15 +19,15 @@ pub fn coordinator_init_coordinator(
         psyche_solana_coordinator::ID,
         psyche_solana_coordinator::accounts::InitCoordinatorAccounts {
             payer: *payer,
+            authority: *main_authority,
             coordinator_instance,
             coordinator_account: *coordinator_account,
             system_program: system_program::ID,
         },
         psyche_solana_coordinator::instruction::InitCoordinator {
             params: psyche_solana_coordinator::logic::InitCoordinatorParams {
-                main_authority: *main_authority,
-                join_authority: *join_authority,
                 run_id: run_id.to_string(),
+                join_authority: *join_authority,
                 client_version: client_version.to_string(),
             },
         },
@@ -102,6 +102,7 @@ pub fn coordinator_join_run(
     coordinator_account: &Pubkey,
     authorization: &Pubkey,
     client_id: psyche_core::NodeIdentity,
+    claimer: &Pubkey,
 ) -> Instruction {
     anchor_instruction(
         psyche_solana_coordinator::ID,
@@ -112,7 +113,10 @@ pub fn coordinator_join_run(
             coordinator_account: *coordinator_account,
         },
         psyche_solana_coordinator::instruction::JoinRun {
-            params: psyche_solana_coordinator::logic::JoinRunParams { client_id },
+            params: psyche_solana_coordinator::logic::JoinRunParams {
+                client_id,
+                claimer: *claimer,
+            },
         },
     )
 }
@@ -219,6 +223,26 @@ pub fn coordinator_checkpoint(
     )
 }
 
+pub fn coordinator_set_join_authority(
+    run_id: &str,
+    coordinator_account: &Pubkey,
+    main_authority: &Pubkey,
+    join_authority: &Pubkey,
+) -> Instruction {
+    let coordinator_instance = psyche_solana_coordinator::find_coordinator_instance(run_id);
+    anchor_instruction(
+        psyche_solana_coordinator::ID,
+        psyche_solana_coordinator::accounts::OwnerCoordinatorAccounts {
+            authority: *main_authority,
+            coordinator_instance,
+            coordinator_account: *coordinator_account,
+        },
+        psyche_solana_coordinator::instruction::SetJoinAuthority {
+            join_authority: *join_authority,
+        },
+    )
+}
+
 pub fn coordinator_update_client_version(
     run_id: &str,
     coordinator_account: &Pubkey,
@@ -257,6 +281,7 @@ pub fn treasurer_run_create(
         psyche_solana_treasurer::ID,
         psyche_solana_treasurer::accounts::RunCreateAccounts {
             payer: *payer,
+            authority: *main_authority,
             run,
             run_collateral,
             collateral_mint: *collateral_mint,
@@ -270,10 +295,11 @@ pub fn treasurer_run_create(
         psyche_solana_treasurer::instruction::RunCreate {
             params: psyche_solana_treasurer::logic::RunCreateParams {
                 index: treasurer_index,
-                main_authority: *main_authority,
-                join_authority: *join_authority,
-                run_id: run_id.to_string(),
-                client_version: client_version.to_string(),
+                init: psyche_solana_coordinator::logic::InitCoordinatorParams {
+                    run_id: run_id.to_string(),
+                    join_authority: *join_authority,
+                    client_version: client_version.to_string(),
+                },
             },
         },
     )
@@ -314,31 +340,31 @@ pub fn treasurer_participant_create(
             payer: *payer,
             run,
             participant,
-            user: *user,
             system_program: system_program::ID,
         },
         psyche_solana_treasurer::instruction::ParticipantCreate {
-            params: psyche_solana_treasurer::logic::ParticipantCreateParams {},
+            params: psyche_solana_treasurer::logic::ParticipantCreateParams { user: *user },
         },
     )
 }
 
 pub fn treasurer_participant_claim(
     treasurer_index: u64,
+    claimer: &Pubkey,
+    claimer_collateral: &Pubkey,
     collateral_mint: &Pubkey,
     coordinator_account: &Pubkey,
     user: &Pubkey,
     claim_earned_points: u64,
 ) -> Instruction {
-    let user_collateral = associated_token::get_associated_token_address(user, collateral_mint);
     let run = psyche_solana_treasurer::find_run(treasurer_index);
     let run_collateral = associated_token::get_associated_token_address(&run, collateral_mint);
     let participant = psyche_solana_treasurer::find_participant(&run, user);
     anchor_instruction(
         psyche_solana_treasurer::ID,
         psyche_solana_treasurer::accounts::ParticipantClaimAccounts {
-            user: *user,
-            user_collateral,
+            claimer: *claimer,
+            claimer_collateral: *claimer_collateral,
             run,
             run_collateral,
             participant,
@@ -347,6 +373,7 @@ pub fn treasurer_participant_claim(
         },
         psyche_solana_treasurer::instruction::ParticipantClaim {
             params: psyche_solana_treasurer::logic::ParticipantClaimParams {
+                user: *user,
                 claim_earned_points,
             },
         },

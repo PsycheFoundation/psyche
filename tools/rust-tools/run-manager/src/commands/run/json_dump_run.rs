@@ -191,8 +191,7 @@ impl Command for CommandJsonDumpRun {
             Some(json!({
                 "address": treasurer_run_address.to_string(),
                 "index": treasurer_run_state.index,
-                "main_authority": treasurer_run_state.main_authority.to_string(),
-                "join_authority": treasurer_run_state.join_authority.to_string(),
+                "authority": treasurer_run_state.authority.to_string(),
                 "total_claimed_earned_points": total_claimed_earned_points,
                 "total_claimable_earned_points": total_claimable_earned_points,
                 "total_unclaimed_earned_points": total_unclaimed_earned_points,

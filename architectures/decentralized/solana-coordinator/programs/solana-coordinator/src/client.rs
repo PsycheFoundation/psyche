@@ -19,13 +19,15 @@ use ts_rs::TS;
     AnchorDeserialize,
     Serialize,
     Deserialize,
+    PartialEq,
     TS,
 )]
 #[repr(C)]
 #[ts(rename = "SolanaClient")]
 pub struct Client {
     pub id: NodeIdentity,
-    pub _unused: [u8; 8],
+    #[ts(type = "number[]")]
+    pub claimer: Pubkey,
     pub earned: u64,
     pub slashed: u64,
     pub active: u64,
@@ -35,6 +37,7 @@ impl Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
             .field("id", &self.id)
+            .field("claimer", &self.claimer)
             .field("earned", &self.earned)
             .field("slashed", &self.slashed)
             .field("active", &self.active)

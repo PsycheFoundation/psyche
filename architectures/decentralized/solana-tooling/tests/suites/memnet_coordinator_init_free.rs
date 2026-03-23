@@ -48,10 +48,10 @@ pub async fn run() {
     let coordinator_instance = process_coordinator_init(
         &mut endpoint,
         &payer,
+        &main_authority,
         &coordinator_account,
         InitCoordinatorParams {
             run_id: "this is a dummy run_id".to_string(),
-            main_authority: main_authority.pubkey(),
             join_authority: join_authority.pubkey(),
             client_version: "test".to_string(),
         },

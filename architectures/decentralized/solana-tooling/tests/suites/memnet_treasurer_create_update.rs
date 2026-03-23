@@ -11,6 +11,7 @@ use psyche_core::ConstantLR;
 use psyche_core::LearningRateSchedule;
 use psyche_core::OptimizerDefinition;
 use psyche_solana_coordinator::CoordinatorAccount;
+use psyche_solana_coordinator::logic::InitCoordinatorParams;
 use psyche_solana_tooling::create_memnet_endpoint::create_memnet_endpoint;
 use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_run_create;
 use psyche_solana_tooling::process_treasurer_instructions::process_treasurer_run_update;
@@ -36,6 +37,7 @@ pub async fn run() {
     let index = 42;
     let run_id = "This is my run's dummy run_id".to_string();
     let run_update_params = RunUpdateParams {
+        join_authority: None,
         metadata: None,
         config: Some(CoordinatorConfig {
             warmup_time: 10,
@@ -98,14 +100,16 @@ pub async fn run() {
     process_treasurer_run_create(
         &mut endpoint,
         &payer,
+        &main_authority,
         &collateral_mint,
         &Pubkey::new_unique(),
         RunCreateParams {
             index,
-            run_id: run_id.clone(),
-            main_authority: main_authority.pubkey(),
-            join_authority: Pubkey::new_unique(),
-            client_version: "latest".to_string(),
+            init: InitCoordinatorParams {
+                run_id: run_id.clone(),
+                join_authority: Pubkey::new_unique(),
+                client_version: "latest".to_string(),
+            },
         },
     )
     .await
@@ -115,14 +119,16 @@ pub async fn run() {
     process_treasurer_run_create(
         &mut endpoint,
         &payer,
+        &main_authority,
         &Pubkey::new_unique(),
         &coordinator_account,
         RunCreateParams {
             index,
-            run_id: run_id.clone(),
-            main_authority: main_authority.pubkey(),
-            join_authority: Pubkey::new_unique(),
-            client_version: "latest".to_string(),
+            init: InitCoordinatorParams {
+                run_id: run_id.clone(),
+                join_authority: Pubkey::new_unique(),
+                client_version: "latest".to_string(),
+            },
         },
     )
     .await
@@ -132,14 +138,16 @@ pub async fn run() {
     let (run, coordinator_instance) = process_treasurer_run_create(
         &mut endpoint,
         &payer,
+        &main_authority,
         &collateral_mint,
         &coordinator_account,
         RunCreateParams {
             index,
-            run_id: run_id.clone(),
-            main_authority: main_authority.pubkey(),
-            join_authority: Pubkey::new_unique(),
-            client_version: "latest".to_string(),
+            init: InitCoordinatorParams {
+                run_id: run_id.clone(),
+                join_authority: Pubkey::new_unique(),
+                client_version: "latest".to_string(),
+            },
         },
     )
     .await
@@ -175,14 +183,16 @@ pub async fn run() {
     process_treasurer_run_create(
         &mut endpoint,
         &payer,
+        &main_authority,
         &collateral_mint,
         &coordinator_account,
         RunCreateParams {
             index: index + 1,
-            run_id: "another run id".to_string(),
-            main_authority: main_authority.pubkey(),
-            join_authority: Pubkey::new_unique(),
-            client_version: "latest".to_string(),
+            init: InitCoordinatorParams {
+                run_id: "another run id".to_string(),
+                join_authority: Pubkey::new_unique(),
+                client_version: "latest".to_string(),
+            },
         },
     )
     .await
@@ -202,14 +212,16 @@ pub async fn run() {
     process_treasurer_run_create(
         &mut endpoint,
         &payer,
+        &main_authority,
         &collateral_mint,
         &coordinator_account2,
         RunCreateParams {
             index,
-            run_id: "another run id".to_string(),
-            main_authority: main_authority.pubkey(),
-            join_authority: Pubkey::new_unique(),
-            client_version: "latest".to_string(),
+            init: InitCoordinatorParams {
+                run_id: "another run id".to_string(),
+                join_authority: Pubkey::new_unique(),
+                client_version: "latest".to_string(),
+            },
         },
     )
     .await
@@ -219,14 +231,16 @@ pub async fn run() {
     process_treasurer_run_create(
         &mut endpoint,
         &payer,
+        &main_authority,
         &collateral_mint,
         &coordinator_account2,
         RunCreateParams {
             index: index + 1,
-            run_id: run_id.clone(),
-            main_authority: main_authority.pubkey(),
-            join_authority: Pubkey::new_unique(),
-            client_version: "latest".to_string(),
+            init: InitCoordinatorParams {
+                run_id: run_id.clone(),
+                join_authority: Pubkey::new_unique(),
+                client_version: "latest".to_string(),
+            },
         },
     )
     .await
@@ -236,14 +250,16 @@ pub async fn run() {
     process_treasurer_run_create(
         &mut endpoint,
         &payer,
+        &main_authority,
         &collateral_mint,
         &coordinator_account2,
         RunCreateParams {
             index: index + 1,
-            run_id: "another run id".to_string(),
-            main_authority: main_authority.pubkey(),
-            join_authority: Pubkey::new_unique(),
-            client_version: "latest".to_string(),
+            init: InitCoordinatorParams {
+                run_id: "another run id".to_string(),
+                join_authority: Pubkey::new_unique(),
+                client_version: "latest".to_string(),
+            },
         },
     )
     .await
