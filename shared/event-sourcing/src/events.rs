@@ -179,6 +179,8 @@ pub enum P2P {
     BlobDownloadProgress {
         blob: BlobHash,
         bytes_transferred: u64,
+        bytes_delta: u64,
+        bandwidth_bps: Option<f64>,
     },
     #[display("blob download completed: {blob} success={result:?}")]
     BlobDownloadCompleted {

@@ -83,6 +83,7 @@ pub struct BlobUploadTransfer {
 pub struct BlobDownloadTransfer {
     pub size_bytes: u64,
     pub bytes_transferred: u64,
+    pub bandwidth_bps: Option<f64>,
     /// None = in progress, Some(Ok(())) = success, Some(Err(s)) = failed.
     pub result: Option<Result<(), String>>,
 }
@@ -504,6 +505,7 @@ impl ClusterProjection {
                             BlobDownloadTransfer {
                                 size_bytes: bds.size_bytes,
                                 bytes_transferred: 0,
+                                bandwidth_bps: None,
                                 result: None,
                             },
                         );
@@ -511,6 +513,7 @@ impl ClusterProjection {
                     P2P::BlobDownloadProgress(bdp) => {
                         if let Some(t) = node.p2p.downloads.get_mut(&bdp.blob) {
                             t.bytes_transferred = bdp.bytes_transferred;
+                            t.bandwidth_bps = bdp.bandwidth_bps;
                         }
                     }
                     P2P::BlobDownloadCompleted(bdc) => {
