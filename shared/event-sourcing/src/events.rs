@@ -85,6 +85,11 @@ pub enum CoordinatorEvent {
         call_type: RpcCallType,
         result: Result<(), String>,
     },
+    #[display("rpc fallback: failed_rpc_index={failed_rpc_index}")]
+    RpcFallback {
+        failed_rpc_index: u64,
+        error: String,
+    },
 }
 
 #[first_class_variants(
@@ -102,8 +107,12 @@ pub enum Client {
         step: u64,
     },
 
-    #[display("health check failed index={index} round={round}")]
-    HealthCheckFailed { index: u64, round: u64 },
+    #[display("health check failed client={client_id} index={index} round={round}")]
+    HealthCheckFailed {
+        client_id: String,
+        index: u64,
+        round: u64,
+    },
 
     #[display("{message}")]
     Error { message: String },
@@ -203,9 +212,10 @@ pub enum Train {
 
     #[display("training started: {batch_id}")]
     TrainingStarted { batch_id: BatchId },
-    #[display("training finished: {batch_id} step={step} loss={loss:?}")]
+    #[display("training finished: {batch_id} epoch={epoch} step={step} loss={loss:?}")]
     TrainingFinished {
         batch_id: BatchId,
+        epoch: u64,
         step: u64,
         loss: Option<f64>,
     },
@@ -260,8 +270,8 @@ pub enum Warmup {
     CheckpointDownloadComplete(Result<(), String>),
     #[display("model load started")]
     ModelLoadStarted,
-    #[display("model load complete")]
-    ModelLoadComplete,
+    #[display("model load complete: checkpoint={checkpoint_source}")]
+    ModelLoadComplete { checkpoint_source: String },
 }
 
 #[first_class_variants(

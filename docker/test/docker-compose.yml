@@ -12,6 +12,8 @@ services:
       - '../../config/client/.env.local'
     environment:
       - HF_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - ${EVENTS_HOST_DIR:-/tmp/psyche-test-events}:/events
     networks:
       - psyche-test-network
 

@@ -24,7 +24,7 @@ EventStore::init(vec![
 
 // emit events — variant modules are auto-generated
 event!(train::TrainingStarted { batch_id });
-event!(train::TrainingFinished { batch_id, step: 1, loss: Some(0.5) });
+event!(train::TrainingFinished { batch_id, epoch: 0, step: 1, loss: Some(0.5) });
 
 // rotate to new file after cooldown
 event!(EpochStarted { epoch_number: 1 });

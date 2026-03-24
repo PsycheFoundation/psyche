@@ -6,7 +6,7 @@ use crate::{
 use anyhow::anyhow;
 use anyhow::{Error, Result, bail};
 use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
-use psyche_core::IntegrationTestLogMarker;
+
 use psyche_event_sourcing::event;
 
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};
@@ -176,7 +176,6 @@ impl Client {
                                     step: new_state.progress.step as u64,
                                 });
                                 info!(
-                                    integration_test_log_marker = %IntegrationTestLogMarker::StateChange,
                                     client_id = %identity,
                                     old_state = old_run_state_str,
                                     new_state = %new_state.run_state,

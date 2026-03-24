@@ -58,6 +58,8 @@ pub struct WarmupSnapshot {
     pub download_total_bytes: Option<u64>,
     pub download_bytes: u64,
     pub model_loaded: bool,
+    /// Source of the loaded checkpoint (e.g. "P2P - Hub repo: ..." or "emozilla/...").
+    pub checkpoint_source: Option<String>,
 }
 
 // ── P2P ───────────────────────────────────────────────────────────────────────
@@ -369,6 +371,7 @@ impl ClusterProjection {
                     }
                     Train::TrainingFinished(crate::train::TrainingFinished {
                         batch_id: _,
+                        epoch,
                         step,
                         loss,
                     }) => {
@@ -376,6 +379,7 @@ impl ClusterProjection {
                         if let Some(loss) = *loss {
                             node.losses.push((*step, loss));
                         }
+                        node.epoch = *epoch;
                         node.step = *step;
                     }
                     Train::WitnessElected(we) => {
@@ -426,9 +430,10 @@ impl ClusterProjection {
                     Warmup::ModelLoadStarted(_) => {
                         node.warmup.phase = WarmupPhase::LoadingModel;
                     }
-                    Warmup::ModelLoadComplete(_) => {
+                    Warmup::ModelLoadComplete(mlc) => {
                         node.warmup.phase = WarmupPhase::Complete;
                         node.warmup.model_loaded = true;
+                        node.warmup.checkpoint_source = Some(mlc.checkpoint_source.clone());
                     }
                 },
 
@@ -829,7 +834,7 @@ mod tests {
         proj.apply_node_event(
             node_id,
             &make_event(EventData::Warmup(crate::events::Warmup::ModelLoadComplete(
-                warmup::ModelLoadComplete,
+                warmup::ModelLoadComplete { checkpoint_source: "test-checkpoint".to_string() },
             ))),
         );
         assert_eq!(
@@ -872,6 +877,7 @@ mod tests {
             &make_event(EventData::Train(crate::events::Train::TrainingFinished(
                 train::TrainingFinished {
                     batch_id: BatchId(psyche_core::ClosedInterval { start: 0, end: 0 }),
+                    epoch: 0,
                     step: 5,
                     loss: Some(2.5),
                 },
@@ -891,7 +897,7 @@ mod tests {
         proj.apply_node_event(
             node_id,
             &make_event(EventData::Warmup(crate::events::Warmup::ModelLoadComplete(
-                warmup::ModelLoadComplete,
+                warmup::ModelLoadComplete { checkpoint_source: "test-checkpoint".to_string() },
             ))),
         );
         assert_eq!(

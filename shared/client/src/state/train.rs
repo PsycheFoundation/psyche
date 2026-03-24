@@ -8,7 +8,7 @@ use psyche_coordinator::{
     BLOOM_FALSE_RATE, Commitment, CommitteeSelection, Coordinator, CoordinatorError, HealthChecks,
     assign_data_for_state, get_batch_ids_for_node, get_batch_ids_for_round, model,
 };
-use psyche_core::{BatchId, Bloom, IntegrationTestLogMarker, NodeIdentity, OptimizerDefinition};
+use psyche_core::{BatchId, Bloom, NodeIdentity, OptimizerDefinition};
 use psyche_event_sourcing::event;
 use psyche_modeling::{
     ApplyDistroResultError, Batch, BatchData, DistroResult, TrainOutput, Trainer,
@@ -243,7 +243,6 @@ impl TrainingStepMetadata {
 
         let assigned_batches = get_batch_ids_for_node(&data_assignments, &self.identity);
         info!(
-            integration_test_log_marker = %IntegrationTestLogMarker::WitnessElected,
             step = state.progress.step,
             round = round.height,
             epoch = epoch,
@@ -395,6 +394,7 @@ impl TrainingStepMetadata {
 
                             event!(train::TrainingFinished {
                                 batch_id,
+                                epoch: epoch as u64,
                                 step: step.into(),
                                 loss: Some(loss.into())
                             });
@@ -582,7 +582,6 @@ impl TrainingStepMetadata {
                                 expected_trainer: expected_trainer.map(|t| format!("{:?}", t)),
                             });
                             warn!(
-                                integration_test_log_marker = %IntegrationTestLogMarker::UntrainedBatches,
                                 batch_id = %batch_id,
                                 expected_trainer = ?expected_trainer,
                                 "No commitments for batch {batch_id}, assigned to node {expected_trainer:?}",
@@ -713,11 +712,11 @@ fn start_sending_health_checks(
                     let proof = committee_selection.get_committee(index as u64);
                     if !state.healthy(&client.id, &proof).unwrap_or(false) {
                         event!(client::HealthCheckFailed {
+                            client_id: client.id.to_string(),
                             index: index as u64,
                             round: state.epoch_state.rounds_head as u64,
                         });
                         warn!(
-                            integration_test_log_marker = %IntegrationTestLogMarker::HealthCheck,
                             index = index,
                             client_id = %&client.id,
                             current_step = state.epoch_state.rounds_head,

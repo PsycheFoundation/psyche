@@ -7,17 +7,13 @@ use bollard::{
     models::DeviceRequest,
     secret::{ContainerSummary, HostConfig},
 };
-use psyche_core::IntegrationTestLogMarker;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal;
 
-use crate::{
-    docker_watcher::{DockerWatcher, DockerWatcherError},
-    utils::ConfigBuilder,
-};
+use crate::utils::ConfigBuilder;
 
 /// Check if GPU is available by looking for nvidia-smi or USE_GPU environment variable
 fn has_gpu_support() -> bool {
@@ -38,6 +34,25 @@ fn has_gpu_support() -> bool {
 pub const CLIENT_CONTAINER_PREFIX: &str = "test-psyche-test-client";
 pub const VALIDATOR_CONTAINER_PREFIX: &str = "test-psyche-solana-test-validator";
 pub const NGINX_PROXY_PREFIX: &str = "nginx-proxy";
+
+/// Default host-side directory for event files.
+/// Each container writes to `/events/<node_id>/` inside the container,
+/// which maps to `<events_host_dir>/<node_id>/` on the host.
+fn events_host_dir() -> PathBuf {
+    PathBuf::from(
+        std::env::var("EVENTS_HOST_DIR").unwrap_or_else(|_| "/tmp/psyche-test-events".to_string()),
+    )
+}
+
+/// Ensure the events host directory exists and is empty for a fresh test run.
+fn prepare_events_dir() -> PathBuf {
+    let dir = events_host_dir();
+    if dir.exists() {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    std::fs::create_dir_all(&dir).expect("Failed to create events host directory");
+    dir
+}
 
 pub struct DockerTestCleanup;
 impl Drop for DockerTestCleanup {
@@ -143,7 +158,7 @@ pub async fn e2e_testing_setup_rpc_fallback(
 pub async fn spawn_new_client(
     docker_client: Arc<Docker>,
     keypair_path: Option<&Path>,
-) -> Result<String, DockerWatcherError> {
+) -> Result<String, bollard::errors::Error> {
     // Set the container name based on the ones that are already running.
     let new_container_name = get_name_of_new_client_container(docker_client.clone()).await;
 
@@ -153,16 +168,16 @@ pub async fn spawn_new_client(
     // Setting extra hosts and optionally nvidia request
     let network_name = "test_psyche-test-network";
 
-    // Build volume binds and extra env vars for keypair
-    let (binds, extra_env) = if let Some(path) = keypair_path {
+    // Build volume binds: always mount events dir, optionally mount keypair
+    let events_dir = events_host_dir();
+    let mut binds = vec![format!("{}:/events", events_dir.display())];
+    let mut extra_env = vec![];
+
+    if let Some(path) = keypair_path {
         let abs_path = std::fs::canonicalize(path).expect("Failed to canonicalize keypair path");
-        (
-            Some(vec![format!("{}:/tmp/wallet.json:ro", abs_path.display())]),
-            vec!["WALLET_PRIVATE_KEY_PATH=/tmp/wallet.json".to_string()],
-        )
-    } else {
-        (None, vec![])
-    };
+        binds.push(format!("{}:/tmp/wallet.json:ro", abs_path.display()));
+        extra_env.push("WALLET_PRIVATE_KEY_PATH=/tmp/wallet.json".to_string());
+    }
 
     let host_config = if has_gpu {
         // Setting nvidia usage parameters
@@ -177,14 +192,14 @@ pub async fn spawn_new_client(
             device_requests: Some(vec![device_request]),
             extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
             network_mode: Some(network_name.to_string()),
-            binds,
+            binds: Some(binds),
             ..Default::default()
         }
     } else {
         HostConfig {
             extra_hosts: Some(vec!["host.docker.internal:host-gateway".to_string()]),
             network_mode: Some(network_name.to_string()),
-            binds,
+            binds: Some(binds),
             ..Default::default()
         }
     };
@@ -263,27 +278,8 @@ pub async fn get_container_names(docker_client: Arc<Docker>) -> (Vec<String>, Ve
     (all_container_names, running_containers)
 }
 
-pub async fn spawn_new_client_with_monitoring(
-    docker: Arc<Docker>,
-    watcher: &DockerWatcher,
-) -> Result<String, DockerWatcherError> {
-    let container_id = spawn_new_client(docker.clone(), None).await.unwrap();
-    let _monitor_client_2 = watcher
-        .monitor_container(
-            &container_id,
-            vec![
-                IntegrationTestLogMarker::LoadedModel,
-                IntegrationTestLogMarker::StateChange,
-                IntegrationTestLogMarker::Loss,
-            ],
-        )
-        .unwrap();
-    println!("Spawned client {container_id}");
-    Ok(container_id)
-}
-
 // Updated spawn function
-pub fn spawn_psyche_network(init_num_clients: usize) -> Result<(), DockerWatcherError> {
+pub fn spawn_psyche_network(init_num_clients: usize) -> Result<(), bollard::errors::Error> {
     spawn_psyche_network_with_min(init_num_clients, init_num_clients, None, None)
 }
 
@@ -293,7 +289,14 @@ pub fn spawn_psyche_network_with_min(
     min_clients: usize,
     owner_keypair_path: Option<&Path>,
     waiting_for_members_extra_time: Option<u32>,
-) -> Result<(), DockerWatcherError> {
+) -> Result<(), bollard::errors::Error> {
+    // Prepare a clean events directory for this test run
+    let events_dir = prepare_events_dir();
+    println!(
+        "[+] Events directory prepared at: {}",
+        events_dir.display()
+    );
+
     #[cfg(not(feature = "python"))]
     let mut builder = ConfigBuilder::new()
         .with_num_clients(init_num_clients)
@@ -316,6 +319,7 @@ pub fn spawn_psyche_network_with_min(
     let mut command = Command::new("just");
     let mut cmd = command
         .args(["run_test_infra", &format!("{init_num_clients}")])
+        .env("EVENTS_HOST_DIR", events_dir.to_str().unwrap())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
 

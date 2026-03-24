@@ -7297,6 +7297,7 @@ dependencies = [
  "psyche-client",
  "psyche-coordinator",
  "psyche-core",
+ "psyche-event-sourcing",
  "psyche-python-extension-impl",
  "psyche-solana-coordinator",
  "psyche-solana-rpc",

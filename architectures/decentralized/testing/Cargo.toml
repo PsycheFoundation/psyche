@@ -17,6 +17,7 @@ serde_json.workspace = true
 futures-util.workspace = true
 thiserror.workspace = true
 psyche-client.workspace = true
+psyche-event-sourcing.workspace = true
 toml.workspace = true
 psyche-python-extension-impl = { workspace = true, optional = true }
 

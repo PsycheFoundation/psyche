@@ -169,7 +169,7 @@ impl EventStore {
     }
 }
 
-pub(crate) fn try_decode_cobs_frame<T: serde::de::DeserializeOwned>(
+pub fn try_decode_cobs_frame<T: serde::de::DeserializeOwned>(
     data: &[u8],
     cursor: &mut usize,
 ) -> Option<T> {
@@ -351,6 +351,7 @@ mod tests {
 
         event!(train::TrainingFinished {
             batch_id: test_batch_id(),
+            epoch: 0,
             step: 1,
             loss: Some(0.5),
         });
@@ -391,6 +392,7 @@ mod tests {
 
         event!(train::TrainingFinished {
             batch_id: test_batch_id(),
+            epoch: 1,
             step: 10,
             loss: None,
         });
@@ -427,6 +429,7 @@ mod tests {
 
         event!(train::TrainingFinished {
             batch_id,
+            epoch: 0,
             step: 42,
             loss: Some(0.123),
         });

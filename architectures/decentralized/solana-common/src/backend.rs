@@ -22,7 +22,7 @@ use anyhow::{Context, Result, anyhow};
 use futures_util::StreamExt;
 use psyche_coordinator::model::{self, Checkpoint};
 use psyche_coordinator::{CommitteeProof, Coordinator, HealthChecks};
-use psyche_core::IntegrationTestLogMarker;
+
 use psyche_event_sourcing::event;
 use psyche_event_sourcing::events::RpcCallType;
 use psyche_watcher::{Backend as WatcherBackend, OpportunisticData};
@@ -76,7 +76,6 @@ async fn subscribe_to_account(
                 status: SubscriptionStatus::Down,
             });
             warn!(
-                integration_test_log_marker = %IntegrationTestLogMarker::SolanaSubscription,
                 url = url,
                 subscription_number = id,
                 "Solana subscription error, could not connect to url: {url}",
@@ -112,7 +111,6 @@ async fn subscribe_to_account(
             status: SubscriptionStatus::Up,
         });
         info!(
-            integration_test_log_marker = %IntegrationTestLogMarker::SolanaSubscription,
             url = url,
             subscription_number = id,
             "Correctly subscribe to Solana url: {url}",
@@ -135,7 +133,6 @@ async fn subscribe_to_account(
                                 status: SubscriptionStatus::Down,
                             });
                             warn!(
-                                integration_test_log_marker = %IntegrationTestLogMarker::SolanaSubscription,
                                 url = url,
                                 subscription_number = id,
                                 "Solana subscription error, websocket closed");
@@ -651,8 +648,11 @@ impl SolanaBackend {
             match result {
                 Ok(value) => return Ok(value),
                 Err(RetryError::Retryable(e)) => {
+                    event!(coordinator::RpcFallback {
+                        failed_rpc_index: i as u64,
+                        error: format!("{e}"),
+                    });
                     warn!(
-                        integration_test_log_marker = %IntegrationTestLogMarker::RpcFallback,
                         failed_rpc_index = i,
                         next_rpc_index = i + 1,
                         error = %e,

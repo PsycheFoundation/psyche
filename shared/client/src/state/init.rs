@@ -4,7 +4,7 @@ use psyche_coordinator::{
     model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
 };
 use psyche_core::{
-    Barrier, CancellableBarrier, IntegrationTestLogMarker, NodeIdentity, Shuffle, TokenSize,
+    Barrier, CancellableBarrier, NodeIdentity, Shuffle, TokenSize,
 };
 use psyche_data_provider::{
     DataProvider, DataProviderTcpClient, DownloadError, DummyDataProvider,
@@ -674,9 +674,10 @@ impl RunInitConfigAndIO {
                             .send((serialized_config.clone(), serialized_tokenizer))
                             .unwrap();
 
-                        event!(warmup::ModelLoadComplete);
+                        event!(warmup::ModelLoadComplete {
+                            checkpoint_source: llm.checkpoint.to_string(),
+                        });
                         info!(
-                            integration_test_log_marker = %IntegrationTestLogMarker::LoadedModel,
                             checkpoint = %llm.checkpoint,
                             gpus = init_config.data_parallelism * init_config.tensor_parallelism,
                             dp = init_config.data_parallelism,
