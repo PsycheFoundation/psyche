@@ -1,5 +1,9 @@
 use anyhow::Result;
-use psyche_coordinator::{Coordinator, HealthChecks, Witness, WitnessMetadata, model};
+use psyche_coordinator::{
+    coordinator::{Coordinator, HealthChecks, Witness},
+    model::CheckpointBytes,
+};
+use psyche_core::WitnessMetadata;
 use serde::{Deserialize, Serialize};
 
 #[allow(clippy::large_enum_variant)]
@@ -28,5 +32,5 @@ pub trait Backend: Send + Sync {
     async fn wait_for_new_state(&mut self) -> Result<Coordinator>;
     async fn send_witness(&mut self, opportunistic_data: OpportunisticData) -> Result<()>;
     async fn send_health_check(&mut self, health_check: HealthChecks) -> Result<()>;
-    async fn send_checkpoint(&mut self, checkpoint: model::CheckpointBytes) -> Result<()>;
+    async fn send_checkpoint(&mut self, checkpoint: CheckpointBytes) -> Result<()>;
 }

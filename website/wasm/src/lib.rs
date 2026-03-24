@@ -1,7 +1,5 @@
-use psyche_coordinator::model::LLMArchitecture;
-use psyche_coordinator::model_extra_data::CheckpointData;
-use psyche_core::LearningRateSchedule;
-use psyche_core::NodeIdentity;
+use psyche_coordinator::node_identity::NodeIdentity;
+use psyche_core::{CheckpointData, LLMArchitecture, LearningRateSchedule};
 use psyche_solana_coordinator::{CoordinatorAccount, coordinator_account_from_bytes};
 use serde::ser::Serialize;
 use ts_rs::TS;
@@ -32,12 +30,11 @@ pub fn lr_at_step(
     Ok(lr.get_lr(step))
 }
 
-/// Decode borsh-serialized checkpoint_data bytes into a CheckpointData JSON value.
+/// Decode postcard-serialized checkpoint_data bytes into a CheckpointData JSON value.
 /// Returns null for Dummy or if decoding fails.
 #[wasm_bindgen]
 pub fn decode_checkpoint_data(bytes: Vec<u8>) -> JsValue {
-    use anchor_lang::prelude::borsh::BorshDeserialize;
-    let Ok(data) = CheckpointData::try_from_slice(&bytes) else {
+    let Ok(data) = postcard::from_bytes(&bytes) else {
         return JsValue::NULL;
     };
     match &data {

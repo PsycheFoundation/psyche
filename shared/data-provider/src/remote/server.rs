@@ -1,6 +1,6 @@
 use anyhow::Result;
 use bytemuck::Zeroable;
-use psyche_coordinator::Coordinator;
+use psyche_coordinator::coordinator::Coordinator;
 use psyche_core::BatchId;
 use psyche_network::{ClientNotification, PublicKey, TcpServer};
 use psyche_watcher::Backend;

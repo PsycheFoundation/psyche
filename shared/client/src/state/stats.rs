@@ -1,7 +1,6 @@
-use psyche_coordinator::{
-    Coordinator, MAX_TOKENS_TO_SEND, WitnessEvalResult, WitnessMetadata, model,
-};
-use psyche_core::{BoundedQueue, FixedVec, LearningRateSchedule};
+use crate::state::evals::{EnumModelTask, PROMPT_TASK_NAME};
+use psyche_coordinator::coordinator::Coordinator;
+use psyche_core::{BoundedQueue, LearningRateSchedule, WitnessEvalResult, WitnessMetadata};
 use psyche_metrics::ClientMetrics;
 use psyche_modeling::Trainer;
 use psyche_network::P2PEndpointInfo;
@@ -9,8 +8,6 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokenizers::Tokenizer;
 use tracing::{debug, trace, warn};
 use wandb::{DataValue, LogData};
-
-use crate::state::evals::{EnumModelTask, PROMPT_TASK_NAME};
 
 use super::evals::ModelTaskRunner;
 
@@ -178,22 +175,19 @@ impl StatsLogger {
     pub fn get_witness_metadata(&self, state: &Coordinator) -> WitnessMetadata {
         let bandwidth_total: f64 = self.endpoint_info.iter().map(|v| v.bandwidth).sum();
 
-        let evals = {
-            let mut evals: FixedVec<WitnessEvalResult, 8> = Default::default();
-            for (key, val) in self.current_eval_results() {
-                let value = WitnessEvalResult::new_trunc_name(&key, no_nan(val as f32, 0.0));
-                if evals.push(value).is_err() {
-                    // fixedvec is full, that's ok! nothing we can do.
-                    break;
-                }
-            }
-            evals
-        };
-
+        let evals = self
+            .current_eval_results()
+            .into_iter()
+            .filter(|(_, value)| !value.is_nan())
+            .map(|(name, value)| WitnessEvalResult {
+                name,
+                value: value as f32,
+            })
+            .collect();
         let prompt_results = self.get_prompt_results();
         let prompt_index = self.get_prompt_index();
 
-        // NOTE: no NaNs allowed in borsh serialized data.
+        // NOTE: no NaNs allowed
         let tokens_per_sec = self.global_tokens_per_second(state);
         WitnessMetadata {
             step: state.progress.step,
@@ -256,22 +250,20 @@ impl StatsLogger {
     pub fn global_tokens_per_second(&self, state: &Coordinator) -> f32 {
         match self.step_durations.is_empty() {
             true => 0.,
-            false => match &state.model {
-                model::Model::LLM(_) => {
-                    let tokens = state.get_target_global_batch_size(state.current_round()) as u32
-                        * state.get_sequence_length()
-                        * self.step_durations.len() as u32;
-                    let seconds = self
-                        .step_durations
-                        .iter()
-                        .fold(0f32, |acc, ele| acc + ele.as_secs_f32());
-                    if seconds == 0.0 {
-                        0.0
-                    } else {
-                        tokens as f32 / seconds
-                    }
+            false => {
+                let tokens = state.get_target_global_batch_size(state.current_round()) as u32
+                    * state.get_sequence_length()
+                    * self.step_durations.len() as u32;
+                let seconds = self
+                    .step_durations
+                    .iter()
+                    .fold(0f32, |acc, ele| acc + ele.as_secs_f32());
+                if seconds == 0.0 {
+                    0.0
+                } else {
+                    tokens as f32 / seconds
                 }
-            },
+            }
         }
     }
 
@@ -312,13 +304,13 @@ impl StatsLogger {
     }
 
     // clear tokens_to_send buffer
-    pub fn get_prompt_results(&self) -> FixedVec<i32, MAX_TOKENS_TO_SEND> {
-        let mut results = FixedVec::new();
+    pub fn get_prompt_results(&self) -> Vec<i32> {
+        let mut results = Vec::new();
         for eval_task in self.model_task_runner.tasks().iter().flatten() {
             if let EnumModelTask::PromptTask(prompt_task) = &eval_task.task {
                 {
                     let tokens = prompt_task.tokens_to_send.read().unwrap();
-                    results.extend(tokens.iter().cloned()).unwrap();
+                    results.extend(tokens.iter().cloned());
                 }
                 if let Ok(decoded) = prompt_task
                     .tokenizer
@@ -360,9 +352,7 @@ fn total_tokens(state: &Coordinator) -> u64 {
         .current_round()
         .map(|y| y.data_index)
         .unwrap_or_default()
-        * match &state.model {
-            model::Model::LLM(llm) => llm.max_seq_len as u64,
-        }
+        * state.model.max_seq_len as u64
 }
 
 fn perplexity(loss: f32) -> f32 {

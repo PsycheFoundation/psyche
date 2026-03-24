@@ -1,17 +1,9 @@
-use anchor_lang::prelude::{borsh::BorshSerialize, *};
-use anchor_lang_idl::{
-    build::IdlBuild,
-    types::{
-        IdlArrayLen, IdlDefinedFields, IdlField, IdlRepr, IdlReprModifier, IdlType, IdlTypeDef,
-        IdlTypeDefTy,
-    },
-};
+use anchor_lang::prelude::*;
+
 use bitvec::array::BitArray;
 use bytemuck::Zeroable;
 use fnv::FnvHasher;
-use serde::{Deserialize, Deserializer, Serialize};
-use std::{collections::BTreeMap, fmt, hash::Hasher};
-use ts_rs::TS;
+use std::{fmt, hash::Hasher};
 
 // Modified from https://github.com/solana-labs/solana/blob/27eff8408b7223bb3c4ab70523f8a8dca3ca6645/bloom/src/bloom.rs
 
@@ -21,16 +13,23 @@ pub trait BloomHashIndex {
     fn hash_at_index(&self, hash_index: u64) -> u64;
 }
 
-#[derive(Clone, PartialEq, Eq, Copy, Zeroable, TS)]
+#[derive(Clone, PartialEq, Eq, Copy, Zeroable)]
+#[cfg_attr(feature = "client", derive(ts_rs::TS))]
 #[repr(C)]
 pub struct Bloom<const U: usize, const K: usize> {
     pub keys: [u64; K],
     pub bits: BitArrayWrapper<U>,
 }
 
-#[derive(Clone, PartialEq, Eq, Copy, Default, Serialize, Deserialize, TS)]
+#[derive(Clone, PartialEq, Eq, Copy, Default)]
+#[cfg_attr(
+    feature = "client",
+    derive(Debug, serde::Serialize, serde::Deserialize, ts_rs::TS)
+)]
 #[repr(transparent)]
-pub struct BitArrayWrapper<const U: usize>(#[ts(type = "number[]")] pub BitArray<[u64; U]>);
+pub struct BitArrayWrapper<const U: usize>(
+    #[cfg_attr(feature = "client", ts(type = "number[]"))] pub BitArray<[u64; U]>,
+);
 
 impl<const U: usize> AnchorSerialize for BitArrayWrapper<U> {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
@@ -52,33 +51,6 @@ impl<const U: usize> AnchorDeserialize for BitArrayWrapper<U> {
     }
 }
 
-impl<const U: usize> IdlBuild for BitArrayWrapper<U> {
-    fn create_type() -> Option<IdlTypeDef> {
-        Some(IdlTypeDef {
-            name: format!("BitArrayWrapper{U}").to_string(),
-            docs: vec!["A wrapper around BitArray for serialization".to_string()],
-            serialization: Default::default(),
-            repr: Some(IdlRepr::Transparent),
-            generics: vec![],
-            ty: IdlTypeDefTy::Struct {
-                fields: Some(IdlDefinedFields::Named(vec![IdlField {
-                    name: "0".to_string(),
-                    docs: vec!["The underlying bit array".to_string()],
-                    ty: IdlType::Array(Box::new(IdlType::U64), IdlArrayLen::Value(U)),
-                }])),
-            },
-        })
-    }
-
-    fn insert_types(_types: &mut BTreeMap<String, IdlTypeDef>) {
-        // no inner types in idl
-    }
-
-    fn get_full_path() -> String {
-        format!("{}::BitArrayWrapper{}", module_path!(), U)
-    }
-}
-
 unsafe impl<const U: usize> Zeroable for BitArrayWrapper<U> {}
 
 impl<const U: usize> BitArrayWrapper<U> {
@@ -96,56 +68,12 @@ impl<const U: usize, const K: usize> Default for Bloom<U, K> {
     }
 }
 
-impl<const M: usize, const K: usize> Serialize for Bloom<M, K> {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("Bloom", 3)?;
-        state.serialize_field("keys", &self.keys.to_vec())?;
-        state.serialize_field("bits", &self.bits)?;
-        state.end()
-    }
-}
-
-impl<'de, const U: usize, const K: usize> Deserialize<'de> for Bloom<U, K> {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct BloomHelper<const U: usize> {
-            keys: Vec<u64>,
-            bits: BitArrayWrapper<U>,
-        }
-
-        let helper = BloomHelper::deserialize(deserializer)?;
-
-        if helper.keys.len() != K {
-            return Err(serde::de::Error::custom(format!(
-                "Expected {} keys, got {}",
-                K,
-                helper.keys.len()
-            )));
-        }
-
-        let mut keys = [0u64; K];
-        keys.copy_from_slice(&helper.keys);
-
-        Ok(Bloom {
-            keys,
-            bits: helper.bits,
-        })
-    }
-}
-
 impl<const U: usize, const K: usize> AnchorSerialize for Bloom<U, K> {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         for key in &self.keys {
             AnchorSerialize::serialize(key, writer)?;
         }
-        BorshSerialize::serialize(&self.bits, writer)
+        borsh::BorshSerialize::serialize(&self.bits, writer)
     }
 }
 
@@ -157,76 +85,6 @@ impl<const U: usize, const K: usize> AnchorDeserialize for Bloom<U, K> {
         }
         let bits = BitArrayWrapper::deserialize_reader(reader)?;
         Ok(Bloom { keys, bits })
-    }
-}
-
-impl<const U: usize, const K: usize> IdlBuild for Bloom<U, K> {
-    fn create_type() -> Option<IdlTypeDef> {
-        Some(IdlTypeDef {
-            name: format!("Bloom{U}_{K}"),
-            docs: vec![
-                "A Bloom filter implementation with configurable size and number of hash functions"
-                    .to_string(),
-            ],
-            serialization: Default::default(),
-            repr: Some(IdlRepr::C(IdlReprModifier {
-                packed: false,
-                align: None,
-            })),
-            generics: vec![],
-            ty: IdlTypeDefTy::Struct {
-                fields: Some(IdlDefinedFields::Named(vec![
-                    IdlField {
-                        name: "keys".to_string(),
-                        docs: vec!["Hash function keys".to_string()],
-                        ty: IdlType::Array(Box::new(IdlType::U64), IdlArrayLen::Value(K)),
-                    },
-                    IdlField {
-                        name: "bits".to_string(),
-                        docs: vec!["Bit array for the Bloom filter".to_string()],
-                        ty: IdlType::Defined {
-                            name: format!("BitArrayWrapper{U}"),
-                            generics: vec![],
-                        },
-                    },
-                ])),
-            },
-        })
-    }
-
-    fn insert_types(types: &mut BTreeMap<String, IdlTypeDef>) {
-        if let Some(ty) = BitArrayWrapper::<U>::create_type() {
-            types.insert(ty.name.clone(), ty);
-        }
-    }
-
-    fn get_full_path() -> String {
-        format!("{}::Bloom{}_{}", module_path!(), U, K)
-    }
-}
-
-impl<const U: usize, const K: usize> fmt::Debug for Bloom<U, K> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Bloom {{ keys.len: {}, bits: ", self.keys.len())?;
-        const MAX_PRINT_BITS: usize = 10;
-
-        if Self::max_bits() <= MAX_PRINT_BITS {
-            // Print individual bits for small filters
-            for i in 0..Self::max_bits() {
-                match self.bits.0.get(i) {
-                    Some(x) => write!(f, "{}", *x as u8)?,
-                    None => write!(f, "X")?,
-                }
-            }
-        } else {
-            // Print byte array for larger filters
-            let words = self.bits.0.as_raw_slice();
-            for byte in words.iter() {
-                write!(f, "{byte:016x}")?; // full u64 output
-            }
-        }
-
-        write!(f, " }}")
     }
 }
 
@@ -251,7 +109,7 @@ impl<const U: usize, const K: usize> Bloom<U, K> {
     /// `keysize` bytes.
     ///
     /// See <https://hur.st/bloomfilter/>.
-    #[cfg(feature = "rand")]
+    #[cfg(feature = "client")]
     pub fn random(num_items: usize, false_rate: f64) -> Self {
         use rand::Rng;
         let m = Self::num_bits(num_items as f64, false_rate);
@@ -260,24 +118,11 @@ impl<const U: usize, const K: usize> Bloom<U, K> {
         Self::new(num_bits, &keys)
     }
 
-    #[cfg(feature = "rand")]
+    #[cfg(feature = "client")]
     fn num_bits(num_items: f64, false_rate: f64) -> f64 {
         let n = num_items;
         let p = false_rate;
         ((n * p.ln()) / (1f64 / 2f64.powf(2f64.ln())).ln()).ceil()
-    }
-
-    #[cfg(feature = "rand")]
-    #[allow(dead_code)]
-    fn num_keys(num_bits: f64, num_items: f64) -> f64 {
-        let n = num_items;
-        let m = num_bits;
-        // infinity as usize is zero in rust 1.43 but 2^64-1 in rust 1.45; ensure it's zero here
-        if n == 0.0 {
-            0.0
-        } else {
-            1f64.max(((m / n) * 2f64.ln()).round())
-        }
     }
 
     fn pos<T: BloomHashIndex>(&self, key: &T, k: u64) -> u64 {
@@ -321,6 +166,157 @@ fn slice_hash(slice: &[u8], hash_index: u64) -> u64 {
 impl<T: AsRef<[u8]>> BloomHashIndex for T {
     fn hash_at_index(&self, hash_index: u64) -> u64 {
         slice_hash(self.as_ref(), hash_index)
+    }
+}
+
+impl<const U: usize, const K: usize> fmt::Debug for Bloom<U, K> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Bloom {{ keys.len: {}, bits: ", self.keys.len())?;
+        const MAX_PRINT_BITS: usize = 10;
+
+        if Self::max_bits() <= MAX_PRINT_BITS {
+            // Print individual bits for small filters
+            for i in 0..Self::max_bits() {
+                match self.bits.0.get(i) {
+                    Some(x) => write!(f, "{}", *x as u8)?,
+                    None => write!(f, "X")?,
+                }
+            }
+        } else {
+            // Print byte array for larger filters
+            let words = self.bits.0.as_raw_slice();
+            for byte in words.iter() {
+                write!(f, "{byte:016x}")?; // full u64 output
+            }
+        }
+
+        write!(f, " }}")
+    }
+}
+
+#[cfg(feature = "client")]
+use anchor_lang_idl::{
+    build::IdlBuild,
+    types::{
+        IdlArrayLen, IdlDefinedFields, IdlField, IdlRepr, IdlReprModifier, IdlType, IdlTypeDef,
+        IdlTypeDefTy,
+    },
+};
+#[cfg(feature = "client")]
+impl<const U: usize> IdlBuild for BitArrayWrapper<U> {
+    fn create_type() -> Option<IdlTypeDef> {
+        Some(IdlTypeDef {
+            name: format!("BitArrayWrapper{U}").to_string(),
+            docs: vec!["A wrapper around BitArray for serialization".to_string()],
+            serialization: Default::default(),
+            repr: Some(IdlRepr::Transparent),
+            generics: vec![],
+            ty: IdlTypeDefTy::Struct {
+                fields: Some(IdlDefinedFields::Named(vec![IdlField {
+                    name: "0".to_string(),
+                    docs: vec!["The underlying bit array".to_string()],
+                    ty: IdlType::Array(Box::new(IdlType::U64), IdlArrayLen::Value(U)),
+                }])),
+            },
+        })
+    }
+
+    fn insert_types(_types: &mut std::collections::BTreeMap<String, IdlTypeDef>) {
+        // no inner types in idl
+    }
+
+    fn get_full_path() -> String {
+        format!("{}::BitArrayWrapper{}", module_path!(), U)
+    }
+}
+#[cfg(feature = "client")]
+impl<const M: usize, const K: usize> serde::Serialize for Bloom<M, K> {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("Bloom", 3)?;
+        state.serialize_field("keys", &self.keys.to_vec())?;
+        state.serialize_field("bits", &self.bits)?;
+        state.end()
+    }
+}
+
+#[cfg(feature = "client")]
+impl<'de, const U: usize, const K: usize> serde::Deserialize<'de> for Bloom<U, K> {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct BloomHelper<const U: usize> {
+            keys: Vec<u64>,
+            bits: BitArrayWrapper<U>,
+        }
+
+        let helper = BloomHelper::deserialize(deserializer)?;
+
+        if helper.keys.len() != K {
+            return Err(serde::de::Error::custom(format!(
+                "Expected {} keys, got {}",
+                K,
+                helper.keys.len()
+            )));
+        }
+
+        let mut keys = [0u64; K];
+        keys.copy_from_slice(&helper.keys);
+
+        Ok(Bloom {
+            keys,
+            bits: helper.bits,
+        })
+    }
+}
+#[cfg(feature = "client")]
+impl<const U: usize, const K: usize> IdlBuild for Bloom<U, K> {
+    fn create_type() -> Option<IdlTypeDef> {
+        Some(IdlTypeDef {
+            name: format!("Bloom{U}_{K}"),
+            docs: vec![
+                "A Bloom filter implementation with configurable size and number of hash functions"
+                    .to_string(),
+            ],
+            serialization: Default::default(),
+            repr: Some(IdlRepr::C(IdlReprModifier {
+                packed: false,
+                align: None,
+            })),
+            generics: vec![],
+            ty: IdlTypeDefTy::Struct {
+                fields: Some(IdlDefinedFields::Named(vec![
+                    IdlField {
+                        name: "keys".to_string(),
+                        docs: vec!["Hash function keys".to_string()],
+                        ty: IdlType::Array(Box::new(IdlType::U64), IdlArrayLen::Value(K)),
+                    },
+                    IdlField {
+                        name: "bits".to_string(),
+                        docs: vec!["Bit array for the Bloom filter".to_string()],
+                        ty: IdlType::Defined {
+                            name: format!("BitArrayWrapper{U}"),
+                            generics: vec![],
+                        },
+                    },
+                ])),
+            },
+        })
+    }
+
+    fn insert_types(types: &mut std::collections::BTreeMap<String, IdlTypeDef>) {
+        if let Some(ty) = BitArrayWrapper::<U>::create_type() {
+            types.insert(ty.name.clone(), ty);
+        }
+    }
+
+    fn get_full_path() -> String {
+        format!("{}::Bloom{}_{}", module_path!(), U, K)
     }
 }
 

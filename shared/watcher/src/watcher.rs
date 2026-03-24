@@ -1,6 +1,6 @@
 use crate::traits::Backend;
 use anyhow::Result;
-use psyche_coordinator::{Client, Coordinator, RunState};
+use psyche_coordinator::coordinator::{Client, Coordinator, RunState};
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hasher};
 

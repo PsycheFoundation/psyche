@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use psyche_coordinator::Committee;
+use psyche_coordinator::types::Committee;
 use psyche_tui::ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},

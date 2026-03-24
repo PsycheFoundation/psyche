@@ -1,12 +1,11 @@
-use psyche_coordinator::CommitteeSelection;
-use psyche_coordinator::CoordinatorConfig;
-use psyche_coordinator::SOLANA_MAX_NUM_WITNESSES;
-use psyche_coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
+use psyche_coordinator::committee_selection::CommitteeSelection;
+use psyche_coordinator::coordinator::CoordinatorConfig;
+use psyche_coordinator::coordinator::SOLANA_MAX_NUM_WITNESSES;
+use psyche_coordinator::coordinator::WAITING_FOR_MEMBERS_EXTRA_SECONDS;
 use psyche_coordinator::model::CheckpointSource;
-use psyche_coordinator::model::LLM;
 use psyche_coordinator::model::Model;
-use psyche_coordinator::model_extra_data::CheckpointData;
-use psyche_core::NodeIdentity;
+use psyche_coordinator::node_identity::NodeIdentity;
+use psyche_core::CheckpointData;
 use psyche_solana_authorizer::logic::AuthorizationGrantorUpdateParams;
 use psyche_solana_coordinator::CoordinatorAccount;
 use psyche_solana_coordinator::instruction::Witness;
@@ -100,12 +99,12 @@ pub async fn run() {
                 as u8,
             total_steps: 100,
         }),
-        Some(Model::LLM(LLM {
+        Some(Model {
             checkpoint_source: CheckpointSource::Stored,
             checkpoint_data: CheckpointData::Dummy.to_fixed_vec(),
             max_seq_len: 4096,
             cold_start_warmup_steps: 0,
-        })),
+        }),
         None, // no explicit progress
     )
     .await

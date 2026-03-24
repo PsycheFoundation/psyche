@@ -13,13 +13,16 @@ anchor-lang = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea
 anchor-spl = { git = "https://github.com/coral-xyz/anchor.git", rev = "a7a23eea308440a9fa9cb79cee7bddd30ab163d5" }
 
 psyche-core = { path = "../../../shared/core" }
-psyche-coordinator = { path = "../../../shared/coordinator" }
+psyche-coordinator = { path = "../../../shared/coordinator", features = [
+  "client",
+] }
 
 psyche-solana-authorizer = { path = "../solana-authorizer/programs/solana-authorizer", features = [
   "cpi",
 ] }
 psyche-solana-coordinator = { path = "../solana-coordinator/programs/solana-coordinator", features = [
   "cpi",
+  "client",
 ] }
 psyche-solana-treasurer = { path = "../solana-treasurer/programs/solana-treasurer", features = [
   "cpi",

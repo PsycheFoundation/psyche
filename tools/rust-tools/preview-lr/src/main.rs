@@ -1,6 +1,7 @@
 use clap::Parser;
 use plotters::prelude::*;
-use psyche_coordinator::{CoordinatorConfig, model_extra_data::ModelExtraData};
+use psyche_coordinator::coordinator::CoordinatorConfig;
+use psyche_core::ModelExtraData;
 use serde::Deserialize;
 use std::path::PathBuf;
 

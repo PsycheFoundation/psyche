@@ -4,8 +4,8 @@ use anyhow::Result;
 use anyhow::bail;
 use async_trait::async_trait;
 use clap::Args;
-use psyche_coordinator::RunState;
 
+use psyche_coordinator::coordinator::RunState;
 use psyche_solana_rpc::SolanaBackend;
 
 #[derive(Debug, Clone, Args)]

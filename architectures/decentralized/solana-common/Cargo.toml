@@ -13,11 +13,12 @@ psyche-coordinator.workspace = true
 psyche-core.workspace = true
 psyche-event-sourcing.workspace = true
 psyche-solana-authorizer.workspace = true
-psyche-solana-coordinator.workspace = true
+psyche-solana-coordinator = { workspace = true, features = ["client"] }
 psyche-solana-treasurer.workspace = true
 psyche-watcher.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 backon = "1.4.1"
+postcard.workspace = true
 solana-account-decoder-client-types = "=2.1.4"
 solana-transaction-status-client-types = "=2.1.4"

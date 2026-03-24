@@ -12,8 +12,8 @@ use anchor_client::{
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
 use psyche_client::{TrainArgs, print_identity_keys};
-use psyche_coordinator::model::{CheckpointSource, Model};
-use psyche_coordinator::model_extra_data::CheckpointData;
+use psyche_coordinator::model::CheckpointSource;
+use psyche_core::CheckpointData;
 use psyche_event_sourcing::{EventStore, FileBackend, RunStarted};
 use psyche_network::SecretKey;
 use psyche_solana_rpc::SolanaBackend;
@@ -295,10 +295,7 @@ async fn async_main() -> Result<()> {
                 .coordinator;
 
             if model {
-                #[allow(irrefutable_let_patterns)]
-                let Model::LLM(model_config) = coordinator_account_state.model else {
-                    bail!("Model is not an LLM, unsure how to predownload.");
-                };
+                let model_config = coordinator_account_state.model;
 
                 if model_config.checkpoint_source == CheckpointSource::Ephemeral {
                     bail!("Can't predownload model with ephemeral checkpoint.")

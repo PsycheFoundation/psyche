@@ -3,10 +3,28 @@ use crate::{
     state::{train::FinishedTrainers, types::DeserializeError},
 };
 
+use super::{
+    FinishedBroadcast, RunInitConfigAndIO,
+    cooldown::{CooldownError, CooldownStep, CooldownStepMetadata},
+    evals::EvalError,
+    init::InitRunError,
+    round_state::RoundState,
+    stats::StatsLogger,
+    train::{TrainError, TrainingStep, TrainingStepMetadata},
+    types::PayloadState,
+    warmup::{WarmupStep, WarmupStepMetadata},
+    witness::{WitnessStep, WitnessStepMetadata, WitnessingError},
+};
 use iroh_blobs::api::Tag;
-use psyche_coordinator::CheckpointerSelection;
-use psyche_coordinator::{Committee, Coordinator, RunState, Witness, WitnessProof};
-use psyche_core::{IntegrationTestLogMarker, MerkleRoot, MerkleTree, NodeIdentity, sha256};
+use psyche_coordinator::{
+    checkpointer_selection::CheckpointerSelection,
+    coordinator::{Coordinator, RunState, Witness},
+    hash_wrapper::HashWrapper,
+    node_identity::NodeIdentity,
+    sha::sha256,
+    types::{Committee, WitnessProof},
+};
+use psyche_core::{IntegrationTestLogMarker, MerkleTree};
 use psyche_event_sourcing::event;
 use psyche_modeling::{DistroResult, Trainer};
 use psyche_network::{BlobTicket, Hash, P2PEndpointInfo, TransmittableDistroResult};
@@ -23,19 +41,6 @@ use tokio::{
     task::JoinHandle,
 };
 use tracing::{Instrument, debug, info, trace, trace_span, warn};
-
-use super::{
-    FinishedBroadcast, RunInitConfigAndIO,
-    cooldown::{CooldownError, CooldownStep, CooldownStepMetadata},
-    evals::EvalError,
-    init::InitRunError,
-    round_state::RoundState,
-    stats::StatsLogger,
-    train::{TrainError, TrainingStep, TrainingStepMetadata},
-    types::PayloadState,
-    warmup::{WarmupStep, WarmupStepMetadata},
-    witness::{WitnessStep, WitnessStepMetadata, WitnessingError},
-};
 
 pub struct StepStateMachine {
     identity: NodeIdentity,
@@ -195,7 +200,7 @@ impl StepStateMachine {
             .map(|i| i as u64)
     }
 
-    fn get_merkle_root(&self, broadcasts: &[[u8; 32]]) -> MerkleRoot {
+    fn get_merkle_root(&self, broadcasts: &[[u8; 32]]) -> HashWrapper {
         MerkleTree::new(broadcasts)
             .get_root()
             .cloned()

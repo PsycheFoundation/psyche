@@ -1,7 +1,10 @@
 use std::cmp::max;
 
-use crate::{Coordinator, CoordinatorError, coordinator::SOLANA_MAX_NUM_CHECKPOINTERS};
-use psyche_core::{compute_shuffled_index, sha256, sha256v};
+use crate::{
+    coordinator::{Coordinator, CoordinatorError, Round, SOLANA_MAX_NUM_CHECKPOINTERS},
+    sha::{sha256, sha256v},
+    swap_or_not::compute_shuffled_index,
+};
 
 use super::types::salts;
 
@@ -46,7 +49,7 @@ impl CheckpointerSelection {
 pub(crate) fn get_round_by_offset(
     coordinator: &Coordinator,
     offset: isize,
-) -> Result<&crate::Round, CoordinatorError> {
+) -> Result<&Round, CoordinatorError> {
     match offset {
         -2 => coordinator.previous_previous_round(),
         -1 => coordinator.previous_round(),

@@ -2,13 +2,13 @@ use anyhow::{Error, Result};
 use bytemuck::Zeroable;
 use psyche_centralized_shared::{ClientToServerMessage, ServerToClientMessage};
 use psyche_client::{
-    CheckpointUploader, Client, ClientTUI, ClientTUIState, ModelExtraData, NC, RunInitConfig,
-    TrainArgs, read_identity_secret_key,
+    CheckpointUploader, Client, ClientTUI, ClientTUIState, NC, RunInitConfig, TrainArgs,
+    read_identity_secret_key,
 };
-use psyche_coordinator::model::{self, CheckpointSource};
-use psyche_coordinator::model_extra_data::CheckpointData;
-use psyche_coordinator::{Coordinator, HealthChecks};
-use psyche_core::NodeIdentity;
+use psyche_coordinator::coordinator::{Coordinator, HealthChecks};
+use psyche_coordinator::model::{self, CheckpointBytes, CheckpointSource};
+use psyche_coordinator::node_identity::NodeIdentity;
+use psyche_core::{CheckpointData, ModelExtraData};
 use psyche_event_sourcing::event;
 use psyche_event_sourcing::events::RpcCallType;
 use psyche_metrics::ClientMetrics;
@@ -69,7 +69,7 @@ impl WatcherBackend for Backend {
         Ok(())
     }
 
-    async fn send_checkpoint(&mut self, checkpoint: model::CheckpointBytes) -> Result<()> {
+    async fn send_checkpoint(&mut self, checkpoint: CheckpointBytes) -> Result<()> {
         self.tx.send(ToSend::Checkpoint(Box::new(checkpoint)))?;
         Ok(())
     }
@@ -211,7 +211,7 @@ impl App {
 
         // Validate upload credentials now that we have the coordinator state with checkpoint info.
         if !state_options.checkpoint_config.skip_upload {
-            let model::Model::LLM(ref llm) = first_coordinator_state.model;
+            let llm = first_coordinator_state.model;
             if llm.checkpoint_source != CheckpointSource::Ephemeral {
                 match CheckpointData::from_fixed_vec(&llm.checkpoint_data) {
                     Ok(CheckpointData::Hub { ref repo_id, .. }) => {

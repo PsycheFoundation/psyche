@@ -1,6 +1,6 @@
 use crate::state::prompt_texts::get_prompt_texts;
-use psyche_coordinator::MAX_TOKENS_TO_SEND;
-use psyche_core::FixedVec;
+use psyche_coordinator::coordinator::MAX_TOKENS_TO_SEND;
+use psyche_coordinator::fixed_vec::FixedVec;
 use psyche_modeling::{CausalLM, EosToks};
 use psyche_modeling::{LogitsProcessor, Sampling, Trainer};
 use std::sync::{Mutex, RwLock};

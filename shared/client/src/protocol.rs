@@ -1,5 +1,5 @@
-use psyche_coordinator::{Commitment, CommitteeProof};
-use psyche_core::{BatchId, MerkleRoot};
+use psyche_coordinator::{hash_wrapper::HashWrapper, types::CommitteeProof};
+use psyche_core::{BatchId, Commitment};
 use psyche_network::{BlobTicket, NetworkConnection, TransmittableDownload};
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +13,7 @@ pub struct TrainingResult {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Finished {
-    pub broadcast_merkle: MerkleRoot,
+    pub broadcast_merkle: HashWrapper,
     pub warmup: bool,
 }
 

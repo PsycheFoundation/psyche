@@ -1,27 +1,18 @@
 use anchor_lang::prelude::*;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
-use psyche_core::FixedVec;
-use psyche_core::NodeIdentity;
+use psyche_coordinator::fixed_vec::FixedVec;
+use psyche_coordinator::node_identity::NodeIdentity;
 use psyche_core::SizedIterator;
-use serde::Deserialize;
-use serde::Serialize;
-use ts_rs::TS;
 
 use crate::SOLANA_MAX_NUM_PENDING_CLIENTS;
 use crate::client::Client;
 use crate::program_error::ProgramError;
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Zeroable,
-    AnchorSerialize,
-    AnchorDeserialize,
-    Serialize,
-    Deserialize,
-    TS,
+#[derive(Debug, Clone, Copy, Zeroable, AnchorSerialize, AnchorDeserialize)]
+#[cfg_attr(
+    feature = "client",
+    derive(serde::Serialize, serde::Deserialize, ts_rs::TS)
 )]
 #[repr(C)]
 pub struct ClientsState {
@@ -31,16 +22,10 @@ pub struct ClientsState {
     pub future_epoch_rates: ClientsEpochRates,
 }
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Zeroable,
-    AnchorSerialize,
-    AnchorDeserialize,
-    Serialize,
-    Deserialize,
-    TS,
+#[derive(Debug, Clone, Copy, Zeroable, AnchorSerialize, AnchorDeserialize)]
+#[cfg_attr(
+    feature = "client",
+    derive(serde::Serialize, serde::Deserialize, ts_rs::TS)
 )]
 #[repr(C)]
 pub struct ClientsEpochRates {

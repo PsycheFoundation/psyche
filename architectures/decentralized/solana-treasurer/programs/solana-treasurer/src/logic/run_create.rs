@@ -3,7 +3,7 @@ use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::Mint;
 use anchor_spl::token::Token;
 use anchor_spl::token::TokenAccount;
-use psyche_coordinator::SOLANA_RUN_ID_MAX_LEN;
+use psyche_coordinator::coordinator::SOLANA_RUN_ID_MAX_LEN;
 use psyche_solana_coordinator::cpi::accounts::InitCoordinatorAccounts;
 use psyche_solana_coordinator::cpi::init_coordinator;
 use psyche_solana_coordinator::logic::InitCoordinatorParams;
@@ -119,7 +119,7 @@ pub fn run_create_processor(
         InitCoordinatorParams {
             main_authority: context.accounts.run.key(),
             join_authority: params.join_authority,
-            run_id: params.run_id.clone(),
+            run_id: params.run_id,
             client_version: params.client_version.clone(),
         },
     )?;

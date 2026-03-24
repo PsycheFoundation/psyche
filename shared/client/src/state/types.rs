@@ -1,8 +1,10 @@
 use std::path::PathBuf;
 
 use google_cloud_storage::client::{Storage, StorageControl};
-use psyche_coordinator::CommitteeProof;
-use psyche_core::{BatchId, MerkleRoot, NodeIdentity};
+use psyche_coordinator::{
+    hash_wrapper::HashWrapper, node_identity::NodeIdentity, types::CommitteeProof,
+};
+use psyche_core::BatchId;
 use psyche_data_provider::{GcsUploadInfo, HubUploadInfo};
 use psyche_modeling::DistroResult;
 use psyche_network::{BlobTicket, TransmittableDistroResult};
@@ -119,7 +121,7 @@ pub struct DistroBroadcastAndPayload {
 
 pub struct FinishedBroadcast {
     pub step: u32,
-    pub merkle: MerkleRoot,
+    pub merkle: HashWrapper,
     pub commitment_data_hash: [u8; 32],
     pub proof: CommitteeProof,
     pub warmup: bool,

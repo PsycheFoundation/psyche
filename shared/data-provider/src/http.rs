@@ -2,8 +2,7 @@ use std::{str::FromStr, time::Duration};
 
 use anyhow::{Context, Result, anyhow, bail};
 use futures::future::join_all;
-use psyche_coordinator::model::HttpTrainingDataLocation;
-use psyche_core::{BatchId, Shuffle, TokenSize};
+use psyche_core::{BatchId, HttpTrainingDataLocation, Shuffle, TokenSize};
 use rand::seq::SliceRandom;
 use rand_chacha::ChaCha8Rng;
 use rand_chacha::rand_core::SeedableRng;
@@ -187,30 +186,13 @@ impl FileURLs {
                 n_left_pad_zeros,
                 num_files,
             } => {
-                Self::from_template(
-                    &String::from(url_template),
-                    *start_index,
-                    *n_left_pad_zeros,
-                    *num_files,
-                )
-                .await
+                Self::from_template(url_template, *start_index, *n_left_pad_zeros, *num_files).await
             }
             HttpTrainingDataLocation::SingleUrl(url) => Self::from_list(&[String::from(url)]).await,
             HttpTrainingDataLocation::Gcp {
                 bucket_name,
                 filter_directory,
-            } => {
-                let filter_directory = String::from(filter_directory);
-                Self::from_gcp_bucket(
-                    &String::from(bucket_name),
-                    if filter_directory.is_empty() {
-                        None
-                    } else {
-                        Some(filter_directory)
-                    },
-                )
-                .await
-            }
+            } => Self::from_gcp_bucket(bucket_name, filter_directory.clone()).await,
         }
     }
 }

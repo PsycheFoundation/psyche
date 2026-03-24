@@ -10,7 +10,8 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use anchor_client::solana_sdk::signature::{Keypair, Signer};
 use bollard::container::StartContainerOptions;
 use bollard::{Docker, container::KillContainerOptions};
-use psyche_coordinator::{RunState, model::CheckpointSource};
+use psyche_coordinator::coordinator::RunState;
+use psyche_coordinator::model::CheckpointSource;
 use psyche_core::IntegrationTestLogMarker;
 use psyche_decentralized_testing::docker_setup::e2e_testing_setup_rpc_fallback;
 use psyche_decentralized_testing::{

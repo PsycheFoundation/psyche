@@ -1,5 +1,4 @@
-use psyche_coordinator::model::HttpLLMTrainingDataLocation;
-use psyche_core::Shuffle;
+use psyche_core::{HttpLLMTrainingDataLocation, Shuffle};
 
 use crate::http::{FileURLs, HttpDataProvider};
 
@@ -75,8 +74,9 @@ pub enum HttpProviderConfigs {
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use psyche_coordinator::model::{HttpLLMTrainingDataLocation, HttpTrainingDataLocation};
-    use psyche_core::{BatchId, Shuffle, TokenSize};
+    use psyche_core::{
+        BatchId, HttpLLMTrainingDataLocation, HttpTrainingDataLocation, Shuffle, TokenSize,
+    };
     use std::{
         fs::{self, File},
         io::Write,
@@ -148,7 +148,7 @@ mod tests {
                             (
                                 HttpLLMTrainingDataLocation {
                                     location: HttpTrainingDataLocation::NumberedFiles {
-                                        url_template: url_template.as_str().try_into().unwrap(),
+                                        url_template: url_template.as_str().into(),
                                         start_index: 0,
                                         n_left_pad_zeros: 3,
                                         num_files: files.len() as u32,

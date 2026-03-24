@@ -2,7 +2,8 @@ use anchor_client::solana_sdk::bs58;
 use anchor_client::solana_sdk::pubkey::Pubkey;
 use anchor_client::solana_sdk::signature::{EncodableKey, Keypair, Signer};
 use anyhow::{Context, Result, anyhow, bail};
-use psyche_coordinator::model_extra_data::CheckpointData;
+use psyche_coordinator::coordinator::RunState;
+use psyche_core::CheckpointData;
 use std::io::{BufRead, BufReader, Cursor};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -14,7 +15,6 @@ use crate::docker::coordinator_client::CoordinatorClient;
 use crate::get_env_var;
 use crate::load_and_apply_env_file;
 use crate::load_wallet_key;
-use psyche_coordinator::RunState;
 
 const RETRY_DELAY_SECS: u64 = 5;
 const VERSION_MISMATCH_EXIT_CODE: i32 = 10;

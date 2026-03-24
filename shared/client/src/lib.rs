@@ -9,7 +9,7 @@ pub use cli::{TrainArgs, prepare_environment, print_identity_keys, read_identity
 pub use client::Client;
 pub use protocol::{Broadcast, BroadcastType, Finished, NC, TrainingResult};
 pub use state::{
-    CheckpointConfig, CheckpointUploader, InitRunError, ModelExtraData, RoundState, RunInitConfig,
+    CheckpointConfig, CheckpointUploader, InitRunError, RoundState, RunInitConfig,
     RunInitConfigAndIO,
 };
 pub use tui::{ClientTUI, ClientTUIState};

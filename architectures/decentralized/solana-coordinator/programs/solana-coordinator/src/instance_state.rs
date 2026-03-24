@@ -1,38 +1,29 @@
 use anchor_lang::prelude::*;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
-use psyche_coordinator::ClientState;
-use psyche_coordinator::Coordinator;
-use psyche_coordinator::CoordinatorConfig;
-use psyche_coordinator::CoordinatorProgress;
-use psyche_coordinator::HealthChecks;
-use psyche_coordinator::RunState;
-use psyche_coordinator::TickResult;
-use psyche_coordinator::Witness;
+use psyche_coordinator::coordinator::ClientState;
+use psyche_coordinator::coordinator::Coordinator;
+use psyche_coordinator::coordinator::CoordinatorConfig;
+use psyche_coordinator::coordinator::CoordinatorProgress;
+use psyche_coordinator::coordinator::HealthChecks;
+use psyche_coordinator::coordinator::RunState;
+use psyche_coordinator::coordinator::TickResult;
+use psyche_coordinator::coordinator::Witness;
+use psyche_coordinator::fixed_string::FixedString;
 use psyche_coordinator::model::CheckpointBytes;
 use psyche_coordinator::model::Model;
-use psyche_core::FixedString;
-use psyche_core::NodeIdentity;
-use psyche_core::SmallBoolean;
-use psyche_core::sha256v;
-use serde::Deserialize;
-use serde::Serialize;
-use ts_rs::TS;
+use psyche_coordinator::node_identity::NodeIdentity;
+use psyche_coordinator::sha::sha256v;
+use psyche_coordinator::small_boolean::SmallBoolean;
 
 use crate::ProgramError;
 use crate::client::Client;
 use crate::clients_state::ClientsState;
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Zeroable,
-    AnchorSerialize,
-    AnchorDeserialize,
-    Serialize,
-    Deserialize,
-    TS,
+#[derive(Clone, Copy, Zeroable, AnchorSerialize, AnchorDeserialize)]
+#[cfg_attr(
+    feature = "client",
+    derive(Debug, serde::Serialize, serde::Deserialize, ts_rs::TS)
 )]
 #[repr(C)]
 pub struct CoordinatorInstanceState {
@@ -40,10 +31,14 @@ pub struct CoordinatorInstanceState {
     pub clients_state: ClientsState,
     pub is_warmup_first_tick: SmallBoolean,
     pub is_training_first_tick: SmallBoolean,
+
+    // TODO move this into run extra? doesn't need to be on-chain.
     pub client_version: FixedString<96>,
 }
 
-unsafe impl Pod for CoordinatorInstanceState {}
+unsafe impl Pod for CoordinatorInstanceState {
+    // NOT  SAFE. DELETE ME.
+}
 
 impl CoordinatorInstanceState {
     fn get_random_seed(clock: &Clock) -> u64 {

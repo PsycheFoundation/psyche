@@ -16,6 +16,7 @@ no-idl = []
 no-log-ix-name = []
 idl-build = ["anchor-lang/idl-build"]
 anchor-debug = []
+client = ["psyche-coordinator/client", "dep:serde", "dep:ts-rs"]
 
 [lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = [
@@ -32,10 +33,11 @@ bytemuck = { version = "1", features = [
 ] }
 psyche-core = { path = "../../../../../shared/core" }
 psyche-coordinator = { path = "../../../../../shared/coordinator" }
-serde = { version = "1.0.209", features = ["derive"] }
 psyche-solana-authorizer = { path = "../../../solana-authorizer/programs/solana-authorizer", features = [
   "cpi",
 ] }
-ts-rs = { git = "https://github.com/arilotter/ts-rs.git", rev = "20c5bef07f3aa8ca3aa1b5cdad11ecdd60c64d34", features = [
+
+ts-rs = { optional = true, git = "https://github.com/arilotter/ts-rs.git", rev = "20c5bef07f3aa8ca3aa1b5cdad11ecdd60c64d34", features = [
   "psyche-impl",
-] }
+] } # client only deps
+serde = { optional = true, version = "1.0.209", features = ["derive"] }

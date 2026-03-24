@@ -3,10 +3,7 @@ use std::fmt::Debug;
 use anchor_lang::prelude::*;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
-use psyche_core::NodeIdentity;
-use serde::Deserialize;
-use serde::Serialize;
-use ts_rs::TS;
+use psyche_coordinator::node_identity::NodeIdentity;
 
 #[derive(
     Clone,
@@ -17,12 +14,13 @@ use ts_rs::TS;
     Pod,
     AnchorSerialize,
     AnchorDeserialize,
-    Serialize,
-    Deserialize,
-    TS,
 )]
+#[cfg_attr(
+    feature = "client",
+    derive(serde::Serialize, serde::Deserialize, ts_rs::TS)
+)]
+#[cfg_attr(feature = "client", ts(rename = "SolanaClient"))]
 #[repr(C)]
-#[ts(rename = "SolanaClient")]
 pub struct Client {
     pub id: NodeIdentity,
     pub _unused: [u8; 8],

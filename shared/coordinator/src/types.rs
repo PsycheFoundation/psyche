@@ -1,8 +1,7 @@
-use anchor_lang::{AnchorDeserialize, AnchorSerialize, InitSpace, prelude::borsh};
+use anchor_lang::prelude::*;
 use bytemuck::Zeroable;
-use psyche_core::SmallBoolean;
-use serde::{Deserialize, Serialize};
-use ts_rs::TS;
+
+use crate::small_boolean::SmallBoolean;
 
 /// Salt constants for deterministic shuffling
 pub mod salts {
@@ -11,17 +10,10 @@ pub mod salts {
     pub const COOLDOWN: &str = "cooldown";
 }
 
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    PartialEq,
-    Zeroable,
-    AnchorDeserialize,
-    AnchorSerialize,
-    Serialize,
-    Deserialize,
+#[derive(Clone, Copy, Default, PartialEq, Zeroable, AnchorDeserialize, AnchorSerialize)]
+#[cfg_attr(
+    feature = "client",
+    derive(Debug, serde::Serialize, serde::Deserialize, ts_rs::TS)
 )]
 #[repr(C)]
 pub enum Committee {
@@ -31,6 +23,7 @@ pub enum Committee {
     Trainer,
 }
 
+#[cfg(feature = "client")]
 impl std::fmt::Display for Committee {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -41,17 +34,10 @@ impl std::fmt::Display for Committee {
     }
 }
 
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    PartialEq,
-    Zeroable,
-    AnchorDeserialize,
-    AnchorSerialize,
-    Serialize,
-    Deserialize,
+#[derive(Clone, Copy, Default, PartialEq, Zeroable, AnchorDeserialize, AnchorSerialize)]
+#[cfg_attr(
+    feature = "client",
+    derive(Debug, serde::Serialize, serde::Deserialize, ts_rs::TS)
 )]
 #[repr(C)]
 pub struct CommitteeProof {
@@ -61,18 +47,11 @@ pub struct CommitteeProof {
 }
 
 #[derive(
-    Clone,
-    Copy,
-    Debug,
-    Default,
-    PartialEq,
-    Zeroable,
-    AnchorDeserialize,
-    AnchorSerialize,
-    Serialize,
-    Deserialize,
-    InitSpace,
-    TS,
+    Clone, Copy, Default, PartialEq, Zeroable, AnchorDeserialize, AnchorSerialize, InitSpace,
+)]
+#[cfg_attr(
+    feature = "client",
+    derive(Debug, serde::Serialize, serde::Deserialize, ts_rs::TS)
 )]
 #[repr(C)]
 pub struct WitnessProof {

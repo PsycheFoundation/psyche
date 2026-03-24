@@ -5,8 +5,11 @@ use crate::{
 };
 use anyhow::anyhow;
 use anyhow::{Error, Result, bail};
-use psyche_coordinator::{Commitment, CommitteeSelection, Coordinator, RunState};
-use psyche_core::IntegrationTestLogMarker;
+use psyche_coordinator::{
+    committee_selection::CommitteeSelection,
+    coordinator::{Coordinator, RunState},
+};
+use psyche_core::{Commitment, IntegrationTestLogMarker};
 use psyche_event_sourcing::event;
 
 use psyche_metrics::{ClientMetrics, ClientRoleInRound, PeerConnection};

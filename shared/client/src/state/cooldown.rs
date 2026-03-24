@@ -1,7 +1,13 @@
+use super::{
+    CheckpointConfig,
+    evals::{ModelTaskRunner, RunningEvals},
+};
 use crate::CheckpointUploader;
 use psyche_coordinator::{
-    CheckpointerSelection, Coordinator, model::Model, model_extra_data::CheckpointData,
+    checkpointer_selection::CheckpointerSelection,
+    coordinator::{Coordinator, CoordinatorError},
 };
+use psyche_core::CheckpointData;
 use psyche_data_provider::{GcsManifestMetadata, UploadError, upload_to_gcs, upload_to_hub};
 use psyche_event_sourcing::event;
 #[cfg(feature = "python")]
@@ -27,11 +33,6 @@ use tokio::{
 use tracing::error;
 use tracing::{Instrument, info, info_span, warn};
 
-use super::{
-    CheckpointConfig,
-    evals::{ModelTaskRunner, RunningEvals},
-};
-
 #[derive(Error, Debug)]
 pub enum CooldownError {
     #[error("no trainers available for checkpointing!")]
@@ -44,7 +45,7 @@ pub enum CooldownError {
     Checkpoint(#[from] CheckpointError),
 
     #[error("error in cooldown step: {0}")]
-    CoordinatorError(#[from] psyche_coordinator::CoordinatorError),
+    CoordinatorError(#[from] CoordinatorError),
 }
 
 pub struct CooldownStepMetadata {
@@ -144,8 +145,8 @@ impl CooldownStepMetadata {
         let epoch = state.progress.epoch as u32;
         let checkpoint_extra_files = self.checkpoint_extra_files.clone();
         let checkpoint_info = self.checkpoint_info.clone();
-        let Model::LLM(ref llm) = state.model;
-        let checkpoint_data = llm.decode_checkpoint();
+        let llm = state.model;
+        let checkpoint_data = CheckpointData::from_fixed_vec(&llm.checkpoint_data).ok();
         let tx_model = self.tx_model.clone();
         let model_task_runner = self.model_task_runner.clone();
         let delete_queue = self.delete_queue.clone();

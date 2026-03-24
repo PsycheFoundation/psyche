@@ -1,14 +1,14 @@
-use std::{
-    fmt::{Display, Formatter},
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
-};
-
-use psyche_coordinator::{Coordinator, RunState, model::Model};
+use psyche_coordinator::coordinator::{Coordinator, RunState};
+use psyche_core::CheckpointData;
 use psyche_tui::ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
     text::Line,
     widgets::{Block, Paragraph, Widget},
+};
+use std::{
+    fmt::{Display, Formatter},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 #[derive(Default, Debug)]
@@ -182,14 +182,14 @@ impl From<&Coordinator> for CoordinatorTuiState {
                 .iter()
                 .map(|c| format!("{:?}", c.id))
                 .collect(),
-            model_checkpoint: match &value.model {
-                Model::LLM(l) => format!(
-                    "{} ({})",
-                    l.checkpoint_source,
-                    l.decode_checkpoint()
-                        .map_or("unknown".to_string(), |d| format!("{:?}", d))
-                ),
-            },
+            model_checkpoint: format!(
+                "{} ({})",
+                value.model.checkpoint_source,
+                CheckpointData::from_fixed_vec(&value.model.checkpoint_data)
+                    .ok()
+                    .map_or("unknown".to_string(), |d| format!("{:?}", d))
+            ),
+
             exited_clients: value.epoch_state.exited_clients.len(),
             pending_pause: value.pending_pause.is_true(),
         }

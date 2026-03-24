@@ -1,16 +1,18 @@
 use crate::{Finished, TrainingResult, fetch_data::BatchIdSet};
 
+use super::types::PayloadState;
 use psyche_coordinator::{
-    Commitment, CommitteeProof, CommitteeSelection, WitnessBloom, WitnessProof,
+    committee_selection::CommitteeSelection,
+    coordinator::WitnessBloom,
+    node_identity::NodeIdentity,
+    types::{CommitteeProof, WitnessProof},
 };
-use psyche_core::{BatchId, NodeIdentity};
+use psyche_core::{BatchId, Commitment};
 use psyche_modeling::DistroResult;
 use std::{
     collections::{BTreeMap, HashMap},
     sync::{Arc, Mutex},
 };
-
-use super::types::PayloadState;
 
 pub struct RoundState {
     pub height: u32,

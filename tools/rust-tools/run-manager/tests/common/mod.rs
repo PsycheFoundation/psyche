@@ -9,7 +9,7 @@ use anchor_client::{
     },
 };
 use anyhow::{Context, Result, bail};
-use psyche_coordinator::RunState;
+use psyche_coordinator::coordinator::RunState;
 use psyche_solana_rpc::SolanaBackend;
 use std::sync::Arc;
 use std::{

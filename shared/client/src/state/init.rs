@@ -1,12 +1,13 @@
 use crate::{WandBInfo, fetch_data::DataFetcher};
-pub use psyche_coordinator::model_extra_data::ModelExtraData;
 use psyche_coordinator::{
-    Coordinator, HealthChecks,
-    model::{self, HttpLLMTrainingDataLocation, LLMTrainingDataLocation},
-    model_extra_data::{CONFIG_PREFIX, CheckpointData, MODEL_CONFIG_FILENAME},
+    coordinator::{Coordinator, HealthChecks},
+    model::CheckpointSource,
+    node_identity::NodeIdentity,
 };
 use psyche_core::{
-    Barrier, CancellableBarrier, IntegrationTestLogMarker, NodeIdentity, Shuffle, TokenSize,
+    Barrier, CONFIG_PREFIX, CancellableBarrier, CheckpointData, HttpLLMTrainingDataLocation,
+    IntegrationTestLogMarker, LLMArchitecture, LLMTrainingDataLocation, LLMTrainingDataType,
+    MODEL_CONFIG_FILENAME, ModelExtraData, Shuffle, TokenSize,
 };
 use psyche_data_provider::{
     DataProvider, DataProviderTcpClient, DownloadError, DummyDataProvider,
@@ -205,9 +206,9 @@ impl RunInitConfigAndIO {
             ));
         }
 
-        let model::Model::LLM(llm) = state.model;
+        let llm = state.model;
 
-        if matches!(llm.checkpoint_source, model::CheckpointSource::Ephemeral) {
+        if matches!(llm.checkpoint_source, CheckpointSource::Ephemeral) {
             return Err(InitRunError::ModelIsEphemeral);
         }
 
@@ -218,7 +219,7 @@ impl RunInitConfigAndIO {
                 info!("Using model extra data override from CLI");
                 config
             } else {
-                match llm.decode_checkpoint() {
+                match CheckpointData::from_fixed_vec(&llm.checkpoint_data).ok() {
                     Some(CheckpointData::Gcs { bucket, .. }) => {
                         let path = format!("{}/{}", CONFIG_PREFIX, MODEL_CONFIG_FILENAME);
                         debug!("Fetching model extra data from gs://{}/{}", bucket, path);
@@ -324,13 +325,13 @@ impl RunInitConfigAndIO {
         let model_future: JoinHandle<Result<RawLoadedModel, InitRunError>> = match &model_extra_data
             .architecture
         {
-            model::LLMArchitecture::HfLlama
-            | model::LLMArchitecture::HfDeepseek
-            | model::LLMArchitecture::HfAuto
-            | model::LLMArchitecture::Torchtitan => {
-                let checkpoint_data = llm.decode_checkpoint();
+            LLMArchitecture::HfLlama
+            | LLMArchitecture::HfDeepseek
+            | LLMArchitecture::HfAuto
+            | LLMArchitecture::Torchtitan => {
+                let checkpoint_data = CheckpointData::from_fixed_vec(&llm.checkpoint_data).ok();
                 let is_dummy = matches!(checkpoint_data, Some(CheckpointData::Dummy));
-                let is_p2p = matches!(llm.checkpoint_source, model::CheckpointSource::P2P);
+                let is_p2p = matches!(llm.checkpoint_source, CheckpointSource::P2P);
 
                 if is_dummy {
                     tokio::spawn(async move {
@@ -394,14 +395,13 @@ impl RunInitConfigAndIO {
                             debug!("Got p2p info, model_config: {}", model_config);
 
                             let model_config = match model_extra_data.architecture {
-                                model::LLMArchitecture::HfLlama => {
+                                LLMArchitecture::HfLlama => {
                                     AutoConfig::Llama(serde_json::from_str(&model_config)?)
                                 }
-                                model::LLMArchitecture::HfDeepseek => {
+                                LLMArchitecture::HfDeepseek => {
                                     AutoConfig::Deepseek(serde_json::from_str(&model_config)?)
                                 }
-                                model::LLMArchitecture::HfAuto
-                                | model::LLMArchitecture::Torchtitan => {
+                                LLMArchitecture::HfAuto | LLMArchitecture::Torchtitan => {
                                     #[cfg(feature = "python")]
                                     {
                                         AutoConfig::Auto(serde_json::from_str::<
@@ -567,7 +567,7 @@ impl RunInitConfigAndIO {
                             init_config.eval_task_max_docs,
                             // if doing python fsdp we only have one effective dp rank for inference
                             if init_config.data_parallelism > 1
-                                && model_extra_data.architecture == model::LLMArchitecture::HfAuto
+                                && model_extra_data.architecture == LLMArchitecture::HfAuto
                             {
                                 1
                             } else {
@@ -578,7 +578,7 @@ impl RunInitConfigAndIO {
                         let serialized_config = source.serialize_config()?;
                         let attn_implementation: Option<AttentionImplementation> =
                             match model_extra_data.data_type {
-                                model::LLMTrainingDataType::Finetuning => {
+                                LLMTrainingDataType::Finetuning => {
                                     #[cfg(feature = "parallelism")]
                                     {
                                         // use varlen backend if available
@@ -588,13 +588,13 @@ impl RunInitConfigAndIO {
                                     #[cfg(not(feature = "parallelism"))]
                                     None
                                 }
-                                model::LLMTrainingDataType::Pretraining => None,
+                                LLMTrainingDataType::Pretraining => None,
                             };
 
                         let raw_loaded_model_type: RawLoadedModelType = match model_extra_data
                             .architecture
                         {
-                            model::LLMArchitecture::HfAuto | model::LLMArchitecture::Torchtitan => {
+                            LLMArchitecture::HfAuto | LLMArchitecture::Torchtitan => {
                                 #[cfg(feature = "python")]
                                 {
                                     let dp = init_config.data_parallelism;
@@ -683,7 +683,7 @@ impl RunInitConfigAndIO {
                                                 ModelLoadError::NoDeviceForRank(rank, devices)
                                             })?;
                                             match architecture {
-                                                model::LLMArchitecture::HfLlama => {
+                                                LLMArchitecture::HfLlama => {
                                                     LlamaForCausalLM::from_pretrained(
                                                         &source.try_into()?,
                                                         Some(Kind::BFloat16),
@@ -694,7 +694,7 @@ impl RunInitConfigAndIO {
                                                     )
                                                     .map(|x| Box::new(x) as Box<dyn CausalLM>)
                                                 }
-                                                model::LLMArchitecture::HfDeepseek => {
+                                                LLMArchitecture::HfDeepseek => {
                                                     DeepseekForCausalLM::from_pretrained(
                                                         &source.try_into()?,
                                                         Some(Kind::BFloat16),
@@ -705,8 +705,8 @@ impl RunInitConfigAndIO {
                                                     )
                                                     .map(|x| Box::new(x) as Box<dyn CausalLM>)
                                                 }
-                                                model::LLMArchitecture::HfAuto
-                                                | model::LLMArchitecture::Torchtitan => {
+                                                LLMArchitecture::HfAuto
+                                                | LLMArchitecture::Torchtitan => {
                                                     unreachable!()
                                                 }
                                             }
