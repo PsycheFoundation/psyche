@@ -4,6 +4,7 @@ mod dummy;
 mod errors;
 mod file_extensions;
 mod gcs;
+pub mod hf_preprocessed;
 pub mod http;
 mod hub;
 mod local;
