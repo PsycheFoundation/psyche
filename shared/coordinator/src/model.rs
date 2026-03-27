@@ -225,6 +225,7 @@ impl LLM {
     PartialEq,
     TS,
 )]
+#[repr(C)]
 pub struct HubRepo {
     pub repo_id: FixedString<{ SOLANA_MAX_STRING_LEN }>,
     pub revision: Option<FixedString<{ SOLANA_MAX_STRING_LEN }>>,
@@ -251,6 +252,7 @@ impl HubRepo {
     PartialEq,
     TS,
 )]
+#[repr(C)]
 pub struct GcsRepo {
     pub bucket: FixedString<{ SOLANA_MAX_STRING_LEN }>,
     pub prefix: Option<FixedString<{ SOLANA_MAX_STRING_LEN }>>,
