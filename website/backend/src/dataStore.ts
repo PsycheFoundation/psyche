@@ -22,8 +22,6 @@ export interface ChainDataStore {
 
 export interface RunSummariesData {
 	runs: RunSummary[]
-	totalTokens: bigint
-	totalTokensPerSecondActive: bigint
 }
 
 export interface CoordinatorDataStore extends ChainDataStore {
