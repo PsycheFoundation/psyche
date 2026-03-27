@@ -150,7 +150,6 @@ fn main() -> Result<()> {
     #[cfg(feature = "python")]
     psyche_python_extension_impl::init_embedded_python()?;
 
-    // let shutdown_handler =
     let runtime = Builder::new_multi_thread()
         .enable_io()
         .enable_time()
@@ -159,6 +158,5 @@ fn main() -> Result<()> {
         .build()
         .unwrap();
     runtime.block_on(async_main())?;
-    // shutdown_handler.shutdown()?;
     Ok(())
 }
