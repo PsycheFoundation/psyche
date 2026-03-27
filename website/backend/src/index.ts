@@ -1,4 +1,4 @@
-import { startIndexingChainToDataStores } from './chainTracker.js'
+import { startIndexingCoordinators } from './chainTracker.js'
 
 import Fastify, { FastifyRequest } from 'fastify'
 import cors from '@fastify/cors'
@@ -7,7 +7,6 @@ import {
 	ApiGetContributionInfo,
 	ApiGetRun,
 	ApiGetRuns,
-	coordinatorIdl,
 	formats,
 	IndexerStatus,
 	miningPoolIdl,
@@ -63,63 +62,86 @@ async function main() {
 					fetch: makeRateLimitedFetch(),
 				})
 
-	const { coordinator, miningPool, cancel } =
-		await startIndexingChainToDataStores(
-			{
-				connection: coordinatorRpc,
-				addressOverride: process.env.COORDINATOR_PROGRAM_ID,
-				websocketRpcUrl: process.env.COORDINATOR_WS_RPC,
-				minSlot: Number.parseInt(process.env.COORDINATOR_MIN_SLOT ?? '0'),
-			},
-			{
-				connection: miningPoolRpc,
-				addressOverride: process.env.MINING_POOL_PROGRAM_ID,
-				websocketRpcUrl: process.env.MINING_POOL_WS_RPC,
-				minSlot: Number.parseInt(process.env.MINING_POOL_MIN_SLOT ?? '0'),
-			}
-		)
+	const { coordinators, miningPool, cancel } = await startIndexingCoordinators(
+		{
+			connection: coordinatorRpc,
+			addressOverride: process.env.COORDINATOR_PROGRAM_ID,
+			websocketRpcUrl: process.env.COORDINATOR_WS_RPC,
+			minSlot: Number.parseInt(process.env.COORDINATOR_MIN_SLOT ?? '0'),
+		},
+		{
+			connection: miningPoolRpc,
+			addressOverride: process.env.MINING_POOL_PROGRAM_ID,
+			websocketRpcUrl: process.env.MINING_POOL_WS_RPC,
+			minSlot: Number.parseInt(process.env.MINING_POOL_MIN_SLOT ?? '0'),
+		}
+	)
 
 	const liveRunListeners: Map<
 		UniqueRunKey,
 		Set<(runData: RunData) => void>
 	> = new Map()
 
-	coordinator.dataStore.eventEmitter.addListener('update', (key) => {
-		const listeners = liveRunListeners.get(key)
-		if (listeners) {
-			const [runId, index] = getRunFromKey(key)
-			const runData = coordinator.dataStore.getRunDataById(runId, index)
-			if (!runData) {
-				console.warn(
-					`Tried to emit updates for run ${runId} but it has no data!`
-				)
-				return
-			}
-			for (const listener of listeners) {
-				try {
-					listener(runData)
-				} catch (err) {
-					console.error(
-						`Failed to send run data for run ${runId} to subscribed client...`
+	// Set up event listeners for all coordinators
+	for (const [_programId, coordinator] of coordinators) {
+		coordinator.dataStore.eventEmitter.addListener('update', (key) => {
+			const listeners = liveRunListeners.get(key)
+			if (listeners) {
+				const [programId, runId, index] = getRunFromKey(key)
+				const runData = coordinator.dataStore.getRunDataById(runId, index)
+				if (!runData) {
+					console.warn(
+						`Tried to emit updates for run ${runId} from coordinator ${programId} but it has no data!`
 					)
+					return
+				}
+				for (const listener of listeners) {
+					try {
+						listener(runData)
+					} catch (err) {
+						console.error(
+							`Failed to send run data for run ${runId} from coordinator ${programId} to subscribed client...`
+						)
+					}
 				}
 			}
-		}
-	})
+		})
+	}
 
 	const liveRunSummaryListeners: Set<(runData: RunSummariesData) => void> =
 		new Set()
 
-	coordinator.dataStore.eventEmitter.addListener('updateSummaries', () => {
-		const summaries = coordinator.dataStore.getRunSummaries()
-		for (const listener of liveRunSummaryListeners) {
-			try {
-				listener(summaries)
-			} catch (err) {
-				console.error(`Failed to send run summaries to subscribed client...`)
+	// Set up event listeners for run summaries from all coordinators
+	for (const [_programId, coordinator] of coordinators) {
+		coordinator.dataStore.eventEmitter.addListener('updateSummaries', () => {
+			// Aggregate summaries from all coordinators
+			let allRuns: any[] = []
+			let totalTokens = 0n
+			let totalTokensPerSecondActive = 0n
+
+			for (const [_, coord] of coordinators) {
+				const coordinatorSummary = coord.dataStore.getRunSummaries()
+				allRuns = allRuns.concat(coordinatorSummary.runs)
+				totalTokens += coordinatorSummary.totalTokens
+				totalTokensPerSecondActive +=
+					coordinatorSummary.totalTokensPerSecondActive
 			}
-		}
-	})
+
+			const aggregatedSummaries: RunSummariesData = {
+				runs: allRuns,
+				totalTokens,
+				totalTokensPerSecondActive,
+			}
+
+			for (const listener of liveRunSummaryListeners) {
+				try {
+					listener(aggregatedSummaries)
+				} catch (err) {
+					console.error(`Failed to send run summaries to subscribed client...`)
+				}
+			}
+		})
+	}
 
 	const liveMiningPoolListeners: Set<() => void> = new Set()
 	miningPool.dataStore.eventEmitter.addListener('update', () => {
@@ -148,13 +170,17 @@ async function main() {
 			console.error('Error closing fastify:', err)
 		}
 
+		const allCoordinatorPromises = Array.from(coordinators.values()).map(
+			(c) => c.stopped
+		)
+
 		const shutdownTimeout = setTimeout(() => {
 			console.error('Shutdown timeout reached, forcing exit!')
 			process.exit(1)
 		}, 10000)
 
 		try {
-			await Promise.all([coordinator.stopped, miningPool.stopped])
+			await Promise.all([...allCoordinatorPromises, miningPool.stopped])
 			clearTimeout(shutdownTimeout)
 			console.log('Clean shutdown completed')
 			process.exit(0)
@@ -166,10 +192,12 @@ async function main() {
 	}
 
 	let coordinatorCrashed: Error | null = null
-	coordinator.stopped.catch((err) => {
-		console.error(`[${Date.now()}] coordinator broken: `, err)
-		coordinatorCrashed = new Error(err)
-	})
+	for (const [programId, coordinator] of coordinators) {
+		coordinator.stopped.catch((err) => {
+			console.error(`[${Date.now()}] coordinator ${programId} broken: `, err)
+			coordinatorCrashed = new Error(err)
+		})
+	}
 
 	let miningPoolCrashed: Error | null = null
 	miningPool.stopped.catch((err) => {
@@ -186,6 +214,14 @@ async function main() {
 	})
 
 	const initTime = Date.now()
+
+	function getTotalRuns(): number {
+		let totalRuns = 0
+		for (const [_, coordinator] of coordinators) {
+			totalRuns += coordinator.dataStore.getNumRuns()
+		}
+		return totalRuns
+	}
 
 	function getContributionInfo(
 		req: FastifyRequest,
@@ -252,9 +288,30 @@ async function main() {
 		const isStreamingRequest = req.headers.accept?.includes(
 			'application/x-ndjson'
 		)
+		// Aggregate runs from all coordinators
+		let allRuns: any[] = []
+		let totalTokens = 0n
+		let totalTokensPerSecondActive = 0n
+
+		for (const [programId, coordinator] of coordinators) {
+			try {
+				const coordinatorSummary = coordinator.dataStore.getRunSummaries()
+				allRuns = allRuns.concat(coordinatorSummary.runs)
+				totalTokens += coordinatorSummary.totalTokens
+				totalTokensPerSecondActive +=
+					coordinatorSummary.totalTokensPerSecondActive
+			} catch (error) {
+				console.error(
+					`Failed to get run summaries from coordinator ${programId}:`,
+					error
+				)
+			}
+		}
 
 		const data: ApiGetRuns = {
-			...coordinator.dataStore.getRunSummaries(),
+			runs: allRuns,
+			totalTokens,
+			totalTokensPerSecondActive,
 			error: coordinatorCrashed,
 		}
 
@@ -295,31 +352,47 @@ async function main() {
 	})
 
 	fastify.get(
-		'/run/:runId/:indexStr',
+		'/run/:runId/:programId/:indexStr',
 		(
 			req: FastifyRequest<{
-				Params: { runId?: string; indexStr?: string }
+				Params: { runId?: string; programId?: string; indexStr?: string }
 			}>,
 			res
 		) => {
 			const isStreamingRequest = req.headers.accept?.includes(
 				'application/x-ndjson'
 			)
-			const { runId, indexStr } = req.params
+			const { runId, programId, indexStr } = req.params
 
 			const index = Number.parseInt(indexStr ?? '0')
 			if (`${index}` !== indexStr) {
 				throw new Error(`Invalid index ${indexStr}`)
 			}
 
-			const matchingRun = runId
-				? coordinator.dataStore.getRunDataById(runId, index)
-				: null
+			// Find the specific coordinator and run
+			let matchingRun: any = null
+			let totalRuns = 0
+
+			if (runId && programId) {
+				const coordinator = coordinators.get(programId)
+				if (coordinator) {
+					try {
+						matchingRun = coordinator.dataStore.getRunDataById(runId, index)
+					} catch (error) {
+						console.error(
+							`Failed to get run from coordinator ${programId}:`,
+							error
+						)
+					}
+				}
+
+				totalRuns = getTotalRuns()
+			}
 
 			const data: ApiGetRun = {
 				run: matchingRun,
 				error: coordinatorCrashed,
-				isOnlyRun: coordinator.dataStore.getNumRuns() === 1,
+				isOnlyRun: totalRuns === 1,
 			}
 
 			// set header for streaming/non
@@ -333,7 +406,11 @@ async function main() {
 				return
 			}
 
-			const key = runKey(matchingRun.info.id, matchingRun.info.index)
+			const key = runKey(
+				matchingRun.programId,
+				matchingRun.info.id,
+				matchingRun.info.index
+			)
 			let listeners = liveRunListeners.get(key)
 			if (!listeners) {
 				listeners = new Set()
@@ -345,10 +422,13 @@ async function main() {
 			res.send(stream)
 
 			function sendRunData(runData: RunData) {
+				// Calculate total runs across all coordinators
+				const totalRuns = getTotalRuns()
+
 				const data: ApiGetRun = {
 					run: runData,
 					error: coordinatorCrashed,
-					isOnlyRun: coordinator.dataStore.getNumRuns() === 1,
+					isOnlyRun: totalRuns === 1,
 				}
 				stream.write(JSON.stringify(data, replacer) + '\n')
 			}
@@ -399,26 +479,43 @@ async function main() {
 	})
 
 	fastify.get('/status', async (_, res) => {
+		// Aggregate status from all coordinators
+		const coordinatorStatuses: Record<string, any> = {}
+		for (const [programId, coordinator] of coordinators) {
+			try {
+				coordinatorStatuses[programId] = {
+					status: coordinatorCrashed ? coordinatorCrashed.toString() : 'ok',
+					errors: coordinator.errors,
+					trackedRuns: coordinator.dataStore
+						.getRunSummaries()
+						.runs.map((r) => ({
+							id: r.id,
+							index: r.index,
+							status: r.status,
+							programId: r.programId,
+						})),
+					chain: {
+						chainSlotHeight: await coordinatorRpc.getSlot('confirmed'),
+						indexedSlot:
+							coordinator.dataStore.lastUpdate().highestSignature?.slot ?? 0,
+						programId: programId,
+						networkGenesis: await coordinatorRpc.getGenesisHash(),
+					},
+				}
+			} catch (error) {
+				coordinatorStatuses[programId] = {
+					status: `error: ${error}`,
+					errors: [],
+					trackedRuns: [],
+					chain: { programId },
+				}
+			}
+		}
+
 		const data = {
 			commit: process.env.GITCOMMIT ?? '???',
 			initTime,
-			coordinator: {
-				status: coordinatorCrashed ? coordinatorCrashed.toString() : 'ok',
-				errors: coordinator.errors,
-				trackedRuns: coordinator.dataStore.getRunSummaries().runs.map((r) => ({
-					id: r.id,
-					index: r.index,
-					status: r.status,
-				})),
-				chain: {
-					chainSlotHeight: await coordinatorRpc.getSlot('confirmed'),
-					indexedSlot:
-						coordinator.dataStore.lastUpdate().highestSignature?.slot ?? 0,
-					programId:
-						process.env.COORDINATOR_PROGRAM_ID ?? coordinatorIdl.address,
-					networkGenesis: await coordinatorRpc.getGenesisHash(),
-				},
-			},
+			coordinators: coordinatorStatuses,
 			miningPool: {
 				status: miningPoolCrashed ? miningPoolCrashed.toString() : 'ok',
 				errors: miningPool.errors,

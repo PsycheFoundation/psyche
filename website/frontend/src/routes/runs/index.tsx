@@ -9,9 +9,10 @@ export const Route = createFileRoute('/runs/')({
 		const initialRuns = await fetchRuns()
 		if (initialRuns.runs.length === 1) {
 			throw redirect({
-				to: '/runs/$run/$index',
+				to: '/runs/$run/$programId/$index',
 				params: {
 					run: initialRuns.runs[0].id,
+					programId: initialRuns.runs[0].programId,
 					index: `${initialRuns.runs[0].index}`,
 				},
 			})
