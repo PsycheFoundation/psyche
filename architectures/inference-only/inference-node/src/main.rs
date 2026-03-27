@@ -244,6 +244,7 @@ async fn main() -> Result<()> {
         ModelLoadState::Loaded(name) => Some(name.clone()),
         _ => None,
     };
+
     let availability_msg = InferenceGossipMessage::NodeAvailable {
         model_name: model_name_for_broadcast.clone(),
         checkpoint_id: None,
@@ -335,7 +336,16 @@ async fn main() -> Result<()> {
                             InferenceGossipMessage::NodeUnavailable => {
                                 info!("Peer {} is no longer available", peer_id.fmt_short());
                             }
-                            InferenceGossipMessage::LoadModel { model_name: requested_model, model_source } => {
+                            InferenceGossipMessage::LoadModel { target_node_id, model_name: requested_model, model_source } => {
+                                let my_node_id = network.endpoint_id();
+                                if let Some(target) = target_node_id {
+                                    if target != my_node_id {
+                                        debug!("LoadModel not for us (target: {}, me: {}), ignoring",
+                                               target.fmt_short(), my_node_id.fmt_short());
+                                        continue;
+                                    }
+                                }
+
                                 info!("Received LoadModel request from {}: model={}, source={:?}",
                                       peer_id.fmt_short(), requested_model, model_source);
 
@@ -358,7 +368,6 @@ async fn main() -> Result<()> {
 
                                 if should_load {
                                     *model_state.write().await = ModelLoadState::Loading(requested_model.clone());
-                                    info!("Loading new model: {} (background task)", requested_model);
 
                                     // Spawn background task to avoid blocking the event loop
                                     // Model loading can take 10-60+ seconds, so we don't want to block heartbeats
@@ -398,16 +407,15 @@ async fn main() -> Result<()> {
 
                                         match load_result {
                                             Ok(new_node) => {
-                                                *inference_node_shared_clone.write().await = Some(new_node);
+                                                // update model name first, then node, to maintain consistency
                                                 *model_state_clone.write().await = ModelLoadState::Loaded(requested_model_clone.clone());
+                                                *inference_node_shared_clone.write().await = Some(new_node);
 
                                                 info!("Successfully loaded model: {}", requested_model_clone);
-                                                // Note: NodeAvailable will be broadcast on next heartbeat (every 30s)
-                                                // or the node can be manually queried to verify the model is loaded
                                             }
                                             Err(e) => {
                                                 error!("Failed to load model {}: {:#}", requested_model_clone, e);
-                                                // Set back to Idle on failure
+                                                // set back to Idle on failure
                                                 *model_state_clone.write().await = ModelLoadState::Idle;
                                             }
                                         }
