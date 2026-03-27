@@ -8,8 +8,10 @@ use bollard::{
     secret::{ContainerSummary, HostConfig},
 };
 use psyche_core::IntegrationTestLogMarker;
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal;
@@ -19,11 +21,12 @@ use crate::{
     utils::ConfigBuilder,
 };
 
-/// Check if GPU is available by looking for nvidia-smi or USE_GPU environment variable
+/// Check if GPU is available by looking for nvidia-smi or USE_GPU environment variable.
+/// This logic mirrors the justfile's GPU detection to ensure consistency.
 fn has_gpu_support() -> bool {
-    // Check if USE_GPU environment variable is set
-    if std::env::var("USE_GPU").is_ok() {
-        return true;
+    // Check if USE_GPU environment variable is explicitly set to "0" to disable GPU
+    if let Ok(val) = std::env::var("USE_GPU") {
+        return val != "0";
     }
 
     // Check if nvidia-smi command exists
@@ -38,6 +41,16 @@ fn has_gpu_support() -> bool {
 pub const CLIENT_CONTAINER_PREFIX: &str = "test-psyche-test-client";
 pub const VALIDATOR_CONTAINER_PREFIX: &str = "test-psyche-solana-test-validator";
 pub const NGINX_PROXY_PREFIX: &str = "nginx-proxy";
+
+pub fn get_devices_for_client(id: u16) -> String {
+    let devices_per_client: HashMap<u16, Vec<String>> = HashMap::from([
+        (1, vec!["0".to_string(), "1".to_string()]),
+        (2, vec!["2".to_string(), "3".to_string()]),
+        (3, vec!["4".to_string(), "5".to_string()]),
+        (4, vec!["6".to_string(), "7".to_string()]),
+    ]);
+    devices_per_client.get(&id).unwrap().join(",")
+}
 
 pub struct DockerTestCleanup;
 impl Drop for DockerTestCleanup {
@@ -56,19 +69,146 @@ impl Drop for DockerTestCleanup {
     }
 }
 
+/// Configuration for spawning a psyche network with custom settings
+pub struct PsycheNetworkConfig {
+    pub num_clients: usize,
+    pub min_clients: Option<usize>,
+    pub architecture: String,
+    pub model: String,
+    pub batch_size: u32,
+    pub use_proxies: bool,
+    pub owner_keypair_path: Option<std::path::PathBuf>,
+    pub waiting_for_members_extra_time: Option<u32>,
+}
+
+impl Default for PsycheNetworkConfig {
+    fn default() -> Self {
+        #[cfg(not(feature = "python"))]
+        {
+            Self {
+                num_clients: 1,
+                min_clients: None,
+                architecture: "HfLlama".to_string(),
+                model: "pefontana/Nano-Llama".to_string(),
+                batch_size: 4,
+                use_proxies: false,
+                owner_keypair_path: None,
+                waiting_for_members_extra_time: None,
+            }
+        }
+        #[cfg(feature = "python")]
+        {
+            Self {
+                num_clients: 1,
+                min_clients: None,
+                architecture: "HfAuto".to_string(),
+                model: "NousResearch/Meta-Llama-3.1-8B".to_string(),
+                batch_size: 8,
+                use_proxies: false,
+                owner_keypair_path: None,
+                waiting_for_members_extra_time: None,
+            }
+        }
+    }
+}
+
+impl PsycheNetworkConfig {
+    pub fn with_num_clients(mut self, num_clients: usize) -> Self {
+        self.num_clients = num_clients;
+        self
+    }
+
+    pub fn with_min_clients(mut self, min_clients: usize) -> Self {
+        self.min_clients = Some(min_clients);
+        self
+    }
+
+    pub fn with_proxies(mut self) -> Self {
+        self.use_proxies = true;
+        self
+    }
+
+    pub fn with_owner_keypair_path(mut self, path: &Path) -> Self {
+        self.owner_keypair_path = Some(path.to_path_buf());
+        self
+    }
+
+    pub fn with_waiting_for_members_extra_time(mut self, time: u32) -> Self {
+        self.waiting_for_members_extra_time = Some(time);
+        self
+    }
+}
+
+/// Spawn psyche network with configuration
+fn spawn_psyche_network(config: &PsycheNetworkConfig) -> Result<(), DockerWatcherError> {
+    let min_clients = config.min_clients.unwrap_or(config.num_clients);
+
+    let mut builder = ConfigBuilder::new()
+        .with_num_clients(config.num_clients)
+        .with_min_clients(min_clients)
+        .with_architecture(&config.architecture)
+        .with_model(&config.model)
+        .with_batch_size(config.batch_size);
+
+    if let Some(time) = config.waiting_for_members_extra_time {
+        builder = builder.with_waiting_for_members_extra_time(time);
+    }
+
+    builder.build();
+
+    let just_command = if config.use_proxies {
+        "run_test_infra_with_rpc_fallback_proxies"
+    } else {
+        "run_test_infra"
+    };
+
+    let mut command = Command::new("just");
+    let mut cmd = command
+        .args([just_command, &format!("{}", config.num_clients)])
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
+
+    // If owner keypair path is provided, pass it to the setup script
+    if let Some(path) = &config.owner_keypair_path {
+        let abs_path =
+            std::fs::canonicalize(path).expect("Failed to canonicalize owner keypair path");
+        cmd = cmd.env("OWNER_KEYPAIR_PATH", abs_path);
+    }
+
+    let output = cmd
+        .output()
+        .expect("Failed to spawn docker compose instances");
+
+    if !output.status.success() {
+        panic!("Error: {}", String::from_utf8_lossy(&output.stderr));
+    }
+
+    println!("\n[+] Docker compose network spawned successfully!");
+    println!();
+    Ok(())
+}
+
+/// E2E testing setup with configuration
+pub async fn e2e_testing_setup_with_config(
+    docker_client: Arc<Docker>,
+    config: PsycheNetworkConfig,
+) -> DockerTestCleanup {
+    remove_old_client_containers(docker_client).await;
+
+    spawn_psyche_network(&config).unwrap();
+
+    spawn_ctrl_c_task();
+
+    DockerTestCleanup {}
+}
+
 /// FIXME: The config path must be relative to the compose file for now.
 pub async fn e2e_testing_setup(
     docker_client: Arc<Docker>,
     init_num_clients: usize,
 ) -> DockerTestCleanup {
-    e2e_testing_setup_with_min(
-        docker_client,
-        init_num_clients,
-        init_num_clients,
-        None,
-        None,
-    )
-    .await
+    let config = PsycheNetworkConfig::default().with_num_clients(init_num_clients);
+    e2e_testing_setup_with_config(docker_client, config).await
 }
 
 /// Setup with explicit min_clients value and optional owner keypair path.
@@ -81,60 +221,26 @@ pub async fn e2e_testing_setup_with_min(
     owner_keypair_path: Option<&Path>,
     waiting_for_members_extra_time: Option<u32>,
 ) -> DockerTestCleanup {
-    remove_old_client_containers(docker_client).await;
-
-    spawn_psyche_network_with_min(
-        init_num_clients,
-        min_clients,
-        owner_keypair_path,
-        waiting_for_members_extra_time,
-    )
-    .unwrap();
-
-    spawn_ctrl_c_task();
-
-    DockerTestCleanup {}
+    let mut config = PsycheNetworkConfig::default()
+        .with_num_clients(init_num_clients)
+        .with_min_clients(min_clients);
+    if let Some(path) = owner_keypair_path {
+        config = config.with_owner_keypair_path(path);
+    }
+    if let Some(time) = waiting_for_members_extra_time {
+        config = config.with_waiting_for_members_extra_time(time);
+    }
+    e2e_testing_setup_with_config(docker_client, config).await
 }
 
 pub async fn e2e_testing_setup_rpc_fallback(
     docker_client: Arc<Docker>,
     init_num_clients: usize,
 ) -> DockerTestCleanup {
-    remove_old_client_containers(docker_client).await;
-    #[cfg(not(feature = "python"))]
-    let config_file_path = ConfigBuilder::new()
+    let config = PsycheNetworkConfig::default()
         .with_num_clients(init_num_clients)
-        .build();
-    #[cfg(feature = "python")]
-    let config_file_path = ConfigBuilder::new()
-        .with_num_clients(init_num_clients)
-        .with_architecture("HfAuto")
-        .with_batch_size(8 * init_num_clients as u32)
-        .build();
-
-    println!("[+] Config file written to: {}", config_file_path.display());
-    let mut command = Command::new("just");
-    let command = command
-        .args([
-            "run_test_infra_with_rpc_fallback_proxies",
-            &format!("{init_num_clients}"),
-        ])
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
-
-    let output = command
-        .output()
-        .expect("Failed to spawn docker compose instances");
-    if !output.status.success() {
-        panic!("Error: {}", String::from_utf8_lossy(&output.stderr));
-    }
-
-    println!("\n[+] Docker compose network spawned successfully!");
-    println!();
-
-    spawn_ctrl_c_task();
-
-    DockerTestCleanup {}
+        .with_proxies();
+    e2e_testing_setup_with_config(docker_client, config).await
 }
 
 /// Spawn a new client container.
@@ -206,13 +312,35 @@ pub async fn spawn_new_client(
     // Add extra env vars for keypair if provided
     env_vars.extend(extra_env);
 
+    let mut final_envs = Vec::new();
+    let client_id: u16 = u16::from_str(
+        new_container_name
+            .chars()
+            .last()
+            .unwrap()
+            .to_string()
+            .as_str(),
+    )
+    .unwrap();
+    let devices = get_devices_for_client(client_id);
+    for env in &env_vars {
+        if env.contains("CUDA_VISIBLE_DEVICES") {
+            let splited_env = env.split('=').collect::<Vec<&str>>();
+            if splited_env.len() == 2 {
+                final_envs.push(format!("CUDA_VISIBLE_DEVICES={}", devices));
+            }
+        } else {
+            final_envs.push(env.to_string());
+        }
+    }
+
     let options = Some(CreateContainerOptions {
         name: new_container_name.clone(),
         platform: None,
     });
     let config = Config {
         image: Some("psyche-solana-test-client"),
-        env: Some(env_vars.iter().map(|s| s.as_str()).collect()),
+        env: Some(final_envs.iter().map(|s| s.as_str()).collect()),
         host_config: Some(host_config),
         ..Default::default()
     };
@@ -280,63 +408,6 @@ pub async fn spawn_new_client_with_monitoring(
         .unwrap();
     println!("Spawned client {container_id}");
     Ok(container_id)
-}
-
-// Updated spawn function
-pub fn spawn_psyche_network(init_num_clients: usize) -> Result<(), DockerWatcherError> {
-    spawn_psyche_network_with_min(init_num_clients, init_num_clients, None, None)
-}
-
-/// Spawn the psyche network with explicit min_clients and optional owner keypair.
-pub fn spawn_psyche_network_with_min(
-    init_num_clients: usize,
-    min_clients: usize,
-    owner_keypair_path: Option<&Path>,
-    waiting_for_members_extra_time: Option<u32>,
-) -> Result<(), DockerWatcherError> {
-    #[cfg(not(feature = "python"))]
-    let mut builder = ConfigBuilder::new()
-        .with_num_clients(init_num_clients)
-        .with_min_clients(min_clients);
-    #[cfg(feature = "python")]
-    let mut builder = ConfigBuilder::new()
-        .with_num_clients(init_num_clients)
-        .with_min_clients(min_clients)
-        .with_architecture("HfAuto")
-        .with_batch_size(8 * std::cmp::max(init_num_clients, 1) as u32);
-
-    if let Some(time) = waiting_for_members_extra_time {
-        builder = builder.with_waiting_for_members_extra_time(time);
-    }
-
-    let config_file_path = builder.build();
-
-    println!("[+] Config file written to: {}", config_file_path.display());
-
-    let mut command = Command::new("just");
-    let mut cmd = command
-        .args(["run_test_infra", &format!("{init_num_clients}")])
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
-
-    // If owner keypair path is provided, pass it to the setup script
-    if let Some(path) = owner_keypair_path {
-        let abs_path =
-            std::fs::canonicalize(path).expect("Failed to canonicalize owner keypair path");
-        cmd = cmd.env("OWNER_KEYPAIR_PATH", abs_path);
-    }
-
-    let output = cmd
-        .output()
-        .expect("Failed to spawn docker compose instances");
-
-    if !output.status.success() {
-        panic!("Error: {}", String::from_utf8_lossy(&output.stderr));
-    }
-
-    println!("\n[+] Docker compose network spawned successfully!");
-    println!();
-    Ok(())
 }
 
 pub fn spawn_ctrl_c_task() {
