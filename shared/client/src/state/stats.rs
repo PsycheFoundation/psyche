@@ -7,7 +7,7 @@ use psyche_modeling::Trainer;
 use psyche_network::P2PEndpointInfo;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokenizers::Tokenizer;
-use tracing::{debug, trace, warn};
+use tracing::{debug, info, trace, warn};
 use wandb::{DataValue, LogData};
 
 use crate::state::evals::{EnumModelTask, PROMPT_TASK_NAME};
@@ -125,6 +125,7 @@ impl StatsLogger {
                     .collect::<String>()
             );
             round_log.insert(formatted_key.clone(), val);
+            info!("{}: {:.4}", formatted_key, val);
 
             self.metrics.record_eval_metric(&key, val);
         }
