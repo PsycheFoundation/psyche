@@ -1,0 +1,15 @@
+{
+	"version": "0.4.9.2",
+	"command": "lm_eval --model hf --model_args pretrained=deepseek-ai/DeepSeek-V2-Lite,trust_remote_code=True --tasks arc_easy --num_fewshot 3 --seed 42 --limit 50",
+	"model": "deepseek-ai/DeepSeek-V2-Lite",
+	"limit": 50,
+	"seed": 42,
+	"fewshot": 3,
+	"evals": [
+		{
+			"name": "arc_easy",
+			"acc": 0.0,
+			"acc_norm": 0.0
+		}
+	]
+}
