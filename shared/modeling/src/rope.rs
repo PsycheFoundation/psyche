@@ -182,7 +182,7 @@ pub fn rotate_half(xs: &Tensor) -> Tensor {
     let last_dim = *xs.size().last().unwrap();
     let xs1 = xs.narrow(-1, 0, last_dim / 2);
     let xs2 = xs.narrow(-1, last_dim / 2, last_dim - last_dim / 2);
-    Tensor::cat(&[&xs2.neg(), &xs1], -1)
+    crate::mps_compat::cat(&[&xs2.neg(), &xs1], -1)
 }
 
 impl RoPECache {
@@ -227,7 +227,7 @@ impl RoPECache {
         let freqs = inv_freq_expanded.matmul(&position_ids_expanded); // [pos_b, head_dim_2, seq_len]
         let freqs = freqs.transpose(1, 2); // [pos_b, seq_len, head_dim_2]
 
-        let emb = Tensor::cat(&[&freqs, &freqs], -1); // [pos_b, seq_len, head_dim]
+        let emb = crate::mps_compat::cat(&[&freqs, &freqs], -1); // [pos_b, seq_len, head_dim]
 
         let mut cos = emb.cos();
         let mut sin = emb.sin();
