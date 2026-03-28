@@ -8,6 +8,7 @@
   pyproject-nix,
   pyproject-build-systems,
   extraPackages ? { }, # attrset of package names to derivations to include in the venv
+  additionalNixPackages ? [ ], # list of additional nix-provided python package names (e.g., ["vllm"])
 }:
 let
   getAllTransitiveDeps =
@@ -32,8 +33,8 @@ let
   topLevelNixPkgs = [
     "torch"
   ]
+  ++ additionalNixPackages
   ++ lib.optionals stdenvNoCC.hostPlatform.isLinux [
-    "vllm" # for inference package
     "flash-attn"
     "liger-kernel"
     # i'm really not a fan of providing torchtitan like this. i'd much rather have it be built as a git dep via uv2nix.

@@ -1,5 +1,5 @@
 {
-  psycheLib,
+  buildRustPackage,
   pkgs,
   inputs,
   ...
@@ -8,7 +8,7 @@
 let
   system = pkgs.stdenv.hostPlatform.system;
 in
-psycheLib.buildRustPackage {
+buildRustPackage {
   cratePath = ./.;
   # all tests need solana CLI and just
   buildInputs.test = [

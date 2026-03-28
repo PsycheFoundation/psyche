@@ -67,12 +67,25 @@ let
     cargoExtraArgs = "--features python" + lib.optionalString (pkgs.config.cudaSupport) ",parallelism";
   };
 
-  rustWorkspaceArgsWithPython = rustWorkspaceArgs // {
-    buildInputs = rustWorkspaceArgs.buildInputs ++ [
-      psychePythonVenvWithExtension
-    ];
-    NIX_LDFLAGS = "-L${psychePythonVenvWithExtension}/lib -lpython3.12";
-  };
+  psychePythonExtension = pkgs.callPackage ../python { };
+
+  mkPythonVenv =
+    {
+      extraPackages ? { }, # actual packages from pkgs.callPackage
+      additionalNixPackages ? [ ], # like "vllm", etc
+    }:
+    pkgs.callPackage ./python.nix {
+      inherit (inputs) uv2nix pyproject-nix pyproject-build-systems;
+      inherit extraPackages additionalNixPackages;
+    };
+
+  mkRustWorkspaceArgsWithPython =
+    venv:
+    rustWorkspaceArgs
+    // {
+      buildInputs = rustWorkspaceArgs.buildInputs ++ [ venv ];
+      NIX_LDFLAGS = "-L${venv}/lib -lpython3.12";
+    };
 
   rustWorkspaceArgsNoPython = rustWorkspaceDeps // {
     inherit env src;
@@ -83,28 +96,6 @@ let
 
   cargoArtifacts = craneLib.buildDepsOnly rustWorkspaceArgs;
   cargoArtifactsNoPython = craneLib.buildDepsOnly rustWorkspaceArgsNoPython;
-
-  psychePythonExtension = pkgs.callPackage ../python { };
-
-  # python venv without the psyche extension (vllm, etc)
-
-  pythonDeps = { inherit (inputs) uv2nix pyproject-nix pyproject-build-systems; };
-  psychePythonVenv = pkgs.callPackage ./python.nix (
-    {
-      extraPackages = { };
-    }
-    // pythonDeps
-  );
-
-  # python venv with the psyche extension
-  psychePythonVenvWithExtension = pkgs.callPackage ./python.nix (
-    {
-      extraPackages = {
-        psyche = psychePythonExtension;
-      };
-    }
-    // pythonDeps
-  );
   # builds a rust package
   # Returns an attrset of packages: { packageName = ...; packageName-nopython = ...; }
   # Automatically discovers and builds examples from the crate's examples/ directory
@@ -117,6 +108,7 @@ let
   #   - buildInputs.main = [ deps ] applies to src/main.rs
   #   - buildInputs.<type> = [ deps ] applies to all binaries of type (bin/test/example)
   #   - buildInputs.<type>.<name> = [ deps ] applies to specific binary
+  # pythonBuildInputs: attrset of runtime python deps for each built binary, same format as buildInputs
   buildRustPackage =
     {
       needsPython ? false,
@@ -124,14 +116,15 @@ let
       cratePath, # path to the crate dir
       supportedSystems ? null,
       buildInputs ? { },
+      pythonBuildInputs ? { },
     }:
     let
       # type: "main" | "bin" | "test" | "example"
       # name: the binary / test name
       getRuntimeDepsForArtifact =
-        type: name:
+        inputsAttrset: inputsAttrsetName: type: name:
         let
-          typeConfig = buildInputs.${type} or null;
+          typeConfig = inputsAttrset.${type} or null;
 
           # there's only one "main"
           mainDeps =
@@ -140,7 +133,7 @@ let
                 if lib.isList typeConfig then
                   typeConfig
                 else if typeConfig != null then
-                  throw "buildInputs.main must be a list, got ${builtins.typeOf typeConfig}"
+                  throw "${inputsAttrsetName}.main must be a list, got ${builtins.typeOf typeConfig}"
                 else
                   [ ]
               )
@@ -169,7 +162,32 @@ let
           "example"
         ]) "type must be 'bin', 'test', or 'example', got: ${type}";
         let
-          workspaceArgs = if withPython then rustWorkspaceArgsWithPython else rustWorkspaceArgsNoPython;
+          # custom venv for this package with its specific python dependencies
+          pythonRuntimeDeps =
+            getRuntimeDepsForArtifact pythonBuildInputs "pythonBuildInputs" type
+              originalName;
+          customPythonVenv =
+            if withPython then
+              mkPythonVenv {
+                extraPackages = {
+                  psyche = psychePythonExtension;
+                };
+                additionalNixPackages = pythonRuntimeDeps;
+              }
+            else
+              null;
+
+          workspaceArgs =
+            if withPython then
+              (
+                rustWorkspaceArgs
+                // {
+                  buildInputs = rustWorkspaceArgs.buildInputs ++ [ customPythonVenv ];
+                  NIX_LDFLAGS = "-L${customPythonVenv}/lib -lpython3.12";
+                }
+              )
+            else
+              rustWorkspaceArgsNoPython;
           artifacts = if withPython then cargoArtifacts else cargoArtifactsNoPython;
 
           # delete conflicting bins from other crates to prevent ambiguous --bin/--example/--test
@@ -278,8 +296,8 @@ let
             }
           );
 
-          runtimeDeps = getRuntimeDepsForArtifact type originalName;
-          allRuntimeDeps = (lib.optionals withPython [ psychePythonVenvWithExtension ]) ++ runtimeDeps;
+          runtimeDeps = getRuntimeDepsForArtifact buildInputs "buildInputs" type originalName;
+          allRuntimeDeps = (lib.optionals withPython [ customPythonVenv ]) ++ runtimeDeps;
 
           wrappedRustPackage =
             pkgs.runCommand "${name}"
@@ -459,18 +477,37 @@ let
         else
           assert (builtins.all (c: c == null) typeChecks);
           x;
+      flatPythonDeps =
+        let
+          getDepsFromType =
+            typeValue:
+            if lib.isList typeValue then
+              typeValue
+            else if lib.isAttrs typeValue then
+              lib.attrValues typeValue
+            else
+              [ ];
+        in
+        lib.pipe pythonBuildInputs [
+          lib.attrValues
+          (map getDepsFromType)
+          lib.flatten
+          lib.unique
+        ];
     in
-    validateBuildInputs (
-      lib.optionalAttrs shouldBuildForThisSystem (
-        util.mergeAttrsetsNoConflicts "can't merge binary package sets" [
-          mainRsPackage
-          binDirPackages
-          examplePackages
-          testPackages
-        ]
-      )
-    );
-
+    {
+      inherit flatPythonDeps;
+      packages = validateBuildInputs (
+        lib.optionalAttrs shouldBuildForThisSystem (
+          util.mergeAttrsetsNoConflicts "can't merge binary package sets" [
+            mainRsPackage
+            binDirPackages
+            examplePackages
+            testPackages
+          ]
+        )
+      );
+    };
   # TODO: i can't set the rust build target to WASM for the build deps for wasm-pack, since *some* of them don't build.
   # really, i want like a wasm-only set of deps to build... can I do that?
   # like do the buildDepsOnly for not the workspace, but my specific package that *happens* to be in a workspace.
@@ -613,6 +650,76 @@ let
         doInstallCargoArtifacts = false;
       }
     );
+
+  workspaceCargoToml = builtins.fromTOML (builtins.readFile ../Cargo.toml);
+
+  # expand globs in workspace members from cargo.toml
+  expandWorkspaceMembers =
+    members:
+    lib.flatten (
+      lib.map (
+        memberPattern:
+        if lib.hasSuffix "/*" memberPattern then
+          let
+            dir = lib.removeSuffix "/*" memberPattern;
+            dirPath = ../${dir};
+            entries = builtins.readDir dirPath;
+            subdirs = lib.filterAttrs (n: v: v == "directory") entries;
+          in
+          lib.mapAttrsToList (name: _: "${dir}/${name}") subdirs
+        else
+          [ memberPattern ]
+      ) members
+    );
+
+  expandedMembers = expandWorkspaceMembers workspaceCargoToml.workspace.members;
+
+  # find all crates with packages.nix
+  discoverCratesWithPackagesNix =
+    members:
+    lib.filter (pkg: pkg != null) (
+      lib.map (
+        memberPath:
+        let
+          fullPath = ../${memberPath};
+          packagesNixPath = fullPath + "/packages.nix";
+          cargoTomlPath = fullPath + "/Cargo.toml";
+
+          isExcluded = builtins.elem memberPath [
+            "python/" # python venv with special dependencies
+          ];
+
+          hasCargoToml = builtins.pathExists cargoTomlPath;
+          hasPackagesNix = builtins.pathExists packagesNixPath;
+        in
+        if hasCargoToml && hasPackagesNix && !isExcluded then
+          let
+            cargoToml = builtins.fromTOML (builtins.readFile cargoTomlPath);
+            packageName = cargoToml.package.name or (baseNameOf memberPath);
+          in
+          {
+            name = packageName;
+            path = fullPath;
+          }
+        else
+          null
+      ) members
+    );
+
+  rustPackageSets = lib.map (
+    pkg: import (pkg.path + "/packages.nix") { inherit buildRustPackage pkgs inputs; }
+  ) (discoverCratesWithPackagesNix expandedMembers);
+  # a packages.nix returns an attrset of packages (including examples)
+  rustPackages = util.mergeAttrsetsNoConflicts "can't merge rust package sets." (
+    lib.map (pkg: pkg.packages) rustPackageSets
+  );
+
+  allPythonDeps = lib.pipe rustPackageSets [
+    (map (pkg: pkg.flatPythonDeps or [ ]))
+    lib.flatten
+    lib.unique
+  ];
+
 in
 {
   inherit
@@ -620,7 +727,7 @@ in
     craneLib
     buildSolanaIdl
     rustWorkspaceArgs
-    rustWorkspaceArgsWithPython
+    mkRustWorkspaceArgsWithPython
     cargoArtifacts
     buildRustPackage
     buildRustWasmTsPackage
@@ -628,8 +735,10 @@ in
     env
     src
     gitcommit
-    psychePythonVenv
-    psychePythonVenvWithExtension
+    mkPythonVenv
+    psychePythonExtension
+    allPythonDeps
+    rustPackages
     ;
 
   mkWebsitePackage = pkgs.callPackage ../website/common.nix { };
