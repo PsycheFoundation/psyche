@@ -3,6 +3,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
 
 jobs:
   push-docker-image:
@@ -39,3 +41,4 @@ jobs:
           DOCKER_REPOSITORY: ${{ vars.DOCKERHUB_REPO }}
           REGISTRY_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
           REGISTRY_PASSWORD: ${{ secrets.DOCKER_DEPLOY_KEY }}
+          DOCKER_TAG: ${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
