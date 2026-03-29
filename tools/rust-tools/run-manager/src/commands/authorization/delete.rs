@@ -1,5 +1,5 @@
 use crate::commands::Command;
-use anchor_client::solana_sdk::pubkey::Pubkey;
+use crate::commands::authorization::Authorization;
 use anyhow::Result;
 use async_trait::async_trait;
 use clap::Args;
@@ -10,14 +10,15 @@ use psyche_solana_rpc::instructions;
 #[derive(Debug, Clone, Args)]
 #[command()]
 pub struct CommandJoinAuthorizationDelete {
+    /// Authorization type: either a pubkey address or "permissionless" (maps to system program ID)
     #[clap(long, env)]
-    pub authorizer: Pubkey,
+    pub authorization: Authorization,
 }
 
 #[async_trait]
 impl Command for CommandJoinAuthorizationDelete {
     async fn execute(self, backend: SolanaBackend) -> Result<()> {
-        let Self { authorizer } = self;
+        let authorizer = self.authorization.to_pubkey();
 
         let grantor = backend.get_payer();
         let grantee = authorizer;
