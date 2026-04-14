@@ -60,7 +60,7 @@ else
         --micro-batch-size ${BATCH_SIZE} \
         --logs "console" \
         --authorizer ${AUTHORIZER} \
-        --oltp-metrics-url "http://localhost:4318/v1/metrics" \
-        --oltp-logs-url "http://localhost:4318/v1/logs" \
+        --otlp-metrics-url "${OTLP_METRICS_URL}" \
+        --otlp-logs-url "${OTLP_LOGS_URL}" \
         "$@"
 fi
