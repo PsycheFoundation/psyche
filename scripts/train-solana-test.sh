@@ -35,7 +35,10 @@ solana airdrop 10 "$(solana-keygen pubkey ${WALLET_FILE})" --url "${RPC}" || tru
 
 export RUST_LOG="info,psyche=debug"
 
-if [[ "$OTLP_METRICS_URL" == "" ]]; then
+if [[ -n "${OTLP_METRICS_URL}" && -z "${OTLP_LOGS_URL}" ]]; then
+    echo "ERROR: OTLP_METRICS_URL is set but OTLP_LOGS_URL is missing"
+    exit 1
+elif [[ -z "${OTLP_METRICS_URL}" ]]; then
     cargo run --release --bin psyche-solana-client -- \
         train \
         --wallet-private-key-path ${WALLET_FILE} \
@@ -60,7 +63,7 @@ else
         --micro-batch-size ${BATCH_SIZE} \
         --logs "console" \
         --authorizer ${AUTHORIZER} \
-        --oltp-metrics-url "http://localhost:4318/v1/metrics" \
-        --oltp-logs-url "http://localhost:4318/v1/logs" \
+        --otlp-metrics-url "${OTLP_METRICS_URL}" \
+        --otlp-logs-url "${OTLP_LOGS_URL}" \
         "$@"
 fi
