@@ -480,10 +480,32 @@ impl Coordinator {
             self.config.witness_nodes as usize
         };
 
-        // Everyone can send a witness in the warmup phase so we don't need to check for the committee
+        // Everyone can send a witness in the warmup phase so we don't need to check for the
+        // committee, but the proof's index must still point at the sender: it's what duplicate
+        // detection keys on, so an unchecked index would let one client witness on behalf of
+        // (and block) others.
+        if self
+            .epoch_state
+            .clients
+            .get(witness.proof.index as usize)
+            .map(|c| &c.id)
+            != Some(from)
+        {
+            return Err(CoordinatorError::InvalidWitness);
+        }
+
+        // Clients can exit during warmup (`tick_warmup` calls `move_clients_to_exited`), which
+        // shifts the indices already stored in `witnesses`, so a stored index may no longer be
+        // in bounds -- never index `clients` with it directly.
         let round = self.current_round().unwrap();
         for witness in round.witnesses.iter() {
-            if self.epoch_state.clients[witness.proof.index as usize].id == *from {
+            if self
+                .epoch_state
+                .clients
+                .get(witness.proof.index as usize)
+                .map(|c| &c.id)
+                == Some(from)
+            {
                 return Err(CoordinatorError::DuplicateWitness);
             }
         }
@@ -1288,5 +1310,106 @@ impl CoordinatorConfig {
 impl CoordinatorProgress {
     pub fn check(&self) -> bool {
         self.step > 0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn identity(byte: u8) -> NodeIdentity {
+        NodeIdentity::from_single_key([byte; 32])
+    }
+
+    fn warmup_witness_from(index: u64) -> Witness {
+        Witness {
+            proof: WitnessProof {
+                position: index,
+                index,
+                witness: Default::default(),
+            },
+            participant_bloom: Default::default(),
+            broadcast_bloom: Default::default(),
+            broadcast_merkle: Default::default(),
+        }
+    }
+
+    /// A coordinator in `Warmup` with the given clients, that will neither time out nor
+    /// start training on its own.
+    fn warmup_coordinator(clients: &[NodeIdentity]) -> Coordinator {
+        let mut coordinator = Coordinator::zeroed();
+        coordinator.run_state = RunState::Warmup;
+        coordinator.config.warmup_time = u64::MAX / 2;
+        coordinator.config.min_clients = 1;
+        coordinator.config.witness_nodes = SOLANA_MAX_NUM_WITNESSES as u16;
+        for client in clients {
+            coordinator
+                .epoch_state
+                .clients
+                .push(Client::new(*client))
+                .unwrap();
+        }
+        coordinator
+    }
+
+    #[test]
+    fn warmup_witness_rejects_index_that_is_not_the_sender() {
+        let (a, b) = (identity(1), identity(2));
+        let mut coordinator = warmup_coordinator(&[a, b]);
+
+        // out of bounds
+        assert!(matches!(
+            coordinator.warmup_witness(&a, warmup_witness_from(u64::MAX), 1, 0),
+            Err(CoordinatorError::InvalidWitness)
+        ));
+        assert!(matches!(
+            coordinator.warmup_witness(&a, warmup_witness_from(2), 1, 0),
+            Err(CoordinatorError::InvalidWitness)
+        ));
+        // another client's index
+        assert!(matches!(
+            coordinator.warmup_witness(&a, warmup_witness_from(1), 1, 0),
+            Err(CoordinatorError::InvalidWitness)
+        ));
+        assert!(coordinator.current_round().unwrap().witnesses.is_empty());
+
+        // the sender's own index is accepted, and only once
+        coordinator
+            .warmup_witness(&a, warmup_witness_from(0), 1, 0)
+            .unwrap();
+        assert!(matches!(
+            coordinator.warmup_witness(&a, warmup_witness_from(0), 1, 0),
+            Err(CoordinatorError::DuplicateWitness)
+        ));
+        coordinator
+            .warmup_witness(&b, warmup_witness_from(1), 1, 0)
+            .unwrap();
+        assert_eq!(coordinator.current_round().unwrap().witnesses.len(), 2);
+    }
+
+    #[test]
+    fn warmup_witness_tolerates_clients_exiting_after_they_witnessed() {
+        let (a, b, c) = (identity(1), identity(2), identity(3));
+        let mut coordinator = warmup_coordinator(&[a, b, c]);
+
+        // the last client witnesses first, storing index 2
+        coordinator
+            .warmup_witness(&c, warmup_witness_from(2), 1, 0)
+            .unwrap();
+
+        // then the first client leaves and gets moved out on the next tick, so the
+        // stored index 2 now points past the end of `clients`
+        coordinator.withdraw(0).unwrap();
+        coordinator
+            .tick(None::<std::iter::Empty<&NodeIdentity>>, 2, 0)
+            .unwrap();
+        assert_eq!(coordinator.run_state, RunState::Warmup);
+        assert_eq!(coordinator.epoch_state.clients.len(), 2);
+
+        // a witness from a remaining client must not panic on the stale index
+        coordinator
+            .warmup_witness(&b, warmup_witness_from(0), 3, 0)
+            .unwrap();
+        assert_eq!(coordinator.current_round().unwrap().witnesses.len(), 2);
     }
 }
